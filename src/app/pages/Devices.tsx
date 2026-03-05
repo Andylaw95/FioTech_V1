@@ -198,8 +198,8 @@ export function Devices() {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col justify-between gap-3 sm:gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">IoT Devices</h2>
-          <p className="text-xs sm:text-sm text-slate-500">Manage and monitor all connected sensors.</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">IoT Devices</h2>
+          <p className="text-sm sm:text-base text-slate-500">Manage and monitor all connected sensors.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           

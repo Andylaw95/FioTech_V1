@@ -940,9 +940,9 @@ function GatewaysInner() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl sm:text-2xl font-semibold text-slate-900">Gateways</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">Gateways</h2>
           <div className="flex flex-wrap items-center gap-3 mt-0.5">
-            <p className="text-xs sm:text-sm text-slate-500">Manage network gateways and device connections.</p>
+            <p className="text-sm sm:text-base text-slate-500">Manage network gateways and device connections.</p>
             {/* Live status indicator */}
             <div className="flex items-center gap-2 flex-wrap">
               <button

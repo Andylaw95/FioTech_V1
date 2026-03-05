@@ -605,11 +605,11 @@ export function BIMTwins() {
         !isFullscreen && (showMobileSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0")
       )}>
         <div className="p-4 border-b border-slate-100">
-          <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <LayoutDashboard className="h-4 w-4 text-blue-600" />
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <LayoutDashboard className="h-5 w-5 text-blue-600" />
             Properties
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">Select a property to load its Digital Twin</p>
+          <p className="text-sm text-slate-400 mt-0.5">Select a property to load its Digital Twin</p>
         </div>
 
         <div className="p-3 border-b border-slate-100">
@@ -664,14 +664,14 @@ export function BIMTwins() {
               <LayoutDashboard className="h-4 w-4" />
             </button>
             <div className="min-w-0">
-              <h1 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2 truncate">
+              <h1 className="text-base sm:text-xl font-bold text-slate-900 flex items-center gap-2 truncate">
                 {selectedProperty?.name || 'Select Property'}
                 <span className="px-1.5 py-0.5 rounded text-xs bg-gradient-to-r from-blue-500 to-indigo-500 text-white uppercase tracking-wider font-bold shrink-0">
                   Twin
                 </span>
               </h1>
-              <p className="text-xs text-slate-400 flex items-center gap-1 truncate">
-                <MapPin className="h-2.5 w-2.5 shrink-0" /> {selectedProperty?.location || '—'}
+              <p className="text-sm text-slate-400 flex items-center gap-1 truncate">
+                <MapPin className="h-3 w-3 shrink-0" /> {selectedProperty?.location || '—'}
                 {selectedFloor !== null && (
                   <span className="ml-1 text-blue-600 font-medium">• {floorLabels[selectedFloor]}</span>
                 )}

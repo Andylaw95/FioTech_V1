@@ -409,8 +409,8 @@ export function Settings() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-2xl lg:text-3xl font-bold text-slate-900">Settings</h2>
-        <p className="text-sm sm:text-base text-slate-500">Manage your account, notifications, and system preferences.</p>
+        <h2 className="text-3xl lg:text-4xl font-bold text-slate-900">Settings</h2>
+        <p className="text-base sm:text-lg text-slate-500 mt-1">Manage your account, notifications, and system preferences.</p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">

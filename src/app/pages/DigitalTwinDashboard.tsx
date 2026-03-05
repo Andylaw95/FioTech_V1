@@ -911,13 +911,13 @@ export function DigitalTwinDashboard() {
               <Building2 className={clsx('h-5 w-5', isDark ? 'text-blue-400' : 'text-blue-600')} />
             </div>
             <h1 className={clsx(
-              'text-2xl lg:text-3xl font-bold tracking-tight',
+              'text-3xl lg:text-4xl font-bold tracking-tight',
               isDark ? 'text-white' : 'text-slate-900'
             )}>
               {selectedProperty ? selectedProperty.name : 'Digital Twin Dashboard'}
             </h1>
           </div>
-          <p className={clsx('text-sm lg:text-base ml-[52px]', isDark ? 'text-slate-500' : 'text-slate-500')}>
+          <p className={clsx('text-base lg:text-lg ml-[52px]', isDark ? 'text-slate-500' : 'text-slate-500')}>
             {selectedProperty
               ? `${selectedProperty.type} · ${selectedProperty.location} · ${selectedProperty.deviceCount ?? 0} sensors`
               : <>Floor 17 — Real-time building intelligence &middot; {properties.length} properties &middot; {stats?.devices?.total ?? 0} sensors</>}
