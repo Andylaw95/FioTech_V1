@@ -247,8 +247,12 @@ const WIDGETS: { id: WidgetId; label: string; icon: React.ElementType; descripti
 // Widget content renderer — health widget receives dynamic stats
 function HealthWidget({ stats }: { stats: DashboardStats | null }) {
   const online = stats?.devices.online ?? 0;
+  const warning = stats?.devices.warning ?? 0;
   const offline = stats?.devices.offline ?? 0;
+  const total = stats?.devices.total ?? 0;
   const onlinePct = stats?.devices.onlinePercent ?? 0;
+  // "Not online" = warning + offline (everything that isn't actively reporting)
+  const notOnline = total - online;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -263,12 +267,26 @@ function HealthWidget({ stats }: { stats: DashboardStats | null }) {
               </span>
               <span className="font-medium text-slate-900">{online}</span>
             </div>
+            {warning > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-slate-600">
+                  <span className="h-2 w-2 rounded-full bg-amber-400"></span> Warning
+                </span>
+                <span className="font-medium text-slate-900">{warning}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2 text-slate-600">
                 <span className="h-2 w-2 rounded-full bg-slate-200"></span> Offline
               </span>
               <span className="font-medium text-slate-900">{offline}</span>
             </div>
+            {notOnline > 0 && notOnline !== offline && (
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                <span>Total not online</span>
+                <span>{notOnline}</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="w-full md:w-64 flex-shrink-0">
