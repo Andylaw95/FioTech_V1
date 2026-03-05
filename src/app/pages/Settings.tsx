@@ -103,8 +103,8 @@ function SettingsSection({ title, description, children }: { title: string; desc
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100">
-        <h3 className="text-sm sm:text-base font-semibold text-slate-900">{title}</h3>
-        {description && <p className="text-xs sm:text-sm text-slate-500 mt-0.5">{description}</p>}
+        <h3 className="text-base sm:text-lg font-semibold text-slate-900">{title}</h3>
+        {description && <p className="text-sm sm:text-base text-slate-500 mt-0.5">{description}</p>}
       </div>
       <div className="p-4 sm:p-6">{children}</div>
     </div>
@@ -132,12 +132,12 @@ function SettingsRow({
       <div className="flex items-center gap-3 min-w-0">
         {Icon && (
           <div className={clsx('p-2 rounded-lg shrink-0', iconBg, iconColor)}>
-            <Icon className="h-4 w-4" />
+            <Icon className="h-5 w-5" />
           </div>
         )}
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-900">{label}</p>
-          {description && <p className="text-xs text-slate-500 mt-0.5 truncate">{description}</p>}
+          <p className="text-base font-medium text-slate-900">{label}</p>
+          {description && <p className="text-sm text-slate-500 mt-0.5 truncate">{description}</p>}
         </div>
       </div>
       <div className="shrink-0">{children}</div>
@@ -409,8 +409,8 @@ export function Settings() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-xl lg:text-2xl font-bold text-slate-900">Settings</h2>
-        <p className="text-xs sm:text-sm text-slate-500">Manage your account, notifications, and system preferences.</p>
+        <h2 className="text-2xl lg:text-3xl font-bold text-slate-900">Settings</h2>
+        <p className="text-sm sm:text-base text-slate-500">Manage your account, notifications, and system preferences.</p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
@@ -441,8 +441,8 @@ export function Settings() {
                       <Icon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <p className={clsx('text-xs lg:text-sm font-medium whitespace-nowrap', isActive && 'text-blue-700')}>{tab.label}</p>
-                      <p className="text-[11px] text-slate-500 truncate hidden lg:block">{tab.description}</p>
+                      <p className={clsx('text-sm lg:text-base font-medium whitespace-nowrap', isActive && 'text-blue-700')}>{tab.label}</p>
+                      <p className="text-xs text-slate-500 truncate hidden lg:block">{tab.description}</p>
                     </div>
                     {isActive && <ChevronRight className="h-4 w-4 ml-auto text-blue-400 shrink-0 hidden lg:block" />}
                   </button>
