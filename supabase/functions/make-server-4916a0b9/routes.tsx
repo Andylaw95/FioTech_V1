@@ -1833,7 +1833,8 @@ export function registerRoutes(app: any) {
       const pending = alarmsRaw.filter((a: any) => a.status === "pending");
       const waterLeaks = pending.filter((a: any) => a.type?.includes("Water") || a.type?.includes("Leak")).length;
       const leakDevices = devices.filter((d: any) => d.type === "Leakage");
-      const leakWarnings = leakDevices.filter((d: any) => d.status === "warning" || d.status === "offline").length;
+      // Only count devices actively reporting a leak (status === "warning"), NOT offline devices
+      const leakWarnings = leakDevices.filter((d: any) => d.status === "warning").length;
       const stats = {
         properties: { total: propertiesRaw.length, images: propertiesRaw.slice(0, 4).map((p: any) => p.image) },
         devices: { ...ds, onlinePercent },
@@ -1904,7 +1905,8 @@ export function registerRoutes(app: any) {
       const pending = alarms.filter((a: any) => a.status === "pending");
       const waterLeaks = pending.filter((a: any) => a.type?.includes("Water") || a.type?.includes("Leak")).length;
       const leakDevices = devices.filter((d: any) => d.type === "Leakage");
-      const leakWarnings = leakDevices.filter((d: any) => d.status === "warning" || d.status === "offline").length;
+      // Only count devices actively reporting a leak (status === "warning"), NOT offline devices
+      const leakWarnings = leakDevices.filter((d: any) => d.status === "warning").length;
       return c.json({
         properties: { total: properties.length, images: properties.slice(0, 4).map((p: any) => p.image) },
         devices: { ...ds, onlinePercent },

@@ -348,17 +348,17 @@ export function Dashboard() {
     const offlineDevices = selectedProperty.offlineDevices ?? 0;
     const warningDevices = selectedProperty.warningDevices ?? 0;
     const onlinePct = deviceCount > 0 ? Math.round((onlineDevices / deviceCount) * 100) : 0;
-    const waterParts = (selectedProperty.waterSensors || '0/0').split('/');
-    const waterActive = parseInt(waterParts[0]) || 0;
-    const waterTotal = parseInt(waterParts[1]) || 0;
-    const hasWaterWarning = waterActive < waterTotal;
+    // Water warning based on actual leak detection from telemetry, NOT sensor offline count
+    const scopedWaterZones = scopedTelemetry?.waterZones || [];
+    const leakCount = scopedWaterZones.filter(z => z.leakDetected).length;
+    const hasWaterWarning = leakCount > 0;
     return {
       properties: { total: 1, images: [selectedProperty.image] },
       devices: { total: deviceCount, online: onlineDevices, offline: offlineDevices, warning: warningDevices, onlinePercent: onlinePct },
-      alarms: { totalPending: warningDevices, highSeverity: 0, waterLeaks: hasWaterWarning ? 1 : 0, systemWarnings: warningDevices },
-      water: { status: hasWaterWarning ? 'Warning' : 'Normal', leakWarnings: hasWaterWarning ? waterTotal - waterActive : 0 },
+      alarms: { totalPending: warningDevices, highSeverity: 0, waterLeaks: leakCount, systemWarnings: warningDevices },
+      water: { status: hasWaterWarning ? 'Warning' : 'Normal', leakWarnings: leakCount },
     };
-  }, [stats, selectedProperty]);
+  }, [stats, selectedProperty, scopedTelemetry]);
 
   const fetchProperties = useCallback(async () => {
     const isInitial = !initialLoadDoneRef.current;
