@@ -39,7 +39,7 @@ export function Layout() {
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = React.useState(false);
   const [isAlarmsExpanded, setIsAlarmsExpanded] = React.useState(false);
-  const { profileName, profileRole } = useProfile();
+  const { profileName, profileRole, profileAvatar } = useProfile();
   const location = useLocation();
   const { signOut, isAdmin } = useAuth();
   const { theme, toggleTheme, isDark } = useTheme();
@@ -352,11 +352,17 @@ export function Layout() {
             <NotificationDropdown />
 
             <div className="flex items-center gap-2 lg:gap-3">
-              <img
-                src="https://images.unsplash.com/photo-1615843423179-bea071facf96?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjB1c2VyJTIwYXZhdGFyJTIwaGVhZHNob3R8ZW58MXx8fHwxNzcwMDI0NjU5fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-                alt="Profile"
-                className={cn("h-8 w-8 lg:h-9 lg:w-9 rounded-full object-cover ring-2 shadow-sm", isDark ? "ring-slate-700" : "ring-white")}
-              />
+              {profileAvatar ? (
+                <img
+                  src={profileAvatar}
+                  alt="Profile"
+                  className={cn("h-8 w-8 lg:h-9 lg:w-9 rounded-full object-cover ring-2 shadow-sm", isDark ? "ring-slate-700" : "ring-white")}
+                />
+              ) : (
+                <div className={cn("h-8 w-8 lg:h-9 lg:w-9 rounded-full flex items-center justify-center text-sm font-bold ring-2 shadow-sm", isDark ? "ring-slate-700 bg-blue-600 text-white" : "ring-white bg-blue-600 text-white")}>
+                  {profileName ? profileName.charAt(0).toUpperCase() : 'U'}
+                </div>
+              )}
               <div className="hidden text-sm lg:block">
                 <p className={cn("font-medium", isDark ? "text-white" : "text-slate-900")}>{profileName}</p>
                 <p className={cn("text-xs", isDark ? "text-slate-500" : "text-slate-500")}>{profileRole}</p>

@@ -126,7 +126,7 @@ export function makeDemoAlarms(): any[] {
 // ── Settings defaults ────────────────────────────────────
 
 export const DEFAULT_SETTINGS = {
-  profile: { name: "Admin", email: "", role: "Admin", company: "FioTech Solutions", phone: "" },
+  profile: { name: "Admin", email: "", role: "Admin", company: "FioTech Solutions", phone: "", avatar: "" },
   notifications: {
     emailAlerts: true, smsAlerts: false, pushNotifications: true,
     alertTypes: { waterLeak: true, smoke: true, deviceOffline: true, highHumidity: false, temperature: false },

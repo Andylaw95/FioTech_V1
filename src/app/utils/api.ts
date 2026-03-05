@@ -656,6 +656,7 @@ export interface AppSettings {
     role: string;
     company: string;
     phone: string;
+    avatar?: string;
   };
   notifications: {
     emailAlerts: boolean;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   User,
   Bell,
@@ -42,6 +42,9 @@ import {
   Copy,
   RefreshCw,
   Zap,
+  Camera,
+  Upload,
+  X,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
@@ -159,6 +162,59 @@ export function Settings() {
   const [webhookLoading, setWebhookLoading] = useState(false);
   const [webhookGenerating, setWebhookGenerating] = useState(false);
 
+  // Avatar upload state
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const handleAvatarUpload = async (file: File) => {
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Please upload a PNG, JPG, WebP, or GIF image');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image must be under 10MB');
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const result = await api.uploadImage(file);
+      // Update local settings state
+      updateLocal('profile.avatar', result.url);
+      // Save to backend immediately
+      const updated = await api.updateSettings({ profile: { ...settings!.profile, avatar: result.url } });
+      setSettings(updated);
+      // Broadcast to Layout header instantly
+      window.dispatchEvent(new CustomEvent('fiotech-profile-update', {
+        detail: { name: updated.profile.name, role: updated.profile.role, avatar: result.url }
+      }));
+      toast.success('Profile photo updated');
+    } catch (err) {
+      console.error('Avatar upload failed:', err);
+      toast.error('Failed to upload photo. Please try again.');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!settings) return;
+    try {
+      setSaving(true);
+      const updated = await api.updateSettings({ profile: { ...settings.profile, avatar: '' } });
+      setSettings(updated);
+      window.dispatchEvent(new CustomEvent('fiotech-profile-update', {
+        detail: { name: updated.profile.name, role: updated.profile.role, avatar: '' }
+      }));
+      toast.success('Profile photo removed');
+    } catch (err) {
+      console.error('Failed to remove avatar:', err);
+      toast.error('Failed to remove photo');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Load settings on mount
   useEffect(() => {
     loadSettings();
@@ -185,10 +241,10 @@ export function Settings() {
       try {
         const updated = await api.updateSettings(partial);
         setSettings(updated);
-        // Instantly update profile name in header via context
+        // Instantly update profile name/avatar in header via context
         if (updated?.profile?.name) {
           window.dispatchEvent(new CustomEvent('fiotech-profile-update', { 
-            detail: { name: updated.profile.name, role: updated.profile.role } 
+            detail: { name: updated.profile.name, role: updated.profile.role, avatar: updated.profile.avatar || '' } 
           }));
         }
         toast.success('Settings saved successfully');
@@ -413,15 +469,59 @@ export function Settings() {
                   <SettingsSection title="Personal Information" description="Update your name, email, and contact details.">
                     <div className="flex flex-col sm:flex-row gap-6 mb-6">
                       <div className="shrink-0">
-                        <div className="relative">
-                          <img
-                            src="https://images.unsplash.com/photo-1615843423179-bea071facf96?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjB1c2VyJTIwYXZhdGFyJTIwaGVhZHNob3R8ZW58MXx8fHwxNzcwMzI4MDk5fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-                            alt="Profile"
-                            className="h-20 w-20 rounded-2xl object-cover ring-2 ring-slate-100"
+                        <div className="relative group">
+                          <input
+                            ref={avatarInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/gif"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleAvatarUpload(file);
+                              e.target.value = '';
+                            }}
                           />
-                          <div className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-emerald-500 ring-2 ring-white flex items-center justify-center">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-white" />
-                          </div>
+                          {settings.profile.avatar ? (
+                            <img
+                              src={settings.profile.avatar}
+                              alt="Profile"
+                              className="h-20 w-20 rounded-2xl object-cover ring-2 ring-slate-100"
+                            />
+                          ) : (
+                            <div className="h-20 w-20 rounded-2xl bg-blue-600 ring-2 ring-slate-100 flex items-center justify-center">
+                              <span className="text-2xl font-bold text-white">
+                                {settings.profile.name ? settings.profile.name.charAt(0).toUpperCase() : 'U'}
+                              </span>
+                            </div>
+                          )}
+                          {/* Overlay on hover */}
+                          <button
+                            type="button"
+                            onClick={() => avatarInputRef.current?.click()}
+                            disabled={avatarUploading}
+                            className="absolute inset-0 rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+                          >
+                            {avatarUploading ? (
+                              <Loader2 className="h-6 w-6 text-white animate-spin" />
+                            ) : (
+                              <Camera className="h-6 w-6 text-white" />
+                            )}
+                          </button>
+                          {/* Status badge / remove button */}
+                          {settings.profile.avatar ? (
+                            <button
+                              type="button"
+                              onClick={handleRemoveAvatar}
+                              className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-red-500 ring-2 ring-white flex items-center justify-center hover:bg-red-600 transition-colors"
+                              title="Remove photo"
+                            >
+                              <X className="h-3.5 w-3.5 text-white" />
+                            </button>
+                          ) : (
+                            <div className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-slate-400 ring-2 ring-white flex items-center justify-center">
+                              <Camera className="h-3 w-3 text-white" />
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="flex-1 space-y-1">
@@ -430,6 +530,7 @@ export function Settings() {
                         <span className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium ring-1 ring-emerald-200">
                           <CheckCircle2 className="h-3 w-3" /> Active Account
                         </span>
+                        <p className="text-[11px] text-slate-400 mt-1">Hover on photo to change · Max 10MB</p>
                       </div>
                     </div>
 
