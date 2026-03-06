@@ -100,53 +100,30 @@ export function warmupServer(): Promise<'success' | 'exhausted'> {
       apikey: publicAnonKey,
     };
 
-    // 12 attempts with 1.5s minimum cycle = 18s window minimum.
-    // The health endpoint is now synchronous (zero IO), so responses are
+    // 20 attempts with 0.8s minimum cycle = 16s window.
+    // The health endpoint is synchronous (zero IO), so responses are
     // instant once the Edge Function is running. The main delay is the
     // Supabase proxy cold-starting the worker (15-30s), during which
     // fetches fail fast with "Failed to fetch". Once the worker is live,
-    // health responds in <100ms, so cycles are fast.
-    const MAX_ATTEMPTS = 12;
-    let consecutiveAlive = 0; // Track consecutive 200 responses
+    // health responds in <100ms — accept the FIRST 200 immediately.
+    const MAX_ATTEMPTS = 20;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const attemptStart = Date.now();
       try {
-        // 5s timeout — generous for a synchronous endpoint. If it takes
-        // longer, the Supabase proxy is still cold-starting the worker.
-        const response = await fetchWithTimeout(url, { headers }, 5000);
+        // 3s timeout — health is synchronous, <100ms when warm.
+        // If it takes longer, the proxy is still cold-starting the worker.
+        const response = await fetchWithTimeout(url, { headers }, 3000);
 
         if (response.ok) {
-          consecutiveAlive++;
-          let body: any = null;
-          try {
-            body = await response.json();
-          } catch {
-            console.log(`[FioTech] Server warm (could not parse health body) after ${attempt + 1} attempt(s)`);
-            _serverWarmedUp = true;
-            startKeepAlive();
-            return 'success';
-          }
-          if (body?.schemaReady === true) {
-            console.log(`[FioTech] Server fully warm (DB ready) after ${attempt + 1} attempt(s)`);
-            _serverWarmedUp = true;
-            startKeepAlive();
-            return 'success';
-          }
-          // Server responded 200 but schemaReady not yet true.
-          // If it's been alive for 3+ consecutive pings, consider it warm
-          // enough — routes may be loaded even if schemaReady flag has
-          // a bug, or the server at least handles requests.
-          if (consecutiveAlive >= 3) {
-            console.log(`[FioTech] Server alive for ${consecutiveAlive} consecutive pings, considering warm (schemaReady=${body?.schemaReady})`);
-            _serverWarmedUp = true;
-            startKeepAlive();
-            return 'success';
-          }
-          console.log(`[FioTech] Server alive but DB not ready (${consecutiveAlive}/3), retrying...`);
-          throw new Error('Schema not ready');
+          // First 200 = server is alive. Accept immediately — the health
+          // endpoint is registered synchronously so if it responds, all
+          // routes are available. No need to wait for consecutive pings.
+          const elapsed = Date.now() - attemptStart;
+          console.log(`[FioTech] Server warm after ${attempt + 1} attempt(s) (${elapsed}ms)`);
+          _serverWarmedUp = true;
+          startKeepAlive();
+          return 'success';
         }
-
-        consecutiveAlive = 0; // Reset on non-200
 
         if (response.status === 502 || response.status === 503 || response.status === 504) {
           throw new Error(`Server returned ${response.status}`);
@@ -160,9 +137,9 @@ export function warmupServer(): Promise<'success' | 'exhausted'> {
       } catch (error) {
         if (attempt < MAX_ATTEMPTS - 1) {
           const elapsed = Date.now() - attemptStart;
-          // 1.5s minimum cycle — health is instant so we can probe fast.
-          // This lets us detect the moment the server comes alive.
-          const delay = Math.max(1500 - elapsed, 300);
+          // 0.8s minimum cycle — detect the moment the server comes alive.
+          // Health is instant once warm; the bottleneck is Supabase proxy boot.
+          const delay = Math.max(800 - elapsed, 200);
           console.debug(
             `[FioTech] Warming up server... attempt ${attempt + 1}/${MAX_ATTEMPTS} (retry in ${Math.round(delay)}ms)`,
           );
@@ -173,7 +150,7 @@ export function warmupServer(): Promise<'success' | 'exhausted'> {
 
     // Warmup exhausted — do NOT set _serverWarmedUp = true.
     // The gate will show an error/retry UI instead of flooding a cold server.
-    console.debug('[FioTech] Server warmup exhausted after 12 attempts');
+    console.debug('[FioTech] Server warmup exhausted after 20 attempts');
     return 'exhausted';
   })();
 
