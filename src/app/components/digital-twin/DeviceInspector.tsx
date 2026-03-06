@@ -75,7 +75,6 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
   const TypeIcon = meta.icon;
   const generatedTelemetry = useMemo(() => generateDeviceTelemetry(device.id, device.type), [device.id, device.type]);
   const [showHistory, setShowHistory] = useState(false);
-  const [historyPeriod, setHistoryPeriod] = useState<string>('24h');
 
   // Use real live data if available, otherwise fall back to generated
   const hasLiveData = liveSensorData && Object.keys(liveSensorData).length > 0;
@@ -139,26 +138,13 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
           </div>
         </div>
 
-        {/* Period selector */}
-        <div className="flex gap-1.5 bg-slate-100 rounded-lg p-1">
-          {['24h', '7d', '30d'].map((p) => (
-            <button key={p} onClick={() => setHistoryPeriod(p)}
-              className={clsx(
-                "flex-1 text-xs font-medium py-1.5 rounded-md transition-colors",
-                historyPeriod === p ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              )}>
-              {p === '24h' ? '24 Hours' : p === '7d' ? '7 Days' : '30 Days'}
-            </button>
-          ))}
-        </div>
-
-        {/* Full history chart */}
+        {/* Full history chart — 3 days of data */}
         {device.devEui ? (
           <DeviceHistoryChart
             deviceId={device.id}
             deviceType={device.type}
             devEui={device.devEui}
-            period={historyPeriod}
+            period="3d"
           />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">
