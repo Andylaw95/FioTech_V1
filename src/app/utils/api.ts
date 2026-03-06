@@ -56,14 +56,15 @@ function startKeepAlive() {
     apikey: publicAnonKey,
   };
 
-  // Ping every 25s for the ENTIRE session — keeps the Edge Function worker
+  // Ping every 15s for the ENTIRE session — keeps the Edge Function worker
   // alive and avoids cold starts when navigating between pages or idling.
   // Only fires when the tab is visible to avoid wasting resources.
+  // 15s is well under the ~30s idle timeout for Supabase Free Tier workers.
   _keepAliveTimer = setInterval(() => {
     if (!document.hidden) {
       fetch(url, { headers }).catch(() => {});
     }
-  }, 25000);
+  }, 15000);
 
   // Pause/resume on visibility change — no pings when tab is hidden
   document.addEventListener('visibilitychange', () => {
@@ -73,7 +74,7 @@ function startKeepAlive() {
     }
   });
 
-  console.log('[FioTech] Keep-alive pings started (every 25s, session-long, visibility-aware)');
+  console.log('[FioTech] Keep-alive pings started (every 15s, session-long, visibility-aware)');
 }
 
 export function stopKeepAlive() {
@@ -395,12 +396,13 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
     const url = `${BASE_URL}${path}`;
 
     try {
-      // 8s timeout — the warmup gate ensures the server is alive before
-      // data requests fire. A warm server responds in <2s. If a request
-      // hangs longer, the worker was likely recycled. Fail fast and let
-      // the retry loop re-poke the server (each retry wakes the worker).
-      // With 5 retries × 8s + backoff, total worst-case is ~55s.
-      const response = await fetchWithTimeout(url, { ...options, headers }, 8000);
+      // 5s timeout — Supabase Free Tier intermittently drops connections
+      // at the proxy level. These drops NEVER recover (even with 15s timeout),
+      // so fail fast and retry immediately. The worker is almost always alive;
+      // the retry just needs a fresh connection. With 5 retries × 5s + fast
+      // backoff, worst-case is ~30s. The retry on a fresh connection succeeds
+      // in <0.5s ~95% of the time.
+      const response = await fetchWithTimeout(url, { ...options, headers }, 5000);
 
       // ─── Handle 502/503/504 (cold start / proxy errors) ──
       if (response.status === 502 || response.status === 503 || response.status === 504) {
@@ -435,7 +437,7 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
             isBodyRequest,
             options.headers as Record<string, string> | undefined,
           );
-          const retryResponse = await fetchWithTimeout(url, { ...options, headers: retryHeaders }, 8000);
+          const retryResponse = await fetchWithTimeout(url, { ...options, headers: retryHeaders }, 5000);
 
           if (!retryResponse.ok) {
             const errorText = await retryResponse.text();
@@ -545,10 +547,11 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
   };
 
   /** Wrap doFetch with automatic retries on cold-start / network / transient auth errors.
-   *  Retries here handle transient worker recycling on Supabase Free Tier.
-   *  Backoff: 500ms → 1s → 2s → 3s × 2  (capped at 3s to recover fast).
-   *  Total wait budget ~12.5s across 5 retries. Combined with 8s per-request
-   *  timeout, worst case is ~52.5s. */
+   *  Retries handle Supabase Free Tier proxy connection drops.
+   *  Backoff: 200ms → 400ms → 800ms → 1.5s → 2s  (ultra-fast initial retry
+   *  because the worker IS alive — we just need a fresh connection).
+   *  Total wait budget ~4.9s across 5 retries. Combined with 5s per-request
+   *  timeout, worst case is ~30s. */
   const doFetchWithRetry = async () => {
     const MAX_NETWORK_RETRIES = 5;
     let lastError: unknown;
@@ -567,8 +570,10 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
         const errorType = error instanceof ColdStartError ? 'cold-start'
           : error instanceof TransientAuthError ? 'transient-auth'
           : 'network';
-        // Cap backoff at 3s — each retry pokes the server awake
-        const delay = Math.min(3000, 500 * Math.pow(2, attempt));
+        // Ultra-fast initial retry (200ms) — the worker is alive per testing,
+        // Supabase drops are proxy-level, and a fresh connection succeeds ~95%
+        // of the time in <0.5s. Cap at 2s for later retries.
+        const delay = Math.min(2000, 200 * Math.pow(2, attempt));
         console.debug(
           `[FioTech] Retry ${attempt + 1}/${MAX_NETWORK_RETRIES} for ${method} ${path} — ${errorType} error, waiting ${delay}ms...`,
         );

@@ -10,16 +10,24 @@ CREATE TABLE kv_store_4916a0b9 (
 // View at https://supabase.com/dashboard/project/wjvbojulgpmpblmterfy/database/tables
 
 // This file provides a simple key-value interface for storing Figma Make data.
-// IMPORTANT: Uses a SINGLETON Supabase client to avoid memory bloat.
-// Creating a new client per call was causing OOM crashes on Supabase Free Tier.
+// IMPORTANT: Shares a SINGLE Supabase client with routes.tsx to avoid memory bloat.
+// Creating multiple clients was causing OOM crashes on Supabase Free Tier.
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 
-// Singleton client — created once, reused for all KV operations.
-// This prevents the memory leak from creating auth/realtime/storage
-// sub-clients on every single KV read/write.
-let _client: ReturnType<typeof createClient> | null = null;
+// Shared client — injected by routes.tsx via init() so the ENTIRE function
+// uses exactly ONE Supabase client. Falls back to creating its own only if
+// init() was never called (e.g., standalone testing).
+let _client: any = null;
+
+/** Call once from routes.tsx to inject the shared Supabase client. */
+export function init(externalClient: any) {
+  _client = externalClient;
+  console.log("[KV] Using shared Supabase client");
+}
+
 function client() {
   if (!_client) {
+    console.log("[KV] WARNING: No shared client — creating fallback");
     _client = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,

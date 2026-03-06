@@ -8,6 +8,7 @@ import {
 
 // ── SUPABASE CLIENT (service role — NEVER expose to frontend) ──
 // Minimal config: disable session persistence & auto-refresh to reduce memory footprint
+// This is the ONLY Supabase client for the entire function — shared with kv_store.tsx.
 const supabase = (() => {
   try {
     const c = createClient(
@@ -18,7 +19,9 @@ const supabase = (() => {
         realtime: { params: { eventsPerSecond: 0 } },
       },
     );
-    console.log("[FioTech Routes] Supabase client created");
+    // Share with kv_store — single client for entire function
+    kv.init(c);
+    console.log("[FioTech Routes] Supabase client created & shared");
     return c;
   } catch (e) {
     console.log("[FioTech Routes] CRITICAL: Failed to create Supabase client:", e);
@@ -28,22 +31,10 @@ const supabase = (() => {
 
 const BUCKET_NAME = "make-4916a0b9-property-images";
 
-// ── SCHEMA CACHE WARMUP (lightweight — single attempt) ───
-let schemaCacheReady = false;
-
-(async () => {
-  try {
-    await kv.get("__warmup__");
-    schemaCacheReady = true;
-    console.log("[FioTech Routes] Schema cache warm");
-  } catch (e) {
-    console.log("Schema warmup skipped:", errorMessage(e));
-  }
-})();
-
-// Deferred bucket init — only runs once, 5s after boot to reduce startup memory pressure
+// ── LAZY BUCKET INIT — only runs on first upload request ─────
+// Moved from a setTimeout(5s) to on-demand to reduce boot overhead.
 let _bucketChecked = false;
-setTimeout(async () => {
+async function ensureBucket() {
   if (_bucketChecked) return;
   _bucketChecked = true;
   try {
@@ -58,7 +49,7 @@ setTimeout(async () => {
       else console.log(`Bucket '${BUCKET_NAME}' created.`);
     }
   } catch (e) { console.log("Bucket check error:", errorMessage(e)); }
-}, 5000);
+}
 
 // ── HELPERS ──────────────────────────────────────────────
 
@@ -240,9 +231,17 @@ function safeMerge(target: any, source: any, depth = 0): any {
 // ── RATE LIMITER ─────────────────────────────────────────
 
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+let _lastRateLimitCleanup = Date.now();
 
 function rateLimit(ip: string, maxRequests: number, windowMs: number): boolean {
   const now = Date.now();
+  // Lazy cleanup — replaces setInterval to eliminate persistent timer
+  if (now - _lastRateLimitCleanup > 60000) {
+    _lastRateLimitCleanup = now;
+    for (const [key, val] of rateLimitStore.entries()) {
+      if (now > val.resetAt) rateLimitStore.delete(key);
+    }
+  }
   const entry = rateLimitStore.get(ip);
   if (!entry || now > entry.resetAt) {
     rateLimitStore.set(ip, { count: 1, resetAt: now + windowMs });
@@ -252,13 +251,6 @@ function rateLimit(ip: string, maxRequests: number, windowMs: number): boolean {
   entry.count++;
   return true;
 }
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of rateLimitStore.entries()) {
-    if (now > val.resetAt) rateLimitStore.delete(key);
-  }
-}, 300000);
 
 function getClientIp(c: any): string {
   const xff = c.req.header("x-forwarded-for");
@@ -273,6 +265,7 @@ function getClientIp(c: any): string {
 // ── KV CACHE ─────────────────────────────────────────────
 
 const kvCache = new Map<string, { data: any; expiresAt: number }>();
+let _lastKvCacheCleanup = Date.now();
 const KV_CACHE_TTL_FAST = 3000;   // alarms, sensor_data — need quick refresh for safety
 const KV_CACHE_TTL_SLOW = 30000;  // properties, gateways, devices, settings, widget_layout — rarely change
 const kvInflight = new Map<string, Promise<any>>();
@@ -307,6 +300,13 @@ async function kvSetWithRetry(key: string, data: any, retries = 2): Promise<void
 
 async function cachedKvGet(key: string): Promise<any> {
   const now = Date.now();
+  // Lazy cleanup — replaces setInterval to eliminate persistent timer
+  if (now - _lastKvCacheCleanup > 30000) {
+    _lastKvCacheCleanup = now;
+    for (const [k, val] of kvCache.entries()) {
+      if (now > val.expiresAt) kvCache.delete(k);
+    }
+  }
   const cached = kvCache.get(key);
   if (cached && now < cached.expiresAt) return cached.data;
   if (kvInflight.has(key)) return kvInflight.get(key)!;
@@ -325,13 +325,6 @@ async function cachedKvSet(key: string, data: any): Promise<void> {
   const ttl = kvCacheTtl(key);
   kvCache.set(key, { data, expiresAt: Date.now() + ttl });
 }
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of kvCache.entries()) {
-    if (now > val.expiresAt) kvCache.delete(key);
-  }
-}, 30000);
 
 // ── USER-SCOPED DATA ─────────────────────────────────────
 
@@ -1655,6 +1648,7 @@ export function registerRoutes(app: any) {
     const auth = await requireAuth(c);
     if (auth instanceof Response) return auth;
     try {
+      await ensureBucket();
       const formData = await c.req.formData();
       const file = formData.get("file");
       if (!file || !(file instanceof File)) return c.json({ error: "No file provided." }, 400);
