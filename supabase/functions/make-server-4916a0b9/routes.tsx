@@ -7,11 +7,16 @@ import {
 } from "./seed_data.tsx";
 
 // ── SUPABASE CLIENT (service role — NEVER expose to frontend) ──
+// Minimal config: disable session persistence & auto-refresh to reduce memory footprint
 const supabase = (() => {
   try {
     const c = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      {
+        auth: { persistSession: false, autoRefreshToken: false },
+        realtime: { params: { eventsPerSecond: 0 } },
+      },
     );
     console.log("[FioTech Routes] Supabase client created");
     return c;
@@ -23,32 +28,24 @@ const supabase = (() => {
 
 const BUCKET_NAME = "make-4916a0b9-property-images";
 
-// ── SCHEMA CACHE WARMUP ─────────────────────────────────
+// ── SCHEMA CACHE WARMUP (lightweight — single attempt) ───
 let schemaCacheReady = false;
 
 (async () => {
   try {
-    const MAX = 5;
-    for (let i = 0; i < MAX; i++) {
-      try {
-        await kv.get("__warmup__");
-        schemaCacheReady = true;
-        console.log(`[FioTech Routes] Schema cache warm after ${i + 1} attempt(s)`);
-        supabase.auth.getUser("x").catch(() => {});
-        return;
-      } catch (e) {
-        console.log(`Schema warmup attempt ${i + 1}/${MAX}: ${errorMessage(e)}`);
-        if (i < MAX - 1) await new Promise((r) => setTimeout(r, 200 * Math.pow(2, i)));
-      }
-    }
-    console.log("Schema warmup exhausted — requests will retry inline");
+    await kv.get("__warmup__");
+    schemaCacheReady = true;
+    console.log("[FioTech Routes] Schema cache warm");
   } catch (e) {
-    console.log("Schema warmup error:", errorMessage(e));
+    console.log("Schema warmup skipped:", errorMessage(e));
   }
 })();
 
-// Deferred bucket init
+// Deferred bucket init — only runs once, 5s after boot to reduce startup memory pressure
+let _bucketChecked = false;
 setTimeout(async () => {
+  if (_bucketChecked) return;
+  _bucketChecked = true;
   try {
     const { data: buckets } = await supabase.storage.listBuckets();
     const exists = buckets?.some((b: any) => b.name === BUCKET_NAME);
@@ -61,7 +58,7 @@ setTimeout(async () => {
       else console.log(`Bucket '${BUCKET_NAME}' created.`);
     }
   } catch (e) { console.log("Bucket check error:", errorMessage(e)); }
-}, 2000);
+}, 5000);
 
 // ── HELPERS ──────────────────────────────────────────────
 

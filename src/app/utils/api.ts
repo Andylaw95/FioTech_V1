@@ -395,14 +395,12 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
     const url = `${BASE_URL}${path}`;
 
     try {
-      // 20s timeout — the warmup gate + auth probe guarantees the server is
-      // fully ready before data requests fire. A 20s timeout is generous for
-      // a warm server. The previous 35s timeout was counterproductive: a
-      // request hanging for 35s wastes time that could be spent retrying
-      // (which pokes the server and is more likely to succeed on a recycled
-      // worker). With 5 retries × 20s, total worst-case is ~100s, but most
-      // requests succeed within 2-5s on a warm server.
-      const response = await fetchWithTimeout(url, { ...options, headers }, 20000);
+      // 8s timeout — the warmup gate ensures the server is alive before
+      // data requests fire. A warm server responds in <2s. If a request
+      // hangs longer, the worker was likely recycled. Fail fast and let
+      // the retry loop re-poke the server (each retry wakes the worker).
+      // With 5 retries × 8s + backoff, total worst-case is ~55s.
+      const response = await fetchWithTimeout(url, { ...options, headers }, 8000);
 
       // ─── Handle 502/503/504 (cold start / proxy errors) ──
       if (response.status === 502 || response.status === 503 || response.status === 504) {
@@ -437,7 +435,7 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
             isBodyRequest,
             options.headers as Record<string, string> | undefined,
           );
-          const retryResponse = await fetchWithTimeout(url, { ...options, headers: retryHeaders }, 15000);
+          const retryResponse = await fetchWithTimeout(url, { ...options, headers: retryHeaders }, 8000);
 
           if (!retryResponse.ok) {
             const errorText = await retryResponse.text();
@@ -547,14 +545,12 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
   };
 
   /** Wrap doFetch with automatic retries on cold-start / network / transient auth errors.
-   *  Since the ServerWarmupGate ensures the server is alive before any
-   *  data-fetching component mounts, retries here are for transient
-   *  platform hiccups (momentary 502/503 without CORS on concurrent bursts,
-   *  or transient 401 when the backend auth service isn't ready yet).
-   *  Backoff: 800ms → 1.6s → 3.2s → 4s × 4  (capped at 4s to recover
-   *  faster — total wait budget ~21.6s across 7 retries). */
+   *  Retries here handle transient worker recycling on Supabase Free Tier.
+   *  Backoff: 500ms → 1s → 2s → 3s × 2  (capped at 3s to recover fast).
+   *  Total wait budget ~12.5s across 5 retries. Combined with 8s per-request
+   *  timeout, worst case is ~52.5s. */
   const doFetchWithRetry = async () => {
-    const MAX_NETWORK_RETRIES = 7;
+    const MAX_NETWORK_RETRIES = 5;
     let lastError: unknown;
     for (let attempt = 0; attempt <= MAX_NETWORK_RETRIES; attempt++) {
       try {
@@ -571,8 +567,8 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
         const errorType = error instanceof ColdStartError ? 'cold-start'
           : error instanceof TransientAuthError ? 'transient-auth'
           : 'network';
-        // Cap backoff at 4s to keep recovery fast after cold-start
-        const delay = Math.min(4000, 800 * Math.pow(2, attempt));
+        // Cap backoff at 3s — each retry pokes the server awake
+        const delay = Math.min(3000, 500 * Math.pow(2, attempt));
         console.debug(
           `[FioTech] Retry ${attempt + 1}/${MAX_NETWORK_RETRIES} for ${method} ${path} — ${errorType} error, waiting ${delay}ms...`,
         );

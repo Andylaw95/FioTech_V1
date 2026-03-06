@@ -9,79 +9,72 @@ CREATE TABLE kv_store_4916a0b9 (
 
 // View at https://supabase.com/dashboard/project/wjvbojulgpmpblmterfy/database/tables
 
-// This file provides a simple key-value interface for storing Figma Make data. It should be adequate for most small-scale use cases.
+// This file provides a simple key-value interface for storing Figma Make data.
+// IMPORTANT: Uses a SINGLETON Supabase client to avoid memory bloat.
+// Creating a new client per call was causing OOM crashes on Supabase Free Tier.
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 
-const client = () => createClient(
-  Deno.env.get("SUPABASE_URL"),
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
-);
+// Singleton client — created once, reused for all KV operations.
+// This prevents the memory leak from creating auth/realtime/storage
+// sub-clients on every single KV read/write.
+let _client: ReturnType<typeof createClient> | null = null;
+function client() {
+  if (!_client) {
+    _client = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      {
+        auth: { persistSession: false, autoRefreshToken: false },
+        realtime: { params: { eventsPerSecond: 0 } },
+      },
+    );
+  }
+  return _client;
+}
+
+const TABLE = "kv_store_4916a0b9";
 
 // Set stores a key-value pair in the database.
 export const set = async (key: string, value: any): Promise<void> => {
-  const supabase = client()
-  const { error } = await supabase.from("kv_store_4916a0b9").upsert({
-    key,
-    value
-  });
-  if (error) {
-    throw new Error(error.message);
-  }
+  const { error } = await client().from(TABLE).upsert({ key, value });
+  if (error) throw new Error(error.message);
 };
 
 // Get retrieves a key-value pair from the database.
 export const get = async (key: string): Promise<any> => {
-  const supabase = client()
-  const { data, error } = await supabase.from("kv_store_4916a0b9").select("value").eq("key", key).maybeSingle();
-  if (error) {
-    throw new Error(error.message);
-  }
+  const { data, error } = await client().from(TABLE).select("value").eq("key", key).maybeSingle();
+  if (error) throw new Error(error.message);
   return data?.value;
 };
 
 // Delete deletes a key-value pair from the database.
 export const del = async (key: string): Promise<void> => {
-  const supabase = client()
-  const { error } = await supabase.from("kv_store_4916a0b9").delete().eq("key", key);
-  if (error) {
-    throw new Error(error.message);
-  }
+  const { error } = await client().from(TABLE).delete().eq("key", key);
+  if (error) throw new Error(error.message);
 };
 
 // Sets multiple key-value pairs in the database.
 export const mset = async (keys: string[], values: any[]): Promise<void> => {
-  const supabase = client()
-  const { error } = await supabase.from("kv_store_4916a0b9").upsert(keys.map((k, i) => ({ key: k, value: values[i] })));
-  if (error) {
-    throw new Error(error.message);
-  }
+  const { error } = await client().from(TABLE).upsert(keys.map((k, i) => ({ key: k, value: values[i] })));
+  if (error) throw new Error(error.message);
 };
 
 // Gets multiple key-value pairs from the database.
 export const mget = async (keys: string[]): Promise<any[]> => {
-  const supabase = client()
-  const { data, error } = await supabase.from("kv_store_4916a0b9").select("value").in("key", keys);
-  if (error) {
-    throw new Error(error.message);
-  }
+  const { data, error } = await client().from(TABLE).select("value").in("key", keys);
+  if (error) throw new Error(error.message);
   return data?.map((d) => d.value) ?? [];
 };
 
 // Deletes multiple key-value pairs from the database.
 export const mdel = async (keys: string[]): Promise<void> => {
-  const supabase = client()
-  const { error } = await supabase.from("kv_store_4916a0b9").delete().in("key", keys);
-  if (error) {
-    throw new Error(error.message);
-  }
+  const { error } = await client().from(TABLE).delete().in("key", keys);
+  if (error) throw new Error(error.message);
 };
 
 // Search for key-value pairs by prefix.
 export const getByPrefix = async (prefix: string): Promise<any[]> => {
-  const supabase = client()
-  const { data, error } = await supabase.from("kv_store_4916a0b9").select("key, value").like("key", prefix + "%");
-  if (error) {
-    throw new Error(error.message);
-  }
+  const { data, error } = await client().from(TABLE).select("key, value").like("key", prefix + "%");
+  if (error) throw new Error(error.message);
   return data?.map((d) => d.value) ?? [];
 };
