@@ -2652,7 +2652,7 @@ export function registerRoutes(app: any) {
         const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
         const pruneCutoff = Date.now() - THREE_DAYS;
         sensorData = sensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneCutoff);
-        if (sensorData.length > 500) sensorData = sensorData.slice(0, 500);
+        if (sensorData.length > 1000) sensorData = sensorData.slice(0, 1000);
         await kvSetWithRetry(sdKey, sensorData);
       } else {
         console.log(`[Webhook] Skipping sensor_data storage for entry without devEUI (deviceName: ${deviceName})`);
@@ -2939,7 +2939,7 @@ export function registerRoutes(app: any) {
             const C_THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
             const cPruneCutoff = Date.now() - C_THREE_DAYS;
             cSensorData = cSensorData.filter((e: any) => new Date(e.receivedAt).getTime() > cPruneCutoff);
-            if (cSensorData.length > 500) cSensorData = cSensorData.slice(0, 500);
+            if (cSensorData.length > 1000) cSensorData = cSensorData.slice(0, 1000);
             await kvSetWithRetry(cSdKey, cSensorData);
 
             // Mirror device heartbeat / auto-register to client
