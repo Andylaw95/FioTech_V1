@@ -1,13 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  AreaChart,
-  Area,
   PieChart,
   Pie,
   Cell,
@@ -55,83 +51,6 @@ export function HealthDonut({ online = 95, offline = 5 }: { online?: number; off
         <span className="text-3xl font-bold text-slate-900">{online}%</span>
         <span className="text-xs text-slate-500 font-medium">Online</span>
       </div>
-    </div>
-  );
-}
-
-// --- Noise Waveform Chart ---
-const noiseData = Array.from({ length: 20 }, (_, i) => ({
-  time: i,
-  db: 40 + Math.random() * 30,
-}));
-
-export function NoiseWaveform() {
-  return (
-    <div className="h-[60px] w-full min-w-0">
-      <SafeChartContainer>
-        <AreaChart data={noiseData}>
-          <defs>
-            <linearGradient id="colorDb" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
-              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-            </linearGradient>
-          </defs>
-          <Area 
-            type="monotone" 
-            dataKey="db" 
-            stroke="#8b5cf6" 
-            fillOpacity={1} 
-            fill="url(#colorDb)" 
-            strokeWidth={2}
-          />
-        </AreaChart>
-      </SafeChartContainer>
-    </div>
-  );
-}
-
-// --- History Line Chart ---
-const historyData = [
-  { time: '00:00', value: 12 },
-  { time: '04:00', value: 18 },
-  { time: '08:00', value: 45 },
-  { time: '12:00', value: 55 },
-  { time: '16:00', value: 40 },
-  { time: '20:00', value: 25 },
-  { time: '23:59', value: 15 },
-];
-
-export function HistoryLineChart({ color = "#3b82f6" }: { color?: string }) {
-  return (
-    <div className="h-[300px] w-full min-w-0">
-      <SafeChartContainer debounce={200}>
-        <LineChart data={historyData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-          <XAxis 
-            dataKey="time" 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: '#94a3b8', fontSize: 12 }} 
-            dy={10}
-          />
-          <YAxis 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: '#94a3b8', fontSize: 12 }} 
-          />
-          <Tooltip 
-            contentStyle={{ borderRadius: '12px', border: '1px solid #f1f5f9', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-          />
-          <Line 
-            type="monotone" 
-            dataKey="value" 
-            stroke={color} 
-            strokeWidth={3} 
-            dot={{ r: 4, fill: color, strokeWidth: 2, stroke: '#fff' }}
-            activeDot={{ r: 6 }} 
-          />
-        </LineChart>
-      </SafeChartContainer>
     </div>
   );
 }

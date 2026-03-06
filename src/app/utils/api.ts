@@ -1316,9 +1316,9 @@ export const api = {
   getSensorData: (limit = 50): Promise<SensorDataResponse> =>
     fetchWithAuth(`/sensor-data?limit=${limit}`),
 
-  // Per-device historical data (last 48h)
-  getDeviceHistory: (devEui: string): Promise<DeviceHistoryResponse> =>
-    fetchWithAuth(`/device-history/${encodeURIComponent(devEui)}`),
+  // Per-device historical data (supports period: 24h, 7d, 30d)
+  getDeviceHistory: (devEui: string, period = '24h'): Promise<DeviceHistoryResponse> =>
+    fetchWithAuth(`/device-history/${encodeURIComponent(devEui)}?period=${period}`),
 
   // Property-level live telemetry (real sensor data)
   getPropertyTelemetry: (propertyId: string): Promise<PropertyTelemetry> =>

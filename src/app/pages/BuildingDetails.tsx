@@ -23,63 +23,7 @@ import { PropertyBMSPanel } from '@/app/components/PropertyBMSPanel';
 import { api, type PropertyDetails, type PropertyTelemetry, type Device, type Alarm, invalidateCache } from '@/app/utils/api';
 import { useAuth } from '@/app/utils/AuthContext';
 
-// ── Deterministic pseudo-random ──────────────────────────
-function seededRandom(seed: string) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = Math.imul(31, h) + seed.charCodeAt(i) | 0;
-  return function () {
-    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
-    h = Math.imul(h ^ (h >>> 13), 0x45d9f3b);
-    h = (h ^ (h >>> 16)) >>> 0;
-    return h / 4294967296;
-  };
-}
-
-// ── Chart data generators ────────────────────────────────
-function generateChartData(propertyId: string) {
-  const rand = seededRandom(propertyId);
-  const times = ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '23:59'];
-  return times.map(time => ({
-    time,
-    waterFlow: Math.round(50 + rand() * 550),
-    pressure: Math.round(45 + rand() * 25),
-    humidity: Math.round(30 + rand() * 35),
-  }));
-}
-
-function generateEnvironmentalData(propertyId: string) {
-  const rand = seededRandom(propertyId + '-env');
-  return {
-    temperature: +(18 + rand() * 8).toFixed(1),
-    humidity: Math.round(35 + rand() * 30),
-    co2: Math.round(350 + rand() * 350),
-    aqi: Math.round(20 + rand() * 80),
-    noise: Math.round(30 + rand() * 35),
-    pressure: Math.round(45 + rand() * 25),
-  };
-}
-
-function generateZones(type: string, propertyId: string) {
-  const rand = seededRandom(propertyId + '-zones');
-  const zoneTemplates: Record<string, string[]> = {
-    Commercial: ['Lobby & Reception', 'Office Levels 1-10', 'Office Levels 11-20', 'Rooftop & Plant Room', 'Basement Parking'],
-    Residential: ['Ground Floor & Amenities', 'Residential Floors 1-5', 'Residential Floors 6-12', 'Rooftop Terrace', 'Underground Parking'],
-    Industrial: ['Loading Docks', 'Main Warehouse Floor', 'Cold Storage', 'Admin Offices', 'Utility Room'],
-    Retail: ['Ground Floor Retail', 'Upper Level Shopping', 'Food Court', 'Storage & Back-of-house', 'Parking Garage'],
-  };
-  const zones = zoneTemplates[type] || zoneTemplates['Commercial'];
-  return zones.map((name, i) => {
-    const r = rand();
-    const status = r > 0.8 ? 'warning' : 'normal';
-    return {
-      id: `Z-${i + 1}`,
-      name,
-      status,
-      sensors: Math.round(5 + rand() * 40),
-      alerts: status === 'warning' ? Math.round(1 + rand() * 3) : 0,
-    };
-  });
-}
+// ── Chart data generators (removed — now using real sensor data only) ──
 
 function generateDescription(property: PropertyDetails) {
   const typeDescriptions: Record<string, string> = {
@@ -170,7 +114,6 @@ export function BuildingDetails() {
   const [property, setProperty] = useState<PropertyDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedPeriod, setSelectedPeriod] = useState('24h');
   const [sensorSearch, setSensorSearch] = useState('');
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -274,7 +217,7 @@ export function BuildingDetails() {
       }
       return raw;
     }
-    return id ? generateChartData(id) : [];
+    return [];
   }, [id, isLive, telemetry, selectedSensor]);
 
   const envData = useMemo(() => {
@@ -502,8 +445,8 @@ export function BuildingDetails() {
             {pendingAlarms.length > 0 ? 'Attention needed' : 'All systems healthy'}
           </p>
         </StatCard>
-        <StatCard title="Avg. Temperature" value={String(envData?.temperature ?? '--')} unit="°C" icon={Thermometer} trend={isLive ? undefined : -0.5}>
-          <p className="mt-4 text-xs text-slate-500">{isLive ? 'Live sensor data' : 'Demo data'}</p>
+        <StatCard title="Avg. Temperature" value={String(envData?.temperature ?? '--')} unit="°C" icon={Thermometer} trend={undefined}>
+          <p className="mt-4 text-xs text-slate-500">{isLive ? 'Live sensor data' : 'No sensor data'}</p>
         </StatCard>
         <StatCard title="Device Status" value={`${waterParts.active}/${waterParts.total}`} icon={Droplets} status={waterParts.active < waterParts.total ? 'warning' : 'normal'}>
           <p className="mt-4 text-xs text-slate-500">
@@ -707,10 +650,10 @@ export function BuildingDetails() {
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div>
                             <h3 className="font-semibold text-slate-900 text-sm sm:text-base">
-                              {isLive ? 'Sensor Trend (24h)' : 'Water Consumption & Pressure'}
+                              {isLive ? 'Sensor Trend (24h)' : 'Sensor Trend'}
                             </h3>
                             <p className="text-xs sm:text-sm text-slate-500">
-                              {isLive ? `${activeCat.subtitle} from live sensors` : 'Demo telemetry data'}
+                              {isLive ? `${activeCat.subtitle} from live sensors` : 'No live sensor data available'}
                             </p>
                           </div>
                           {isLive && sensorList.length > 1 && (
@@ -726,22 +669,6 @@ export function BuildingDetails() {
                                 </option>
                               ))}
                             </select>
-                          )}
-                          {!isLive && (
-                            <div className="flex rounded-lg bg-slate-100 p-1 self-start">
-                              {['12h', '24h', '7d', '30d'].map((period) => (
-                                <button
-                                  key={period}
-                                  onClick={() => setSelectedPeriod(period)}
-                                  className={clsx(
-                                    "rounded-md px-3 py-1 text-xs font-medium transition-all",
-                                    selectedPeriod === period ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900"
-                                  )}
-                                >
-                                  {period.toUpperCase()}
-                                </button>
-                              ))}
-                            </div>
                           )}
                         </div>
                         {/* Category tabs - only show when live and multiple categories available */}
@@ -824,26 +751,11 @@ export function BuildingDetails() {
                             <p className="text-xs text-slate-400 mt-1">Data will appear after multiple uplinks</p>
                           </div>
                         ) : (
-                          <SafeChartContainer>
-                            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                              <defs>
-                                <linearGradient id={`colorFlow-${id}`} x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
-                                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                </linearGradient>
-                                <linearGradient id={`colorPress-${id}`} x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
-                                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                </linearGradient>
-                              </defs>
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                              <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
-                              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} />
-                              <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                              <Area type="monotone" dataKey="waterFlow" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill={`url(#colorFlow-${id})`} name="Water Flow (L)" />
-                              <Area type="monotone" dataKey="pressure" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill={`url(#colorPress-${id})`} name="Pressure (PSI)" />
-                            </AreaChart>
-                          </SafeChartContainer>
+                          <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                            <Activity className="h-8 w-8 mb-2" />
+                            <p className="text-sm">No sensor data available</p>
+                            <p className="text-xs text-slate-400 mt-1">Assign devices to this property and wait for uplinks</p>
+                          </div>
                         )}
                       </div>
                       {/* Metric legend for active category */}

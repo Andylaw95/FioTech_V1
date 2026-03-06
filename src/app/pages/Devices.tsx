@@ -110,6 +110,7 @@ function EditableLocation({ device, onSave, isAdmin }: { device: Device; onSave:
 
 export function Devices() {
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const [historyPeriod, setHistoryPeriod] = useState<string>('24h');
   const [searchParams] = useSearchParams();
   const { isAdmin } = useAuth();
   
@@ -496,7 +497,7 @@ export function Devices() {
               filteredDevices.map((device) => (
                 <tbody key={device.id} className="group border-b border-slate-50 last:border-none">
                   <tr 
-                    onClick={() => setSelectedDevice(selectedDevice === device.id ? null : device.id)}
+                    onClick={() => { setSelectedDevice(selectedDevice === device.id ? null : device.id); setHistoryPeriod('24h'); }}
                     className={clsx(
                       "cursor-pointer hover:bg-slate-50 transition-colors",
                       selectedDevice === device.id && "bg-slate-50"
@@ -591,13 +592,23 @@ export function Devices() {
                         <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm sm:min-w-[600px] animate-in fade-in slide-in-from-top-2">
                           <div className="mb-4 flex items-center justify-between">
                             <h4 className="font-semibold text-slate-900">Historical Data - {device.name}</h4>
-                            <div className="flex gap-2">
-                              <button className="text-xs font-medium text-slate-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-slate-100">24H</button>
-                              <button className="text-xs font-medium text-slate-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-slate-100">7D</button>
-                              <button className="text-xs font-medium text-slate-500 hover:text-blue-600 px-2 py-1 rounded hover:bg-slate-100">30D</button>
+                            <div className="flex rounded-lg bg-slate-100 p-1">
+                              {(['24h', '7d', '30d'] as const).map((p) => (
+                                <button
+                                  key={p}
+                                  onClick={() => setHistoryPeriod(p)}
+                                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                                    historyPeriod === p
+                                      ? 'bg-white text-slate-900 shadow-sm'
+                                      : 'text-slate-500 hover:text-slate-900'
+                                  }`}
+                                >
+                                  {p.toUpperCase()}
+                                </button>
+                              ))}
                             </div>
                           </div>
-                          <DeviceHistoryChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} />
+                          <DeviceHistoryChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} period={historyPeriod} />
                         </div>
                       </td>
                     </tr>

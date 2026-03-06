@@ -174,7 +174,7 @@ function ChartTooltip({ active, payload, metric }: any) {
 }
 
 // ── Generic metric chart (uses local time formatting) ────
-function MetricChart({ data, metric }: { data: DeviceHistoryPoint[]; metric: MetricDef }) {
+function MetricChart({ data, metric, period = '24h' }: { data: DeviceHistoryPoint[]; metric: MetricDef; period?: string }) {
   const values = data.map((d) => d[metric.key] as number).filter((v) => v != null);
   if (values.length === 0) return null;
   const minV = Math.min(...values);
@@ -182,6 +182,7 @@ function MetricChart({ data, metric }: { data: DeviceHistoryPoint[]; metric: Met
   const pad = Math.max((maxV - minV) * 0.15, 1);
   const domain = metric.domain || [Math.floor(minV - pad), Math.ceil(maxV + pad)];
   const chartType = metric.chartType || 'area';
+  const isLongPeriod = period === '7d' || period === '30d';
 
   // Format time labels in the browser's LOCAL timezone
   const chartData = data
@@ -189,7 +190,7 @@ function MetricChart({ data, metric }: { data: DeviceHistoryPoint[]; metric: Met
     .map((d) => ({
       localTime: formatLocalTime(d.time),
       localDate: formatLocalDate(d.time),
-      time: formatLocalTime(d.time),
+      time: isLongPeriod ? `${formatLocalDate(d.time)} ${formatLocalTime(d.time)}` : formatLocalTime(d.time),
       value: d[metric.key] as number,
     }));
 
@@ -277,9 +278,11 @@ interface DeviceHistoryChartProps {
   focusMetric?: string;
   /** Hide the built-in metric selector cards (when parent already provides a selector, e.g. Live Sensor Readings) */
   hideMetricCards?: boolean;
+  /** Time period for history data: '24h' | '7d' | '30d' */
+  period?: string;
 }
 
-export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, hideMetricCards }: DeviceHistoryChartProps) {
+export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, hideMetricCards, period = '24h' }: DeviceHistoryChartProps) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DeviceHistoryPoint[]>([]);
   const [error, setError] = useState('');
@@ -293,7 +296,7 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
     setLoading(true);
     setError('');
     try {
-      const res: DeviceHistoryResponse = await api.getDeviceHistory(devEui);
+      const res: DeviceHistoryResponse = await api.getDeviceHistory(devEui, period);
       setData(res.points || []);
     } catch (e: any) {
       console.error('Failed to fetch device history:', e);
@@ -301,7 +304,7 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
     } finally {
       setLoading(false);
     }
-  }, [devEui]);
+  }, [devEui, period]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
@@ -443,7 +446,7 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
 
           {/* Chart */}
           <div className="h-[280px] w-full min-w-0">
-            <MetricChart data={data} metric={selectedMetric} />
+            <MetricChart data={data} metric={selectedMetric} period={period} />
           </div>
         </>
       )}

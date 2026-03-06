@@ -3127,12 +3127,20 @@ export function registerRoutes(app: any) {
     try {
       const devEui = sanitizeString(c.req.param("devEui"), 50).toLowerCase();
       if (!devEui) return c.json({ error: "devEui is required." }, 400);
+
+      // Support period query param: 24h (default), 7d, 30d
+      const periodParam = (c.req.query("period") || "24h").toLowerCase();
+      const periodHours: Record<string, number> = { "12h": 12, "24h": 24, "48h": 48, "7d": 7 * 24, "30d": 30 * 24 };
+      const hours = periodHours[periodParam] || 24;
+      const maxPoints: Record<string, number> = { "12h": 48, "24h": 96, "48h": 96, "7d": 168, "30d": 360 };
+      const maxPts = maxPoints[periodParam] || 96;
+
       const sdKey = `sensor_data_${userId}`;
       let sensorData: any[] = [];
       try { const raw = await cachedKvGet(sdKey); if (Array.isArray(raw)) sensorData = raw; } catch { /* empty */ }
 
-      // Filter to this device's uplink entries (last 48h)
-      const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+      // Filter to this device's uplink entries within the requested period
+      const cutoff = Date.now() - hours * 60 * 60 * 1000;
       let entries = sensorData.filter((e: any) => {
         if (!e.devEUI || e.eventType === "join" || e.eventType === "ack") return false;
         if (e.devEUI.toLowerCase() !== devEui) return false;
@@ -3179,10 +3187,10 @@ export function registerRoutes(app: any) {
         };
       }).reverse(); // oldest first
 
-      // Sample down to max 96 points (one per ~30 min for 48h)
+      // Sample down to max points based on period
       let sampled = points;
-      if (points.length > 96) {
-        sampled = points.filter((_: any, i: number) => i % Math.ceil(points.length / 96) === 0);
+      if (points.length > maxPts) {
+        sampled = points.filter((_: any, i: number) => i % Math.ceil(points.length / maxPts) === 0);
       }
 
       // Format time for chart labels
@@ -3192,7 +3200,7 @@ export function registerRoutes(app: any) {
         dateLabel: new Date(p.time).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
       }));
 
-      return c.json({ devEui, totalEntries: entries.length, points: formatted });
+      return c.json({ devEui, period: periodParam, totalEntries: entries.length, points: formatted });
     } catch (e) {
       console.log("Error fetching device history:", errorMessage(e));
       return c.json({ error: "Failed to fetch device history." }, 500);
