@@ -1,7 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 import {
-  INITIAL_PROPERTIES, INITIAL_DEVICES, makeInitialGateways, makeInitialAlarms,
   DEMO_PROPERTIES, DEMO_DEVICES, makeDemoGateways, makeDemoAlarms,
   DEFAULT_SETTINGS,
 } from "./seed_data.tsx";
@@ -375,14 +374,8 @@ function getCollectionDefaults(accountType: string, collection: string): any[] {
       default: return [];
     }
   }
-  if (accountType === "testing") return [];
-  switch (collection) {
-    case "properties": return JSON.parse(JSON.stringify(INITIAL_PROPERTIES));
-    case "devices": return JSON.parse(JSON.stringify(INITIAL_DEVICES));
-    case "gateways": return makeInitialGateways();
-    case "alarms": return [];
-    default: return [];
-  }
+  // Standard and testing accounts start empty — no fake seed data
+  return [];
 }
 
 async function getUserCollection(userId: string, collection: string): Promise<any[]> {
@@ -1030,6 +1023,20 @@ export function registerRoutes(app: any) {
         return c.json({ error: "Signup failed." }, 400);
       }
       const userId = data.user.id;
+
+      // Send confirmation email so the user can verify before signing in.
+      // admin.createUser does NOT send emails — we trigger it via GoTrue resend API.
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+        await fetch(`${supabaseUrl}/auth/v1/resend`, {
+          method: "POST",
+          headers: { "apikey": anonKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "signup", email }),
+        });
+      } catch (emailErr) {
+        console.log("Confirmation email send failed (non-fatal):", errorMessage(emailErr));
+      }
       await kvSetWithRetry(`account_type_${userId}`, accountType);
       accountTypeCache.set(userId, accountType);
       const profileDefaults = accountType === "demo"
