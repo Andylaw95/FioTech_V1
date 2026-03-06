@@ -122,7 +122,7 @@ export function Buildings() {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col justify-between gap-3 sm:gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">Properties</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Properties</h2>
           <p className="text-sm sm:text-base text-slate-500">
             Manage your buildings and their sensor networks.
             {!loading && ` ${properties.length} total.`}
@@ -314,8 +314,8 @@ export function Buildings() {
         </div>
       ) : (
         /* === LIST VIEW === */
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <table className="w-full text-sm text-left">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+          <table className="w-full text-sm text-left min-w-[700px]">
             <thead className="bg-slate-50 text-slate-500 font-medium">
               <tr>
                 <th className="px-6 py-3">Property</th>
@@ -339,7 +339,7 @@ export function Buildings() {
                         <img src={building.image} alt="" className="h-full w-full object-cover" />
                       </div>
                       <div>
-                        <p className="font-medium text-slate-900 group-hover:text-blue-600 transition-colors">{building.name}</p>
+                        <p className="font-medium text-slate-900 group-hover:text-blue-600 transition-colors truncate max-w-[180px]">{building.name}</p>
                         <p className="text-xs text-slate-500">{building.totalSensors} device{building.totalSensors !== 1 ? 's' : ''}</p>
                       </div>
                     </div>
@@ -356,8 +356,8 @@ export function Buildings() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-slate-600">
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3" /> {building.address}
+                    <div className="flex items-center gap-1 max-w-[200px]">
+                      <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{building.address}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">

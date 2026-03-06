@@ -940,7 +940,7 @@ function GatewaysInner() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">Gateways</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Gateways</h2>
           <div className="flex flex-wrap items-center gap-3 mt-0.5">
             <p className="text-sm sm:text-base text-slate-500">Manage network gateways and device connections.</p>
             {/* Live status indicator */}
@@ -1010,7 +1010,7 @@ function GatewaysInner() {
               </div>
               <div>
                 <p className="text-xs font-medium text-slate-500">{s.label}</p>
-                <p className="text-2xl font-bold text-slate-900 mt-0.5">{loading ? '—' : s.value}</p>
+                <p className="text-xl font-bold text-slate-900 mt-0.5">{loading ? '—' : s.value}</p>
                 <p className="text-xs text-slate-400 mt-0.5 truncate max-w-[120px] sm:max-w-[140px]">{s.sub}</p>
               </div>
             </div>
@@ -1380,7 +1380,7 @@ function GatewaysInner() {
                           </div>
 
                           {/* Gateway Info Cards with ID */}
-                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 mb-4">
                             {/* Gateway ID — clickable to copy */}
                             <div
                               className="rounded-lg bg-white border border-blue-100 px-3 py-2.5 cursor-pointer hover:bg-blue-50/30 transition-colors"

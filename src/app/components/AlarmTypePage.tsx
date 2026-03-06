@@ -238,8 +238,8 @@ export function AlarmTypePage({ config }: { config: AlarmTypeConfig }) {
               <div className={t.iconColor}>{config.icon}</div>
             </div>
             <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">{config.title}</h2>
-              <p className="text-base text-slate-500 mt-0.5">{config.subtitle}</p>
+              <h2 className="text-2xl font-bold text-slate-900">{config.title}</h2>
+              <p className="text-sm text-slate-500 mt-0.5">{config.subtitle}</p>
               <div className="flex items-center gap-2 mt-2.5">
                 <span className={clsx(
                   "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold",
@@ -277,7 +277,7 @@ export function AlarmTypePage({ config }: { config: AlarmTypeConfig }) {
             ].map(s => (
               <div key={s.label} className="rounded-xl bg-white/80 backdrop-blur-sm border border-white/60 px-4 py-3 text-center shadow-sm">
                 <s.icon className={clsx("h-4 w-4 mx-auto mb-1", s.color)} />
-                <p className="text-2xl font-bold text-slate-900">{loading ? '—' : s.value}</p>
+                <p className="text-xl font-bold text-slate-900">{loading ? '—' : s.value}</p>
                 <p className="text-xs text-slate-500 font-medium">{s.label}</p>
               </div>
             ))}
@@ -538,7 +538,7 @@ export function AlarmTypePage({ config }: { config: AlarmTypeConfig }) {
 
             {/* Desktop table */}
             <div className="overflow-x-auto hidden md:block">
-              <table className="w-full text-left text-sm">
+              <table className="w-full text-left text-sm min-w-[700px]">
                 <thead className="bg-slate-50 text-slate-500 font-medium">
                   <tr>
                     <th className="px-6 py-3">Type</th>

@@ -911,13 +911,13 @@ export function DigitalTwinDashboard() {
               <Building2 className={clsx('h-5 w-5', isDark ? 'text-blue-400' : 'text-blue-600')} />
             </div>
             <h1 className={clsx(
-              'text-3xl lg:text-4xl font-bold tracking-tight',
+              'text-2xl lg:text-3xl font-bold tracking-tight',
               isDark ? 'text-white' : 'text-slate-900'
             )}>
               {selectedProperty ? selectedProperty.name : 'Digital Twin Dashboard'}
             </h1>
           </div>
-          <p className={clsx('text-base lg:text-lg ml-[52px]', isDark ? 'text-slate-500' : 'text-slate-500')}>
+          <p className={clsx('text-sm lg:text-base ml-[52px]', isDark ? 'text-slate-500' : 'text-slate-500')}>
             {selectedProperty
               ? `${selectedProperty.type} · ${selectedProperty.location} · ${selectedProperty.deviceCount ?? 0} sensors`
               : <>Floor 17 — Real-time building intelligence &middot; {properties.length} properties &middot; {stats?.devices?.total ?? 0} sensors</>}
@@ -1258,10 +1258,10 @@ export function DigitalTwinDashboard() {
       </div>
 
       {/* ─── Bottom Grid: Gateways + Device Health + Alarms ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-6">
         {/* Gateway Status */}
         <div className={clsx(
-          'lg:col-span-5 rounded-2xl border p-5 transition-all duration-500',
+          'xl:col-span-5 rounded-2xl border p-5 transition-all duration-500',
           isDark
             ? 'bg-slate-800/40 border-slate-700/50 backdrop-blur-sm'
             : 'bg-white border-slate-200 shadow-sm'
@@ -1323,7 +1323,7 @@ export function DigitalTwinDashboard() {
 
         {/* Device Health Donut */}
         <div className={clsx(
-          'lg:col-span-3 rounded-2xl border p-5 transition-all duration-500',
+          'xl:col-span-3 rounded-2xl border p-5 transition-all duration-500',
           isDark
             ? 'bg-slate-800/40 border-slate-700/50 backdrop-blur-sm'
             : 'bg-white border-slate-200 shadow-sm'
@@ -1395,7 +1395,7 @@ export function DigitalTwinDashboard() {
 
         {/* Alert Feed */}
         <div className={clsx(
-          'lg:col-span-4 rounded-2xl border transition-all duration-500 overflow-hidden',
+          'xl:col-span-4 rounded-2xl border transition-all duration-500 overflow-hidden',
           isDark
             ? 'bg-slate-800/40 border-slate-700/50 backdrop-blur-sm'
             : 'bg-white border-slate-200 shadow-sm'

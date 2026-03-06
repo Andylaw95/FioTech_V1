@@ -276,7 +276,7 @@ export function Alarms() {
                </div>
                <div>
                  <p className="text-sm font-medium text-slate-600">Active Alerts</p>
-                 <p className="text-3xl font-bold text-slate-900">
+                 <p className="text-2xl font-bold text-slate-900">
                    {loading ? '—' : stats.pending}
                  </p>
                  {!loading && stats.high > 0 && (
@@ -292,7 +292,7 @@ export function Alarms() {
                </div>
                <div>
                  <p className="text-sm font-medium text-slate-600">Resolved</p>
-                 <p className="text-3xl font-bold text-slate-900">
+                 <p className="text-2xl font-bold text-slate-900">
                    {loading ? '—' : stats.resolved}
                  </p>
                  <p className="text-xs text-slate-500 mt-1">{stats.total} total alarms</p>

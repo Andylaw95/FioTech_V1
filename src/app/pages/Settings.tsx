@@ -409,13 +409,13 @@ export function Settings() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-3xl lg:text-4xl font-bold text-slate-900">Settings</h2>
-        <p className="text-base sm:text-lg text-slate-500 mt-1">Manage your account, notifications, and system preferences.</p>
+        <h2 className="text-2xl lg:text-3xl font-bold text-slate-900">Settings</h2>
+        <p className="text-sm sm:text-base text-slate-500 mt-1">Manage your account, notifications, and system preferences.</p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
         {/* Sidebar Tabs — horizontal scroll on mobile, vertical on lg */}
-        <nav className="lg:w-64 shrink-0">
+        <nav className="lg:w-52 xl:w-64 shrink-0">
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <div className="flex lg:flex-col overflow-x-auto lg:overflow-x-visible p-1.5 lg:p-2 gap-1 lg:gap-0.5 no-scrollbar">
               {TABS.map((tab) => {

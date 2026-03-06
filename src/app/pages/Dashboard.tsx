@@ -217,7 +217,7 @@ const EnvironmentalSection = ({ data }: { data: TelemetryResponse | null }) => {
           </p>
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {airQuality.map(data => (
             <AirQualityCard key={data.propertyId} {...data} />
           ))}
@@ -670,10 +670,10 @@ export function Dashboard() {
       <div className="flex flex-col gap-3 sm:gap-4">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
-            <h2 className="text-2xl lg:text-4xl font-extrabold text-slate-900 tracking-tight">
+            <h2 className="text-2xl lg:text-3xl font-extrabold text-slate-900 tracking-tight">
               {selectedProperty ? selectedProperty.name : 'Portfolio Overview'}
             </h2>
-            <p className="text-base lg:text-lg text-slate-500 mt-1">
+            <p className="text-sm lg:text-base text-slate-500 mt-1">
               {selectedProperty
                 ? `Monitoring ${selectedProperty.type} property in ${selectedProperty.location}`
                 : 'Real-time insights across your managed properties.'}
@@ -690,7 +690,7 @@ export function Dashboard() {
                   : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
               )}>
                 <Building2 className="h-4 w-4" />
-                <span className="max-w-[160px] truncate text-base lg:text-lg font-semibold">
+                <span className="max-w-[160px] truncate text-sm lg:text-base font-semibold">
                   {selectedProperty ? selectedProperty.name : 'All Properties'}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
@@ -1056,7 +1056,7 @@ export function Dashboard() {
                          <img src={property.image} alt="" className="h-full w-full object-cover" />
                       </div>
                       <div>
-                        <p className="font-medium text-slate-900">{property.name}</p>
+                        <p className="font-medium text-slate-900 truncate">{property.name}</p>
                         <p className="text-xs text-slate-500">{property.type}</p>
                       </div>
                     </div>

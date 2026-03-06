@@ -199,7 +199,7 @@ export function Devices() {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col justify-between gap-3 sm:gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900">IoT Devices</h2>
+          <h2 className="text-2xl font-bold text-slate-900">IoT Devices</h2>
           <p className="text-sm sm:text-base text-slate-500">Manage and monitor all connected sensors.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -474,7 +474,7 @@ export function Devices() {
 
         {/* Desktop: Table layout */}
         <div className="overflow-x-auto hidden md:block">
-          <table className="w-full text-left text-sm" style={{ minWidth: '800px' }}>
+          <table className="w-full text-left text-sm" style={{ minWidth: '720px' }}>
             <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
               <tr>
                 <th className="px-4 py-4 whitespace-nowrap">Device Name</th>

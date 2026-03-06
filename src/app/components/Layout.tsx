@@ -335,13 +335,13 @@ export function Layout() {
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
-            <div className="relative hidden lg:block">
+            <div className="relative hidden xl:block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search..."
                 className={cn(
-                  "h-10 w-64 rounded-full border pl-10 pr-4 text-sm outline-none transition-all",
+                  "h-9 w-48 rounded-full border pl-9 pr-3 text-sm outline-none transition-all",
                   isDark
                     ? "border-slate-700 bg-slate-800 text-white placeholder-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                     : "border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
