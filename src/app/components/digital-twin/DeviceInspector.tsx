@@ -190,84 +190,84 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
 
   // ─── DEFAULT DETAIL VIEW ─────────────────────────────
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className={clsx("p-2.5 rounded-xl", meta.bg, meta.color)}>
-            <TypeIcon className="h-5 w-5" />
+        <div className="flex items-center gap-2.5">
+          <div className={clsx("p-2 rounded-xl", meta.bg, meta.color)}>
+            <TypeIcon className="h-4 w-4" />
           </div>
-          <div>
-            <h3 className="text-base font-bold text-slate-900">{device.name}</h3>
-            <p className="text-xs text-slate-400 font-mono">{device.id}</p>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-slate-900 truncate">{device.name}</h3>
+            <p className="text-[10px] text-slate-400 font-mono truncate">{device.id}</p>
           </div>
         </div>
         <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
-          <X className="h-4 w-4" />
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
 
       {/* Status Badge */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 flex-wrap">
         <span className={clsx(
-          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset",
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset",
           device.status === 'online' ? "bg-emerald-50 text-emerald-700 ring-emerald-200" :
           device.status === 'warning' ? "bg-amber-50 text-amber-700 ring-amber-200" :
           "bg-red-50 text-red-700 ring-red-200"
         )}>
-          {device.status === 'online' ? <Wifi className="h-3 w-3" /> : device.status === 'offline' ? <WifiOff className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+          {device.status === 'online' ? <Wifi className="h-2.5 w-2.5" /> : device.status === 'offline' ? <WifiOff className="h-2.5 w-2.5" /> : <AlertTriangle className="h-2.5 w-2.5" />}
           {device.status === 'online' ? 'Online' : device.status === 'warning' ? 'Warning' : 'Offline'}
         </span>
-        <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-500 font-medium">{meta.label}</span>
+        <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium truncate">{meta.label}</span>
       </div>
 
       {/* Info Grid */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <MapPin className="h-3 w-3 text-slate-400" />
-            <span className="text-xs font-medium text-slate-500">Location</span>
+      <div className="grid grid-cols-2 gap-1.5">
+        <div className="rounded-lg bg-slate-50 border border-slate-100 p-2">
+          <div className="flex items-center gap-1 mb-0.5">
+            <MapPin className="h-2.5 w-2.5 text-slate-400" />
+            <span className="text-[10px] font-medium text-slate-500">Location</span>
           </div>
-          <p className="text-sm font-semibold text-slate-900">{device.location}</p>
+          <p className="text-xs font-semibold text-slate-900 truncate">{device.location}</p>
         </div>
-        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-          <div className="flex items-center gap-1.5 mb-1">
+        <div className="rounded-lg bg-slate-50 border border-slate-100 p-2">
+          <div className="flex items-center gap-1 mb-0.5">
             <BatteryIcon level={device.battery} />
-            <span className="text-xs font-medium text-slate-500">Battery</span>
+            <span className="text-[10px] font-medium text-slate-500">Battery</span>
           </div>
-          <p className={clsx("text-sm font-semibold font-mono", device.battery <= 20 ? "text-red-600" : "text-slate-900")}>{device.battery}%</p>
+          <p className={clsx("text-xs font-semibold font-mono", device.battery <= 20 ? "text-red-600" : "text-slate-900")}>{device.battery}%</p>
         </div>
-        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Clock className="h-3 w-3 text-slate-400" />
-            <span className="text-xs font-medium text-slate-500">Last Update</span>
+        <div className="rounded-lg bg-slate-50 border border-slate-100 p-2">
+          <div className="flex items-center gap-1 mb-0.5">
+            <Clock className="h-2.5 w-2.5 text-slate-400" />
+            <span className="text-[10px] font-medium text-slate-500">Last Update</span>
           </div>
-          <p className="text-sm font-semibold text-slate-900">{device.lastUpdate}</p>
+          <p className="text-xs font-semibold text-slate-900 truncate">{device.lastUpdate}</p>
         </div>
-        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-          <div className="flex items-center gap-1.5 mb-1">
-            <Cpu className="h-3 w-3 text-slate-400" />
-            <span className="text-xs font-medium text-slate-500">Type</span>
+        <div className="rounded-lg bg-slate-50 border border-slate-100 p-2">
+          <div className="flex items-center gap-1 mb-0.5">
+            <Cpu className="h-2.5 w-2.5 text-slate-400" />
+            <span className="text-[10px] font-medium text-slate-500">Type</span>
           </div>
-          <p className="text-sm font-semibold text-slate-900">{device.type}</p>
+          <p className="text-xs font-semibold text-slate-900">{device.type}</p>
         </div>
       </div>
 
       {/* Current Reading */}
-      <div className="rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-white">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">{currentReading.label}</span>
-          <span className={clsx('text-xs flex items-center gap-1', currentReading.isLive ? 'text-emerald-400' : 'text-slate-500')}>
+      <div className="rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 p-3 text-white">
+        <div className="flex items-center justify-between mb-0.5">
+          <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">{currentReading.label}</span>
+          <span className={clsx('text-[10px] flex items-center gap-1', currentReading.isLive ? 'text-emerald-400' : 'text-slate-500')}>
             <span className={clsx('h-1.5 w-1.5 rounded-full', currentReading.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500')} />
             {currentReading.isLive ? 'Live' : 'Simulated'}
           </span>
         </div>
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-3xl font-bold font-mono">{typeof currentReading.value === 'number' ? currentReading.value.toFixed(1) : currentReading.value}</span>
-          <span className="text-sm text-slate-400">{currentReading.unit}</span>
+        <div className="flex items-baseline gap-1">
+          <span className="text-2xl font-bold font-mono">{typeof currentReading.value === 'number' ? currentReading.value.toFixed(1) : currentReading.value}</span>
+          <span className="text-xs text-slate-400">{currentReading.unit}</span>
         </div>
         {liveDataTime && currentReading.isLive && (
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-[10px] text-slate-500 mt-0.5">
             Last received: {new Date(liveDataTime).toLocaleTimeString()}
           </p>
         )}
@@ -276,12 +276,12 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
       {/* Live Sensor Readings (all metrics) */}
       {hasLiveData && liveSensorData && (
         <div>
-          <p className="text-xs font-medium text-slate-500 uppercase mb-2">All Sensor Readings</p>
-          <div className="space-y-1.5">
+          <p className="text-[10px] font-medium text-slate-500 uppercase mb-1.5">All Sensor Readings</p>
+          <div className="space-y-1">
             {Object.entries(liveSensorData).map(([key, val]) => (
-              <div key={key} className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
-                <span className="text-xs text-slate-500 capitalize">{key.replace(/_/g, ' ')}</span>
-                <span className="text-sm font-semibold font-mono text-slate-900">
+              <div key={key} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                <span className="text-[11px] text-slate-500 capitalize">{key.replace(/_/g, ' ')}</span>
+                <span className="text-xs font-semibold font-mono text-slate-900">
                   {typeof val === 'number' ? val.toFixed(1) : String(val)}
                 </span>
               </div>
@@ -292,20 +292,20 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
 
       {/* Telemetry Chart */}
       <div>
-        <p className="text-xs font-medium text-slate-500 uppercase mb-2">24h Telemetry — {currentReading.label}</p>
-        <div className="h-28 w-full rounded-xl bg-slate-50 border border-slate-100 p-2">
+        <p className="text-[10px] font-medium text-slate-500 uppercase mb-1.5">24h Telemetry — {currentReading.label}</p>
+        <div className="h-24 w-full rounded-lg bg-slate-50 border border-slate-100 p-1.5">
           <MiniDeviceChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} />
         </div>
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2">
-        <button className="flex-1 text-sm font-medium py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+      <div className="flex gap-1.5">
+        <button className="flex-1 text-xs font-medium py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
           Configure
         </button>
         <button onClick={() => setShowHistory(true)}
-          className="flex-1 text-sm font-medium py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5">
-          <History className="h-3.5 w-3.5" />
+          className="flex-1 text-xs font-medium py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1">
+          <History className="h-3 w-3" />
           View History
         </button>
       </div>
