@@ -56,22 +56,24 @@ function startKeepAlive() {
     apikey: publicAnonKey,
   };
 
-  // Ping every 15s — well within the Edge Function idle timeout (~30s)
+  // Ping every 25s for the ENTIRE session — keeps the Edge Function worker
+  // alive and avoids cold starts when navigating between pages or idling.
+  // Only fires when the tab is visible to avoid wasting resources.
   _keepAliveTimer = setInterval(() => {
-    fetch(url, { headers }).catch(() => {});
-  }, 15000);
-
-  // Stop after 60s — by then the initial load is long done and
-  // regular auto-refresh polling keeps the worker alive.
-  setTimeout(() => {
-    if (_keepAliveTimer) {
-      clearInterval(_keepAliveTimer);
-      _keepAliveTimer = null;
-      console.log('[FioTech] Keep-alive pings stopped (60s elapsed)');
+    if (!document.hidden) {
+      fetch(url, { headers }).catch(() => {});
     }
-  }, 60000);
+  }, 25000);
 
-  console.log('[FioTech] Keep-alive pings started (every 15s for 60s)');
+  // Pause/resume on visibility change — no pings when tab is hidden
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && _keepAliveTimer) {
+      // Immediately ping when tab becomes visible again (may have been idle)
+      fetch(url, { headers }).catch(() => {});
+    }
+  });
+
+  console.log('[FioTech] Keep-alive pings started (every 25s, session-long, visibility-aware)');
 }
 
 export function stopKeepAlive() {
