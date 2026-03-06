@@ -1,11 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X, Wifi, WifiOff, Battery, BatteryLow, BatteryMedium, BatteryFull, BatteryWarning,
-  Droplets, Wind, Thermometer, Flame, Volume2, Cpu, AlertTriangle, CheckCircle2, Clock, MapPin
+  Droplets, Wind, Thermometer, Flame, Volume2, Cpu, AlertTriangle, CheckCircle2, Clock, MapPin,
+  ArrowLeft, History
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { Device } from '@/app/utils/api';
-import { MiniDeviceChart } from '@/app/components/DeviceHistoryChart';
+import { MiniDeviceChart, DeviceHistoryChart } from '@/app/components/DeviceHistoryChart';
 
 // Device type → icon + color
 const DEVICE_META: Record<string, { icon: React.ElementType; color: string; bg: string; label: string }> = {
@@ -73,6 +74,8 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
   const meta = getDeviceMeta(device.type);
   const TypeIcon = meta.icon;
   const generatedTelemetry = useMemo(() => generateDeviceTelemetry(device.id, device.type), [device.id, device.type]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyPeriod, setHistoryPeriod] = useState<string>('24h');
 
   // Use real live data if available, otherwise fall back to generated
   const hasLiveData = liveSensorData && Object.keys(liveSensorData).length > 0;
@@ -109,6 +112,66 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
     };
   }, [hasLiveData, liveSensorData, device.type, generatedTelemetry]);
 
+  // ─── HISTORY VIEW ─────────────────────────────────────
+  if (showHistory) {
+    return (
+      <div className="space-y-3">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <button onClick={() => setShowHistory(false)}
+            className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Device title */}
+        <div className="flex items-center gap-3">
+          <div className={clsx("p-2 rounded-xl", meta.bg, meta.color)}>
+            <TypeIcon className="h-4 w-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">{device.name}</h3>
+            <p className="text-xs text-slate-400">{device.devEui ? `EUI: ${device.devEui}` : device.id}</p>
+          </div>
+        </div>
+
+        {/* Period selector */}
+        <div className="flex gap-1.5 bg-slate-100 rounded-lg p-1">
+          {['24h', '7d', '30d'].map((p) => (
+            <button key={p} onClick={() => setHistoryPeriod(p)}
+              className={clsx(
+                "flex-1 text-xs font-medium py-1.5 rounded-md transition-colors",
+                historyPeriod === p ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}>
+              {p === '24h' ? '24 Hours' : p === '7d' ? '7 Days' : '30 Days'}
+            </button>
+          ))}
+        </div>
+
+        {/* Full history chart */}
+        {device.devEui ? (
+          <DeviceHistoryChart
+            deviceId={device.id}
+            deviceType={device.type}
+            devEui={device.devEui}
+            period={historyPeriod}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <History className="h-8 w-8 text-slate-300 mb-3" />
+            <p className="text-sm font-medium text-slate-500">No history available</p>
+            <p className="text-xs text-slate-400 mt-1">This device has no EUI — history requires real sensor uplinks.</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── DEFAULT DETAIL VIEW ─────────────────────────────
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -223,7 +286,9 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
         <button className="flex-1 text-sm font-medium py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
           Configure
         </button>
-        <button className="flex-1 text-sm font-medium py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+        <button onClick={() => setShowHistory(true)}
+          className="flex-1 text-sm font-medium py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5">
+          <History className="h-3.5 w-3.5" />
           View History
         </button>
       </div>
