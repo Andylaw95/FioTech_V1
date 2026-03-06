@@ -23,7 +23,15 @@ export function Login() {
 
     try {
       const result = await signIn(email, password);
-      if (result.error) setError(result.error);
+      if (result.error) {
+        // Friendlier error for unconfirmed email
+        const msg = result.error.toLowerCase();
+        if (msg.includes('email not confirmed') || msg.includes('not confirmed')) {
+          setError('Email not confirmed. Please check your inbox and click the confirmation link.');
+        } else {
+          setError(result.error);
+        }
+      }
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {

@@ -76,7 +76,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // checkSession has validated the session server-side.
   const initialCheckDone = useRef(false);
 
+  // Detect if the URL contains auth callback hash params (e.g. after
+  // email confirmation or password recovery redirect from Supabase).
+  // When present, Supabase JS will process them asynchronously, so we
+  // keep showing the loading state until onAuthStateChange fires.
+  const hasAuthCallbackHash = useRef(() => {
+    try {
+      const hash = window.location.hash;
+      return hash.includes('access_token=') || hash.includes('type=');
+    } catch { return false; }
+  });
+
   useEffect(() => {
+    const urlHasAuthCallback = hasAuthCallbackHash.current();
+
     const checkSession = async () => {
       try {
         const { data } = await supabase.auth.getSession();
@@ -118,12 +131,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               '',
           });
           checkAdminStatus(session.access_token);
+          initialCheckDone.current = true;
+          setLoading(false);
+        } else if (urlHasAuthCallback) {
+          // Hash tokens present but session not ready yet.
+          // Keep loading=true — onAuthStateChange will fire once
+          // Supabase processes the hash, then we'll update state.
+          // Safety timeout: if nothing happens within 10s, stop waiting.
+          initialCheckDone.current = true;
+          const fallback = setTimeout(() => {
+            // Clean the hash so user sees the login page cleanly
+            if (window.location.hash) {
+              window.history.replaceState(null, '', window.location.pathname);
+            }
+            setLoading(false);
+          }, 10000);
+          // Store for cleanup
+          (window as any).__authFallbackTimer = fallback;
+        } else {
+          initialCheckDone.current = true;
+          setLoading(false);
         }
       } catch (err) {
         console.error('AuthContext: Error checking session:', err);
-      } finally {
-        // Mark initial check as done BEFORE setting loading=false so the
-        // onAuthStateChange handler can safely process future events.
         initialCheckDone.current = true;
         setLoading(false);
       }
@@ -131,17 +161,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     checkSession();
 
-    // Listen for auth state changes (sign-in, sign-out, token refresh).
-    // The listener fires IMMEDIATELY with the current localStorage session
-    // before checkSession completes.  We gate it with initialCheckDone so
-    // it only responds to real events (like sign-out or token refresh)
-    // after the initial validation is finished.
+    // Listen for auth state changes (sign-in, sign-out, token refresh,
+    // email confirmation callback, password recovery callback).
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (!initialCheckDone.current) {
         // Skip — checkSession() will handle the initial session.
         return;
+      }
+
+      // Clear the auth callback fallback timer if it was set
+      if ((window as any).__authFallbackTimer) {
+        clearTimeout((window as any).__authFallbackTimer);
+        delete (window as any).__authFallbackTimer;
+      }
+
+      // Clean hash fragment from URL after processing auth callback
+      if (window.location.hash && (event === 'SIGNED_IN' || event === 'PASSWORD_RECOVERY')) {
+        window.history.replaceState(null, '', window.location.pathname);
       }
 
       if (session) {
@@ -160,6 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAccessToken(null);
         setIsAdmin(false);
       }
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -211,14 +250,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return { error: result.error || 'Signup failed' };
         }
 
-        const signInResult = await signIn(email, password);
-        return signInResult;
+        // Account created. A confirmation email has been sent.
+        // Do NOT auto-signIn — the user must verify their email first.
+        return {};
       } catch (err: any) {
         console.error('Signup exception:', err);
         return { error: err.message || 'Signup failed' };
       }
     },
-    [signIn],
+    [],
   );
 
   const signOut = useCallback(async () => {

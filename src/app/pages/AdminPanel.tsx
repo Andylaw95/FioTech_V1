@@ -1083,7 +1083,7 @@ function CreateUserDialog({ open, onClose, onCreated }: { open: boolean; onClose
     setCreating(true);
     try {
       await api.signup({ email: email.trim(), password, name: name.trim() || email.split('@')[0], accountType });
-      toast.success(`Account created for ${email}`);
+      toast.success(`Account created for ${email}. A confirmation email has been sent.`);
       reset();
       onClose();
       onCreated();
