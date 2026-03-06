@@ -75,8 +75,12 @@ function errorMessage(e: unknown): string {
 
 // ── AUTH ─────────────────────────────────────────────────
 
-const MASTER_EMAILS = new Set(["master@fiotech.io"]);
-const MASTER_USER_ID = "5a386250-7710-4a83-8942-5dc45201303f";
+// Admin identity from environment variables (fallback to defaults for backward compat)
+const MASTER_EMAILS = new Set(
+  (Deno.env.get("MASTER_EMAILS") || "master@fiotech.io")
+    .split(",").map((e: string) => e.trim().toLowerCase()).filter(Boolean)
+);
+const MASTER_USER_ID = Deno.env.get("MASTER_USER_ID") || "5a386250-7710-4a83-8942-5dc45201303f";
 
 // ── Realtime Broadcast — push critical alarm alerts instantly to frontend ──
 async function broadcastAlarmPush(targetUserId: string, alarm: any) {
@@ -213,14 +217,27 @@ function sanitizeEnum(value: unknown, allowed: string[], fallback: string): stri
   return allowed.includes(value) ? value : fallback;
 }
 
-function safeMerge(target: any, source: any, depth = 0): any {
+// Allowed top-level keys for settings merge (prevents injection of arbitrary fields)
+const SETTINGS_ALLOWED_KEYS = new Set([
+  "profile", "notifications", "dashboard", "security", "theme",
+  "language", "timezone", "dateFormat", "displayDensity",
+]);
+const PROFILE_ALLOWED_KEYS = new Set([
+  "name", "phone", "company", "avatar", "bio", "location",
+]);
+
+function safeMerge(target: any, source: any, depth = 0, allowedKeys?: Set<string>): any {
   if (depth > 5) return target;
   if (!source || typeof source !== "object" || Array.isArray(source)) return target;
   const result = { ...target };
   for (const key of Object.keys(source)) {
     if (DANGEROUS_KEYS.has(key)) continue;
+    // At depth 0, enforce whitelist of allowed top-level keys
+    if (allowedKeys && !allowedKeys.has(key)) continue;
     if (typeof source[key] === "object" && source[key] !== null && !Array.isArray(source[key])) {
-      result[key] = safeMerge(result[key] || {}, source[key], depth + 1);
+      // For profile sub-object, enforce profile-specific whitelist
+      const childAllowed = key === "profile" ? PROFILE_ALLOWED_KEYS : undefined;
+      result[key] = safeMerge(result[key] || {}, source[key], depth + 1, childAllowed);
     } else {
       result[key] = source[key];
     }
@@ -398,7 +415,7 @@ async function getUserSettings(userId: string): Promise<any> {
   const accountType = await getAccountType(userId);
   let defaults;
   if (accountType === "demo") {
-    defaults = { ...DEFAULT_SETTINGS, profile: { ...DEFAULT_SETTINGS.profile, name: "Demo User", email: "demo@fiotech.io", role: "Viewer" } };
+    defaults = { ...DEFAULT_SETTINGS, profile: { ...DEFAULT_SETTINGS.profile, name: "Demo User", email: "demo@example.com", role: "Viewer" } };
   } else {
     defaults = { ...DEFAULT_SETTINGS };
   }
@@ -1005,7 +1022,7 @@ export function registerRoutes(app: any) {
       if (password.length < 8) return c.json({ error: "Password must be at least 8 characters." }, 400);
       if (password.length > 128) return c.json({ error: "Password too long." }, 400);
       const { data, error } = await supabase.auth.admin.createUser({
-        email, password, user_metadata: { name: name || email.split("@")[0], accountType }, email_confirm: true,
+        email, password, user_metadata: { name: name || email.split("@")[0], accountType }, email_confirm: false,
       });
       if (error) {
         if (error.message?.includes("already been registered")) return c.json({ success: true, userId: "existing", accountType });
@@ -1655,7 +1672,7 @@ export function registerRoutes(app: any) {
         delete body.profile.email;  // email is managed by Supabase Auth
       }
       const current = await getUserSettings(userId);
-      const updated = safeMerge(current, body);
+      const updated = safeMerge(current, body, 0, SETTINGS_ALLOWED_KEYS);
       const key = uk(userId, "settings");
       await kvSetWithRetry(key, updated);
       invalidateKvCache(key);
@@ -1684,7 +1701,8 @@ export function registerRoutes(app: any) {
       const arrayBuffer = await file.arrayBuffer();
       const { data: uploadData, error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(fileName, arrayBuffer, { contentType: file.type, upsert: false });
       if (uploadError) { console.log("Upload error:", uploadError.message); return c.json({ error: "Upload failed." }, 500); }
-      const { data: signedData, error: signedError } = await supabase.storage.from(BUCKET_NAME).createSignedUrl(fileName, 365 * 24 * 3600);
+      // Signed URL valid for 7 days (not 365 days) — reduces leak exposure window
+      const { data: signedData, error: signedError } = await supabase.storage.from(BUCKET_NAME).createSignedUrl(fileName, 7 * 24 * 3600);
       if (signedError) { console.log("Signed URL error:", signedError.message); return c.json({ error: "Failed to create URL." }, 500); }
       return c.json({ url: signedData.signedUrl, path: uploadData.path, fileName });
     } catch (e) {
@@ -1709,7 +1727,7 @@ export function registerRoutes(app: any) {
         cachedKvSet(uk(userId, "alarms"), defaults("alarms")),
       ]);
       const profileDefaults = accountType === "demo"
-        ? { ...DEFAULT_SETTINGS.profile, name: "Demo User", email: "demo@fiotech.io", role: "Viewer" }
+        ? { ...DEFAULT_SETTINGS.profile, name: "Demo User", email: "demo@example.com", role: "Viewer" }
         : { ...DEFAULT_SETTINGS.profile };
       await kvSetWithRetry(uk(userId, "settings"), { ...DEFAULT_SETTINGS, profile: profileDefaults });
       invalidateKvCache(uk(userId, "settings"));
@@ -2425,13 +2443,19 @@ export function registerRoutes(app: any) {
       let token: string | null = null;
       try { token = await kvGetWithRetry(`webhook_token_${userId}`); } catch { /* no token */ }
       const baseUrl = Deno.env.get("SUPABASE_URL") || `https://${c.req.header("host")}`;
-      const webhookUrl = token ? `${baseUrl}/functions/v1/make-server-4916a0b9/telemetry-webhook?token=${token}` : null;
+      const webhookBaseUrl = `${baseUrl}/functions/v1/make-server-4916a0b9/telemetry-webhook`;
+      // Legacy URL (token in query param, backward compat)
+      const webhookUrl = token ? `${webhookBaseUrl}?token=${token}` : null;
+      // Recommended URL (clean URL, token via X-Webhook-Token header)
+      const webhookUrlClean = token ? webhookBaseUrl : null;
       let lastReceived: string | null = null;
       try {
         const sensorData = await cachedKvGet(`sensor_data_${userId}`);
         if (Array.isArray(sensorData) && sensorData.length > 0) lastReceived = sensorData[0].receivedAt || null;
       } catch { /* ignore */ }
-      return c.json({ token: token || null, webhookUrl, hasToken: !!token, lastReceived });
+      let hasHmac = false;
+      try { hasHmac = !!(await kvGetWithRetry(`webhook_hmac_${userId}`)); } catch { /* ignore */ }
+      return c.json({ token: token || null, webhookUrl, webhookUrlClean, hasToken: !!token, lastReceived, hasHmac });
     } catch (e) {
       console.log("Error fetching webhook config:", errorMessage(e));
       return c.json({ token: null, webhookUrl: null, hasToken: false, lastReceived: null });
@@ -2451,13 +2475,36 @@ export function registerRoutes(app: any) {
       await kvSetWithRetry(`webhook_token_${userId}`, newToken, 3);
       try { await kvSetWithRetry(`webhook_lookup_${newToken}`, userId, 3); } catch { /* non-fatal */ }
       const baseUrl = Deno.env.get("SUPABASE_URL") || `https://${c.req.header("host")}`;
-      const webhookUrl = `${baseUrl}/functions/v1/make-server-4916a0b9/telemetry-webhook?token=${newToken}`;
+      const webhookBaseUrl = `${baseUrl}/functions/v1/make-server-4916a0b9/telemetry-webhook`;
+      const webhookUrl = `${webhookBaseUrl}?token=${newToken}`;
+      const webhookUrlClean = webhookBaseUrl;
       console.log(`Webhook token generated for user ${userId}`);
-      return c.json({ token: newToken, webhookUrl, hasToken: true, lastReceived: null });
+      return c.json({ token: newToken, webhookUrl, webhookUrlClean, hasToken: true, lastReceived: null });
     } catch (e) {
       console.log("Error generating webhook token:", errorMessage(e));
       console.log("Webhook token error:", errorMessage(e));
       return c.json({ error: "Failed to generate webhook token." }, 500);
+    }
+  });
+
+  // ─── WEBHOOK HMAC SECRET (optional payload signing) ─────
+  app.put("/make-server-4916a0b9/webhook-config", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const { userId } = auth;
+    try {
+      const body = await c.req.json();
+      const hmacSecret = sanitizeString(body.hmacSecret, 128);
+      if (hmacSecret) {
+        await kvSetWithRetry(`webhook_hmac_${userId}`, hmacSecret);
+      } else {
+        // Clear HMAC secret
+        try { await kv.del(`webhook_hmac_${userId}`); } catch { /* ignore */ }
+      }
+      return c.json({ success: true, hasHmac: !!hmacSecret });
+    } catch (e) {
+      console.log("Error updating webhook HMAC:", errorMessage(e));
+      return c.json({ error: "Failed to update HMAC secret." }, 500);
     }
   });
 
@@ -2471,7 +2518,7 @@ export function registerRoutes(app: any) {
       const token = await kvGetWithRetry(`webhook_token_${userId}`);
       if (!token) return c.json({ success: false, error: "No webhook token configured." }, 400);
       const baseUrl = Deno.env.get("SUPABASE_URL") || `https://${c.req.header("host")}`;
-      const webhookUrl = `${baseUrl}/functions/v1/make-server-4916a0b9/telemetry-webhook?token=${token}`;
+      const webhookUrl = `${baseUrl}/functions/v1/make-server-4916a0b9/telemetry-webhook`;
       const testPayload = {
         devEUI: "TEST000000000000", deviceName: "FioTech Test Ping", applicationName: "FioTech Webhook Test",
         fPort: 0, fCnt: 0, data: "",
@@ -2482,7 +2529,7 @@ export function registerRoutes(app: any) {
       const startMs = Date.now();
       const resp = await fetch(webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`, apikey: Deno.env.get("SUPABASE_ANON_KEY")! },
+        headers: { "Content-Type": "application/json", "X-Webhook-Token": token, Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`, apikey: Deno.env.get("SUPABASE_ANON_KEY")! },
         body: JSON.stringify(testPayload),
       });
       const latencyMs = Date.now() - startMs;
@@ -2504,8 +2551,8 @@ export function registerRoutes(app: any) {
     const ip = getClientIp(c);
     if (!rateLimit(ip + ":webhook-ping", 30, 60000)) return c.json({ error: "Rate limited." }, 429);
     try {
-      const token = c.req.query("token") || "";
-      if (!token || token.length < 10) return c.json({ status: "error", message: "Missing or invalid webhook token in query param." }, 401);
+      const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
+      if (!token || token.length < 10) return c.json({ status: "error", message: "Missing or invalid webhook token." }, 401);
       const userId = await kvGetWithRetry(`webhook_lookup_${token}`);
       if (!userId) return c.json({ status: "error", message: "Invalid webhook token." }, 401);
       const storedToken = await kvGetWithRetry(`webhook_token_${userId}`);
@@ -2574,20 +2621,14 @@ export function registerRoutes(app: any) {
     // Debug: capture raw request info
     let rawBody: any = null;
     try { rawBody = await c.req.json(); } catch { rawBody = "PARSE_ERROR"; }
+    // Debug: redact sensitive fields, keep only structural info
     const debugEntry = {
       time: new Date().toISOString(),
-      ip,
       method: "POST",
-      url: c.req.url,
-      token: (c.req.query("token") || "").slice(0, 8) + "...",
-      headers: {
-        authorization: (c.req.header("Authorization") || "").slice(0, 30) + "...",
-        contentType: c.req.header("Content-Type") || "",
-        userAgent: (c.req.header("User-Agent") || "").slice(0, 100),
-      },
+      tokenVia: c.req.header("X-Webhook-Token") ? "header" : (c.req.query("token") ? "query" : "none"),
       bodyKeys: rawBody && typeof rawBody === "object" ? Object.keys(rawBody) : typeof rawBody,
       devEUI: rawBody?.devEUI || rawBody?.devEui || rawBody?.dev_eui || "N/A",
-      gatewayEUI: rawBody?.rxInfo?.[0]?.gatewayID || rawBody?.rxInfo?.[0]?.mac || "N/A",
+      eventType: rawBody?.data ? "uplink" : (rawBody?.devAddr ? "join" : "other"),
     };
     WEBHOOK_DEBUG_LOG.unshift(debugEntry);
     if (WEBHOOK_DEBUG_LOG.length > MAX_DEBUG_LOG) WEBHOOK_DEBUG_LOG.length = MAX_DEBUG_LOG;
@@ -2607,17 +2648,35 @@ export function registerRoutes(app: any) {
     if (!body || typeof body !== "object") return c.json({ error: "Invalid JSON body." }, 400);
 
     try {
-      const token = c.req.query("token") || "";
+      // Prefer X-Webhook-Token header; fall back to query param for backward compat
+      const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
       if (!token || token.length < 10) return c.json({ error: "Missing or invalid webhook token." }, 401);
       const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
       if (!tokenOwner) return c.json({ error: "Invalid webhook token." }, 401);
       const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
       if (storedToken !== token) return c.json({ error: "Webhook token revoked." }, 401);
 
-      // Master account is the primary data owner — all primary writes go to master.
-      // If the webhook token belongs to a client, their data is mirrored afterwards.
-      const clientUserId = tokenOwner !== MASTER_USER_ID ? tokenOwner : null;
-      const userId = MASTER_USER_ID;
+      // ── Optional HMAC payload verification (ChirpStack / Milesight gateways can sign payloads) ──
+      const hmacHeader = c.req.header("X-Signature-SHA256") || c.req.header("X-Signature") || "";
+      if (hmacHeader) {
+        // Retrieve per-user HMAC secret (set via webhook-config PUT)
+        const hmacSecret = await kvGetWithRetry(`webhook_hmac_${tokenOwner}`).catch(() => null);
+        if (hmacSecret) {
+          const encoder = new TextEncoder();
+          const key = await crypto.subtle.importKey("raw", encoder.encode(hmacSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+          const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(JSON.stringify(body)));
+          const expected = Array.from(new Uint8Array(sig), b => b.toString(16).padStart(2, "0")).join("");
+          const provided = hmacHeader.replace(/^sha256=/, "").toLowerCase();
+          if (expected !== provided) {
+            console.log(`[HMAC] Signature mismatch for user ${tokenOwner}`);
+            return c.json({ error: "HMAC signature verification failed." }, 401);
+          }
+          console.log(`[HMAC] Signature verified for user ${tokenOwner}`);
+        }
+      }
+
+      // Write data to the token owner's own KV namespace (no centralized master write)
+      const userId = tokenOwner;
 
       // body already parsed above in debug section
       const isJoinEvent = !!(body.devAddr && !body.data && !body.fCnt && !body.object);
@@ -2957,200 +3016,6 @@ export function registerRoutes(app: any) {
         }
       }
 
-      // ── Mirror data to client account (async, non-blocking) ──
-      // Master is the primary data owner; mirror a copy to the client who owns the webhook token
-      if (clientUserId && devEUI) {
-        (async () => {
-          try {
-            // Mirror sensor data entry to client
-            const cSdKey = `sensor_data_${clientUserId}`;
-            let cSensorData: any[] = [];
-            try { const ex = await kvGetWithRetry(cSdKey); if (Array.isArray(ex)) cSensorData = ex; } catch { /* start fresh */ }
-            cSensorData.unshift({ ...entry, id: `SD${Date.now()}_c_${Math.random().toString(36).slice(2, 6)}` });
-            // Prune entries older than 3 days to save KV storage
-            const C_THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
-            const cPruneCutoff = Date.now() - C_THREE_DAYS;
-            cSensorData = cSensorData.filter((e: any) => new Date(e.receivedAt).getTime() > cPruneCutoff);
-            if (cSensorData.length > 1000) cSensorData = cSensorData.slice(0, 1000);
-            await kvSetWithRetry(cSdKey, cSensorData);
-
-            // Mirror device heartbeat / auto-register to client
-            if (devEUI) {
-              const cDevKey = uk(clientUserId, "devices");
-              const cDevices = await getUserCollection(clientUserId, "devices");
-              const cDevIdx = cDevices.findIndex((d: any) => (d.devEui || "").toLowerCase() === devEUI.toLowerCase());
-              if (cDevIdx !== -1) {
-                cDevices[cDevIdx].lastSeen = new Date().toISOString();
-                cDevices[cDevIdx].lastUpdate = new Date().toISOString();
-                cDevices[cDevIdx].status = "online";
-                if (rssi > -999) cDevices[cDevIdx].signal = Math.max(0, Math.min(100, 2 * (rssi + 100)));
-                if (!cDevices[cDevIdx].manufacturer && devEUI.toUpperCase().startsWith("24E124")) cDevices[cDevIdx].manufacturer = "Milesight";
-                if (decodedData && typeof decodedData.battery === "number") cDevices[cDevIdx].battery = decodedData.battery;
-                // Re-classify generic "LoRaWAN Sensor" devices in client mirror
-                if (cDevices[cDevIdx].type === "LoRaWAN Sensor") {
-                  const nUp = (deviceName || "").toUpperCase();
-                  if (nUp.includes("AM308") || nUp.includes("AM-308")) {
-                    cDevices[cDevIdx].type = "Environment Sensor"; cDevices[cDevIdx].model = "AM308L";
-                    cDevices[cDevIdx].capabilities = ["temperature", "humidity", "co2", "tvoc", "barometric_pressure", "illuminance", "pir", "pm2_5", "pm10", "battery"];
-                  } else if (nUp.includes("ENVIRONMENT MONITORING") || nUp.includes("WATER LEAK") || nUp.includes("WS50") || nUp.includes("WS52")) {
-                    cDevices[cDevIdx].type = "Water Leakage Sensor"; cDevices[cDevIdx].model = "EM300-SLD";
-                    cDevices[cDevIdx].capabilities = ["water_leak", "temperature", "humidity", "battery"];
-                  } else if (nUp.includes("WS302") || nUp.includes("SOUND LEVEL")) {
-                    cDevices[cDevIdx].type = "Sound Level Sensor"; cDevices[cDevIdx].model = "WS302";
-                    cDevices[cDevIdx].capabilities = ["sound_level", "battery"];
-                  }
-                }
-                await cachedKvSet(cDevKey, cDevices);
-              } else {
-                // Auto-register in client too — use same smart detection as primary
-                const isMilesight = devEUI.toUpperCase().startsWith("24E124");
-                const nameUpper = (deviceName || "").toUpperCase();
-                let model = "", cType = "LoRaWAN Sensor", caps: string[] = [];
-                if (nameUpper.includes("AM308") || nameUpper.includes("AM-308")) {
-                  model = "AM308L"; cType = "Environment Sensor";
-                  caps = ["temperature","humidity","co2","tvoc","barometric_pressure","illuminance","pir","pm2_5","pm10","battery"];
-                } else if (nameUpper.includes("AM307")) {
-                  model = "AM307"; cType = "Environment Sensor";
-                  caps = ["temperature","humidity","co2","tvoc","barometric_pressure","illuminance","pir","battery"];
-                } else if (nameUpper.includes("ENVIRONMENT MONITORING") || nameUpper.includes("WATER LEAK") || nameUpper.includes("WS50") || nameUpper.includes("WS52")) {
-                  model = "EM300-SLD"; cType = "Water Leakage Sensor";
-                  caps = ["water_leak", "temperature", "humidity", "battery"];
-                } else if (nameUpper.includes("WS302") || nameUpper.includes("SOUND LEVEL")) {
-                  model = "WS302"; cType = "Sound Level Sensor";
-                  caps = ["sound_level", "battery"];
-                } else if (nameUpper.includes("WS301") || (nameUpper.includes("WS30") && !nameUpper.includes("WS302"))) {
-                  model = "WS301"; cType = "Door/Window Sensor";
-                  caps = ["door_status", "battery"];
-                } else if (nameUpper.includes("VS121")) {
-                  model = "VS121"; cType = "People Counter";
-                  caps = ["people_count", "battery"];
-                }
-                const batteryVal = decodedData && typeof decodedData.battery === "number" ? decodedData.battery : 100;
-                const nd: any = {
-                  id: `D${Date.now()}`, name: deviceName || `${model || "Sensor"}-${devEUI.slice(-4)}`,
-                  type: cType, devEui: devEUI,
-                  gateway: gatewayEUI || "Unknown", building: "Unassigned", location: "Auto-registered",
-                  status: "online", battery: batteryVal,
-                  lastUpdate: new Date().toISOString(), lastSeen: new Date().toISOString(),
-                  signal: rssi > -999 ? Math.max(0, Math.min(100, 2 * (rssi + 100))) : 0,
-                  serialNumber: devEUI,
-                };
-                if (isMilesight) nd.manufacturer = "Milesight";
-                if (model) { nd.model = model; nd.capabilities = caps; }
-                cDevices.push(nd);
-                await cachedKvSet(cDevKey, cDevices);
-              }
-            }
-
-            // Mirror alarms to client account
-            if (decodedData) {
-              try {
-                const cAlarmKey = uk(clientUserId, "alarms");
-                let cAlarms: any[] = [];
-                try { const ex = await kvGetWithRetry(cAlarmKey); if (Array.isArray(ex)) cAlarms = ex; } catch { /* start fresh */ }
-                // Re-run alarm checks for client (same logic as primary)
-                const nameUpper = (deviceName || "").toUpperCase();
-                const isWaterLeakDevice = /WATER|LEAK|EM300|EM500|ENVIRONMENT.MONITORING|WS50|WS52/.test(nameUpper);
-                const isSmokeFireDevice = /SMOKE|FIRE|WS55[89]|EM310/.test(nameUpper);
-                const normalized: Record<string, number> = {};
-                for (const [key, val] of Object.entries(decodedData)) {
-                  if (typeof val === "number") {
-                    normalized[key] = val;
-                    const base = key.replace(/_\d+$/, "");
-                    if (base !== key && !(base in normalized)) normalized[base] = val;
-                    if (base === "relative_humidity" && !("humidity" in normalized)) normalized["humidity"] = val;
-                    if (base === "digital_input" && val > 0) {
-                      if (isWaterLeakDevice) { if (!("water_leak" in normalized)) normalized["water_leak"] = val; }
-                      else if (isSmokeFireDevice) { if (!("smoke_status" in normalized)) normalized["smoke_status"] = val; }
-                    }
-                    if (base === "barometric_pressure" && !("pressure" in normalized)) normalized["pressure"] = val;
-                    if (base === "illuminance" && !("light" in normalized)) normalized["light"] = val;
-                    if (base === "luminosity" && !("light" in normalized)) normalized["light"] = val;
-                    if ((key === "pir" || base === "presence") && !("activity" in normalized)) normalized["activity"] = val;
-                    if (key === "sound_level_leq" && !("sound_level" in normalized)) normalized["sound_level"] = val;
-                  }
-                }
-                const cAlarmChecks = [
-                  { field: "smoke_status", threshold: 0, type: "Smoke Detected", desc: "Smoke detected by sensor", above: true },
-                  { field: "fire_status", threshold: 0, type: "Fire Alarm", desc: "Fire detected by sensor", above: true },
-                  { field: "water_leak", threshold: 0, type: "Water Leakage", desc: "Water leak detected by sensor", above: true },
-                  { field: "temperature", threshold: 50, type: "Temperature", desc: "Temperature exceeding 50C threshold", above: true },
-                  { field: "humidity", threshold: 85, type: "High Humidity", desc: "Humidity exceeding 85% threshold", above: true },
-                  { field: "co2", threshold: 1000, type: "High CO2", desc: "CO2 exceeding 1000ppm threshold", above: true },
-                  { field: "tvoc", threshold: 500, type: "High TVOC", desc: "TVOC exceeding 500 threshold", above: true },
-                  { field: "pm2_5", threshold: 75, type: "High PM2.5", desc: "PM2.5 exceeding 75μg/m³ threshold", above: true },
-                  { field: "pm10", threshold: 150, type: "High PM10", desc: "PM10 exceeding 150μg/m³ threshold", above: true },
-                  { field: "light", threshold: 1000, type: "High Illuminance", desc: "Illuminance exceeding 1000 lux", above: true },
-                  { field: "sound_level", threshold: 85, type: "High Noise", desc: "Sound level exceeding 85dB threshold", above: true },
-                  { field: "pressure", threshold: 900, type: "Pressure Alert", desc: "Barometric pressure below 900 hPa", above: false },
-                  { field: "battery", threshold: 10, type: "Low Battery", desc: "Sensor battery below 10%", above: false },
-                ];
-                let cDirty = false;
-                for (const check of cAlarmChecks) {
-                  const val = normalized[check.field] ?? (typeof decodedData[check.field] === "number" ? decodedData[check.field] : undefined);
-                  if (typeof val === "number" && ((check.above && val > check.threshold) || (!check.above && val < check.threshold))) {
-                    const recentDupe = cAlarms.find((a: any) => a.type === check.type && a.status === "pending" && (Date.now() - new Date(a.time).getTime()) < 300000);
-                    if (!recentDupe) {
-                      const cNewAlarm = {
-                        id: `A${Date.now()}_c`, type: check.type, location: deviceName,
-                        property: applicationName || "LoRaWAN Sensor",
-                        severity: check.type.includes("Fire") || check.type.includes("Smoke") || check.type.includes("Water") ? "high" : "medium",
-                        time: new Date().toISOString(), status: "pending",
-                        description: `${check.desc}: ${deviceName} reported ${check.field}=${val}`,
-                      };
-                      cAlarms.unshift(cNewAlarm);
-                      cDirty = true;
-                      // Push critical alarms to client instantly
-                      if (/Fire|Smoke|Water/i.test(check.type)) {
-                        broadcastAlarmPush(clientUserId, cNewAlarm).catch(() => {});
-                      }
-                    }
-                  }
-                }
-                if (cDirty) {
-                  if (cAlarms.length > 1000) cAlarms = cAlarms.slice(0, 1000);
-                  await kvSetWithRetry(cAlarmKey, cAlarms);
-                  invalidateKvCache(cAlarmKey);
-                }
-              } catch (e) { console.log("[Mirror] Alarm mirror to client error:", errorMessage(e)); }
-            }
-
-            // Mirror gateway heartbeat to client (same multi-strategy as primary)
-            {
-              const cGateways = await getUserCollection(clientUserId, "gateways");
-              let cGwIdx = -1;
-              // Strategy 1: match by devEui / macAddress
-              if (gatewayEUI) {
-                cGwIdx = cGateways.findIndex((gw: any) =>
-                  (gw.devEui || "").toLowerCase() === gatewayEUI.toLowerCase() ||
-                  (gw.macAddress || "").replace(/:/g, "").toLowerCase() === gatewayEUI.toLowerCase()
-                );
-              }
-              // Strategy 2: match via device's assigned gateway
-              if (cGwIdx === -1 && devEUI) {
-                const cDevs = await getUserCollection(clientUserId, "devices");
-                const cDev = cDevs.find((d: any) => (d.devEui || "").toLowerCase() === devEUI.toLowerCase());
-                if (cDev && cDev.gateway && cDev.gateway !== "Unassigned" && cDev.gateway !== "Unknown") {
-                  cGwIdx = cGateways.findIndex((gw: any) => gw.id === cDev.gateway);
-                }
-                if (cGwIdx === -1 && cGateways.length === 1) cGwIdx = 0;
-              }
-              if (cGwIdx !== -1) {
-                cGateways[cGwIdx].lastSeen = new Date().toISOString();
-                cGateways[cGwIdx].status = "online";
-                if (rssi > -999) cGateways[cGwIdx].signal = Math.max(0, Math.min(100, 2 * (rssi + 100)));
-                if (gatewayEUI && !cGateways[cGwIdx].devEui) {
-                  cGateways[cGwIdx].devEui = gatewayEUI;
-                }
-                await cachedKvSet(uk(clientUserId, "gateways"), cGateways);
-              }
-            }
-          } catch (mirrorErr) {
-            console.log("[Mirror] Non-fatal error mirroring to client:", errorMessage(mirrorErr));
-          }
-        })();
-      }
-
       return c.json({ success: true, id: entry.id, message: "Uplink data received." });
     } catch (e) {
       console.log("Webhook error:", errorMessage(e));
@@ -3397,6 +3262,21 @@ export function registerRoutes(app: any) {
         }
         if (body.password.length > 128) {
           return c.json({ error: "Password too long." }, 400);
+        }
+        // ── Security: require admin re-authentication before resetting any user's password ──
+        if (!body.adminPassword || typeof body.adminPassword !== "string") {
+          return c.json({ error: "Admin password required to reset user password." }, 403);
+        }
+        // Verify admin's own password via signInWithPassword
+        const anonUrl = Deno.env.get("SUPABASE_URL")!;
+        const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+        const verifyResp = await fetch(`${anonUrl}/auth/v1/token?grant_type=password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "apikey": anonKey },
+          body: JSON.stringify({ email: admin.email, password: body.adminPassword }),
+        });
+        if (!verifyResp.ok) {
+          return c.json({ error: "Admin re-authentication failed. Incorrect password." }, 403);
         }
         authUpdates.password = body.password;
       }

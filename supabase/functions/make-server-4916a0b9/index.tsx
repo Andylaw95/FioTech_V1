@@ -6,13 +6,14 @@ console.log("[FioTech Server] Boot: module loading...");
 
 const app = new Hono();
 
+// Only allow localhost origins in development (DENO_DEPLOYMENT_ID is set in Deno Deploy / Supabase Edge)
+const PROD_ORIGINS = ["https://fiotech-app.vercel.app"];
+const DEV_ORIGINS  = [...PROD_ORIGINS, "http://localhost:5173", "http://localhost:4173"];
+const isProduction = !!Deno.env.get("DENO_DEPLOYMENT_ID");
+
 app.use("*", cors({
-  origin: [
-    "https://fiotech-app.vercel.app",
-    "http://localhost:5173",
-    "http://localhost:4173",
-  ],
-  allowHeaders: ["Content-Type", "Authorization", "x-client-info", "apikey", "Cache-Control", "x-user-token"],
+  origin: isProduction ? PROD_ORIGINS : DEV_ORIGINS,
+  allowHeaders: ["Content-Type", "Authorization", "x-client-info", "apikey", "Cache-Control", "x-user-token", "X-Webhook-Token"],
   allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   exposeHeaders: ["Content-Length", "X-Kuma-Revision"],
   maxAge: 600,

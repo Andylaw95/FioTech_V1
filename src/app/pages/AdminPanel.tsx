@@ -720,6 +720,7 @@ function UserDetailPanel({ userId, onClose, onUserUpdated, previewData }: UserDe
   const [role, setRole] = useState(previewData?.role || 'Viewer');
   const [accountType, setAccountType] = useState(previewData?.accountType || 'standard');
   const [newPassword, setNewPassword] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
 
   const loadUser = useCallback(async () => {
     setLoading(true);
@@ -755,11 +756,18 @@ function UserDetailPanel({ userId, onClose, onUserUpdated, previewData }: UserDe
         accountType,
       };
       if (newPassword.trim()) {
+        if (!adminPassword.trim()) {
+          toast.error('Please enter your admin password to confirm the password reset.');
+          setSaving(false);
+          return;
+        }
         updates.password = newPassword;
+        updates.adminPassword = adminPassword;
       }
       await api.adminUpdateUser(userId, updates);
       toast.success('User updated successfully');
       setNewPassword('');
+      setAdminPassword('');
       onUserUpdated();
       loadUser();
     } catch (err: any) {
@@ -983,6 +991,23 @@ function UserDetailPanel({ userId, onClose, onUserUpdated, previewData }: UserDe
                 <p className="mt-1 text-xs text-amber-600">Password must be at least 6 characters</p>
               )}
             </div>
+
+            {/* Admin Password Confirmation (shown only when setting new password) */}
+            {newPassword.trim() && (
+              <div>
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                  <Key className="h-3 w-3" /> Your Admin Password (confirm)
+                </label>
+                <input
+                  type="password"
+                  value={adminPassword}
+                  onChange={e => setAdminPassword(e.target.value)}
+                  placeholder="Enter your admin password to confirm"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                />
+                <p className="mt-1 text-xs text-slate-500">Required for security when resetting a user's password</p>
+              </div>
+            )}
           </div>
 
           {/* Actions */}
