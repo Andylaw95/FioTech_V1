@@ -601,7 +601,7 @@ export function BIMTwins() {
       <div className={clsx(
         "flex flex-col border-r border-slate-200 bg-white transition-all duration-300 shrink-0",
         isFullscreen ? "w-0 overflow-hidden opacity-0 p-0 border-0" :
-        "fixed inset-y-0 left-0 z-40 w-72 lg:static lg:z-auto",
+        "fixed inset-y-0 left-0 z-40 w-64 lg:static lg:z-auto lg:w-56 xl:w-72",
         !isFullscreen && (showMobileSidebar ? "translate-x-0" : "-translate-x-full lg:translate-x-0")
       )}>
         <div className="p-4 border-b border-slate-100">
@@ -654,8 +654,8 @@ export function BIMTwins() {
       <div className="flex-1 flex flex-col overflow-hidden relative min-w-0">
         
         {/* Viewer Header */}
-        <div className="h-12 sm:h-14 flex items-center justify-between px-3 sm:px-5 border-b border-slate-200 bg-white z-20 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="h-12 sm:h-14 flex items-center justify-between px-2 sm:px-4 border-b border-slate-200 bg-white z-20 shrink-0 gap-2 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
             {/* Mobile sidebar toggle */}
             <button
               onClick={() => setShowMobileSidebar(true)}
@@ -663,15 +663,15 @@ export function BIMTwins() {
             >
               <LayoutDashboard className="h-4 w-4" />
             </button>
-            <div className="min-w-0">
-              <h1 className="text-base sm:text-xl font-bold text-slate-900 flex items-center gap-2 truncate">
-                {selectedProperty?.name || 'Select Property'}
-                <span className="px-1.5 py-0.5 rounded text-xs bg-gradient-to-r from-blue-500 to-indigo-500 text-white uppercase tracking-wider font-bold shrink-0">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                <span className="truncate">{selectedProperty?.name || 'Select Property'}</span>
+                <span className="px-1 py-0.5 rounded text-[10px] bg-gradient-to-r from-blue-500 to-indigo-500 text-white uppercase tracking-wider font-bold shrink-0">
                   Twin
                 </span>
               </h1>
-              <p className="text-sm text-slate-400 flex items-center gap-1 truncate">
-                <MapPin className="h-3 w-3 shrink-0" /> {selectedProperty?.location || '—'}
+              <p className="text-xs text-slate-400 flex items-center gap-1 truncate">
+                <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{selectedProperty?.location || '—'}</span>
                 {selectedFloor !== null && (
                   <span className="ml-1 text-blue-600 font-medium">• {floorLabels[selectedFloor]}</span>
                 )}
@@ -683,9 +683,9 @@ export function BIMTwins() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             {/* Connection indicator */}
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
+            <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
               <div className={clsx("h-1.5 w-1.5 rounded-full",
                 connectionStatus === 'connected' ? "bg-emerald-500 animate-pulse" :
                 connectionStatus === 'connecting' ? "bg-amber-500 animate-pulse" : "bg-slate-300"
@@ -693,16 +693,16 @@ export function BIMTwins() {
               {connectionStatus === 'connected' ? 'Live' : connectionStatus === 'connecting' ? 'Connecting...' : 'Offline'}
             </div>
 
-            <div className="h-5 w-px bg-slate-200" />
+            <div className="hidden xl:block h-5 w-px bg-slate-200" />
 
             {/* Inspector mode tabs */}
-            <div className="hidden lg:flex rounded-lg bg-slate-100 p-0.5">
+            <div className="hidden xl:flex rounded-lg bg-slate-100 p-0.5">
               {([
                 ['overview', 'Overview'],
                 ['bms', 'BMS'],
               ] as const).map(([mode, label]) => (
                 <button key={mode} onClick={() => { setInspectorMode(mode); if (mode !== 'floor' && mode !== 'device') { setSelectedDevice(null); } }}
-                  className={clsx("px-2.5 py-1 rounded-md text-xs font-medium transition-all",
+                  className={clsx("px-2 py-1 rounded-md text-xs font-medium transition-all",
                     inspectorMode === mode ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
                   )}>
                   {label}
@@ -710,7 +710,7 @@ export function BIMTwins() {
               ))}
             </div>
 
-            <div className="h-5 w-px bg-slate-200" />
+            <div className="hidden xl:block h-5 w-px bg-slate-200" />
 
             {/* Mobile inspector toggle */}
             <button
@@ -906,9 +906,9 @@ export function BIMTwins() {
 
           {/* ═══ Right Inspector Panel ═══ */}
           <div className={clsx(
-            "border-l border-slate-200 bg-white shrink-0 overflow-y-auto transition-all duration-300",
-            isFullscreen ? "w-80" :
-            "w-72",
+            "border-l border-slate-200 bg-white shrink-0 overflow-y-auto overflow-x-hidden transition-all duration-300",
+            isFullscreen ? "w-72 xl:w-80" :
+            "w-64 xl:w-72",
             // Desktop: always visible on xl
             !isFullscreen && "hidden xl:block",
           )}>
@@ -919,55 +919,55 @@ export function BIMTwins() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}
                 transition={{ duration: 0.2 }}
-                className="p-4"
+                className="p-3 min-w-0 overflow-hidden"
               >
                 {/* === OVERVIEW MODE === */}
                 {inspectorMode === 'overview' && propertyDetails && (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     <div>
-                      <h3 className="text-base font-bold text-slate-900">Property Overview</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">Real-time status summary</p>
+                      <h3 className="text-sm font-bold text-slate-900">Property Overview</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Real-time status summary</p>
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-center">
-                        <p className="text-xs text-blue-600 font-medium">Total Devices</p>
-                        <p className="text-xl font-bold text-blue-700">{propertyDetails.deviceCount}</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="rounded-lg bg-blue-50 border border-blue-100 p-2 text-center">
+                        <p className="text-[10px] text-blue-600 font-medium">Total Devices</p>
+                        <p className="text-lg font-bold text-blue-700">{propertyDetails.deviceCount}</p>
                       </div>
-                      <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-center">
-                        <p className="text-xs text-emerald-600 font-medium">Online</p>
-                        <p className="text-xl font-bold text-emerald-700">{propertyDetails.onlineDevices}</p>
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2 text-center">
+                        <p className="text-[10px] text-emerald-600 font-medium">Online</p>
+                        <p className="text-lg font-bold text-emerald-700">{propertyDetails.onlineDevices}</p>
                       </div>
-                      <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 text-center">
-                        <p className="text-xs text-amber-600 font-medium">Warnings</p>
-                        <p className="text-xl font-bold text-amber-700">{propertyDetails.warningDevices}</p>
+                      <div className="rounded-lg bg-amber-50 border border-amber-100 p-2 text-center">
+                        <p className="text-[10px] text-amber-600 font-medium">Warnings</p>
+                        <p className="text-lg font-bold text-amber-700">{propertyDetails.warningDevices}</p>
                       </div>
-                      <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
-                        <p className="text-xs text-slate-500 font-medium">Tables</p>
-                        <p className="text-xl font-bold text-slate-700">{TABLE_ZONES.length}</p>
+                      <div className="rounded-lg bg-slate-50 border border-slate-100 p-2 text-center">
+                        <p className="text-[10px] text-slate-500 font-medium">Tables</p>
+                        <p className="text-lg font-bold text-slate-700">{TABLE_ZONES.length}</p>
                       </div>
                     </div>
 
                     {/* Table Zones — Floor 17 */}
                     <div>
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Floor 17 — Table Zones</p>
-                      <div className="space-y-1.5">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Floor 17 — Table Zones</p>
+                      <div className="space-y-1">
                         {TABLE_ZONES.map((zone) => {
                           const count = tableDeviceCounts[zone.id] || { total: 0, warning: 0 };
                           return (
                             <button key={zone.id} onClick={() => handleTableClick(zone.id)}
                               className={clsx(
-                                "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all text-sm",
+                                "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-all text-xs",
                                 selectedTable === zone.id ? "border" : "hover:bg-slate-50"
                               )}
                               style={selectedTable === zone.id ? { backgroundColor: zone.color + '10', borderColor: zone.color + '40' } : {}}>
-                              <span className="flex items-center gap-2">
-                                <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: zone.color }} />
-                                <span className={clsx("font-medium", selectedTable === zone.id ? "text-slate-900" : "text-slate-700")}>{zone.label}</span>
+                              <span className="flex items-center gap-1.5 min-w-0">
+                                <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
+                                <span className={clsx("font-medium truncate", selectedTable === zone.id ? "text-slate-900" : "text-slate-700")}>{zone.label}</span>
                               </span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-slate-400 font-mono">{count.total}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-slate-400 font-mono text-xs">{count.total}</span>
                                 {count.warning > 0 && (
                                   <span className="h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xs font-bold">
                                     {count.warning}
@@ -1051,9 +1051,9 @@ export function BIMTwins() {
                     )}
 
                     <button onClick={() => setInspectorMode('bms')}
-                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 text-sm font-medium text-indigo-700 hover:from-indigo-100 hover:to-blue-100 transition-all">
-                      <span className="flex items-center gap-2"><Zap className="h-4 w-4" /> View BMS Systems</span>
-                      <ArrowRight className="h-4 w-4" />
+                      className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 text-xs font-medium text-indigo-700 hover:from-indigo-100 hover:to-blue-100 transition-all">
+                      <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> View BMS</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 )}
@@ -1189,7 +1189,7 @@ export function BIMTwins() {
           {/* ═══ Mobile Inspector Panel (slide-in from right) ═══ */}
           {showMobileInspector && (
             <div className={clsx(
-              "fixed inset-y-0 right-0 z-40 w-80 max-w-[85vw] border-l border-slate-200 bg-white overflow-y-auto xl:hidden",
+              "fixed inset-y-0 right-0 z-40 w-72 max-w-[85vw] border-l border-slate-200 bg-white overflow-y-auto overflow-x-hidden xl:hidden",
               "animate-in slide-in-from-right duration-300"
             )}>
               <div className="flex items-center justify-between p-3 border-b border-slate-100">
@@ -1198,36 +1198,36 @@ export function BIMTwins() {
                   <Minimize2 className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <div className="p-4">
+              <div className="p-3 min-w-0 overflow-hidden">
                 {/* Reuse same inspector content */}
                 {inspectorMode === 'overview' && propertyDetails && (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     <div>
-                      <h3 className="text-base font-bold text-slate-900">Property Overview</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">Real-time status summary</p>
+                      <h3 className="text-sm font-bold text-slate-900">Property Overview</h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Real-time status summary</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-center">
-                        <p className="text-xs text-blue-600 font-medium">Total Devices</p>
-                        <p className="text-xl font-bold text-blue-700">{propertyDetails.deviceCount}</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div className="rounded-lg bg-blue-50 border border-blue-100 p-2 text-center">
+                        <p className="text-[10px] text-blue-600 font-medium">Total Devices</p>
+                        <p className="text-lg font-bold text-blue-700">{propertyDetails.deviceCount}</p>
                       </div>
-                      <div className="rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-center">
-                        <p className="text-xs text-emerald-600 font-medium">Online</p>
-                        <p className="text-xl font-bold text-emerald-700">{propertyDetails.onlineDevices}</p>
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2 text-center">
+                        <p className="text-[10px] text-emerald-600 font-medium">Online</p>
+                        <p className="text-lg font-bold text-emerald-700">{propertyDetails.onlineDevices}</p>
                       </div>
-                      <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 text-center">
-                        <p className="text-xs text-amber-600 font-medium">Warnings</p>
-                        <p className="text-xl font-bold text-amber-700">{propertyDetails.warningDevices}</p>
+                      <div className="rounded-lg bg-amber-50 border border-amber-100 p-2 text-center">
+                        <p className="text-[10px] text-amber-600 font-medium">Warnings</p>
+                        <p className="text-lg font-bold text-amber-700">{propertyDetails.warningDevices}</p>
                       </div>
-                      <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-center">
-                        <p className="text-xs text-slate-500 font-medium">Tables</p>
-                        <p className="text-xl font-bold text-slate-700">{TABLE_ZONES.length}</p>
+                      <div className="rounded-lg bg-slate-50 border border-slate-100 p-2 text-center">
+                        <p className="text-[10px] text-slate-500 font-medium">Tables</p>
+                        <p className="text-lg font-bold text-slate-700">{TABLE_ZONES.length}</p>
                       </div>
                     </div>
                     <button onClick={() => { setInspectorMode('bms'); }}
-                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 text-sm font-medium text-indigo-700">
-                      <span className="flex items-center gap-2"><Zap className="h-4 w-4" /> View BMS</span>
-                      <ArrowRight className="h-4 w-4" />
+                      className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 text-xs font-medium text-indigo-700">
+                      <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> View BMS</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 )}
@@ -1258,7 +1258,7 @@ export function BIMTwins() {
                 {inspectorMode === 'bms' && selectedProperty && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-base font-bold text-slate-900">BMS Systems</h3>
+                      <h3 className="text-sm font-bold text-slate-900">BMS Systems</h3>
                       <button onClick={() => setInspectorMode('overview')} className="text-xs text-blue-600 font-medium hover:underline">← Back</button>
                     </div>
                     <BMSPanel propertyName={selectedProperty.name} />
