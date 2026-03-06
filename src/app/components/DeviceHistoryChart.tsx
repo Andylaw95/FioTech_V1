@@ -182,7 +182,7 @@ function MetricChart({ data, metric, period = '24h' }: { data: DeviceHistoryPoin
   const pad = Math.max((maxV - minV) * 0.15, 1);
   const domain = metric.domain || [Math.floor(minV - pad), Math.ceil(maxV + pad)];
   const chartType = metric.chartType || 'area';
-  const isLongPeriod = period === '7d' || period === '30d';
+  const isLongPeriod = period === '3d' || period === '7d' || period === '30d';
 
   // Format time labels in the browser's LOCAL timezone
   const chartData = data

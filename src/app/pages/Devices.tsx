@@ -593,7 +593,7 @@ export function Devices() {
                           <div className="mb-4 flex items-center justify-between">
                             <h4 className="font-semibold text-slate-900">Historical Data - {device.name}</h4>
                             <div className="flex rounded-lg bg-slate-100 p-1">
-                              {(['24h', '7d', '30d'] as const).map((p) => (
+                              {(['24h', '3d'] as const).map((p) => (
                                 <button
                                   key={p}
                                   onClick={() => setHistoryPeriod(p)}

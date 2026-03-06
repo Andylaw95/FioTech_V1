@@ -1316,7 +1316,7 @@ export const api = {
   getSensorData: (limit = 50): Promise<SensorDataResponse> =>
     fetchWithAuth(`/sensor-data?limit=${limit}`),
 
-  // Per-device historical data (supports period: 24h, 7d, 30d)
+  // Per-device historical data (supports period: 24h, 3d)
   getDeviceHistory: (devEui: string, period = '24h'): Promise<DeviceHistoryResponse> =>
     fetchWithAuth(`/device-history/${encodeURIComponent(devEui)}?period=${period}`),
 

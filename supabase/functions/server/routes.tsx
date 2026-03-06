@@ -2648,6 +2648,10 @@ export function registerRoutes(app: any) {
         let sensorData: any[] = [];
         try { const existing = await kvGetWithRetry(sdKey); if (Array.isArray(existing)) sensorData = existing; } catch { /* start fresh */ }
         sensorData.unshift(entry);
+        // Prune entries older than 3 days to save KV storage
+        const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+        const pruneCutoff = Date.now() - THREE_DAYS;
+        sensorData = sensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneCutoff);
         if (sensorData.length > 500) sensorData = sensorData.slice(0, 500);
         await kvSetWithRetry(sdKey, sensorData);
       } else {
@@ -2931,6 +2935,10 @@ export function registerRoutes(app: any) {
             let cSensorData: any[] = [];
             try { const ex = await kvGetWithRetry(cSdKey); if (Array.isArray(ex)) cSensorData = ex; } catch { /* start fresh */ }
             cSensorData.unshift({ ...entry, id: `SD${Date.now()}_c_${Math.random().toString(36).slice(2, 6)}` });
+            // Prune entries older than 3 days to save KV storage
+            const C_THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+            const cPruneCutoff = Date.now() - C_THREE_DAYS;
+            cSensorData = cSensorData.filter((e: any) => new Date(e.receivedAt).getTime() > cPruneCutoff);
             if (cSensorData.length > 500) cSensorData = cSensorData.slice(0, 500);
             await kvSetWithRetry(cSdKey, cSensorData);
 
@@ -3128,11 +3136,11 @@ export function registerRoutes(app: any) {
       const devEui = sanitizeString(c.req.param("devEui"), 50).toLowerCase();
       if (!devEui) return c.json({ error: "devEui is required." }, 400);
 
-      // Support period query param: 24h (default), 7d, 30d
+      // Support period query param: 24h (default) or 3d (max stored)
       const periodParam = (c.req.query("period") || "24h").toLowerCase();
-      const periodHours: Record<string, number> = { "12h": 12, "24h": 24, "48h": 48, "7d": 7 * 24, "30d": 30 * 24 };
+      const periodHours: Record<string, number> = { "12h": 12, "24h": 24, "48h": 48, "3d": 72 };
       const hours = periodHours[periodParam] || 24;
-      const maxPoints: Record<string, number> = { "12h": 48, "24h": 96, "48h": 96, "7d": 168, "30d": 360 };
+      const maxPoints: Record<string, number> = { "12h": 48, "24h": 96, "48h": 96, "3d": 144 };
       const maxPts = maxPoints[periodParam] || 96;
 
       const sdKey = `sensor_data_${userId}`;
