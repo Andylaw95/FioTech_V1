@@ -518,11 +518,28 @@ async function getGatewaysWithLiveStatus(userId: string): Promise<any[]> {
 }
 
 function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, string>): any[] {
+  const now = Date.now();
+  const STALE_OFFLINE = 60 * 60 * 1000; // 1 hour without uplink → offline
+  const STALE_WARNING = 30 * 60 * 1000; // 30 min without uplink → warning
+
   return devices.map((d: any) => {
     let status = d.status || "online";
     let lastUpdate = d.lastUpdate;
 
-    // Battery-based status derivation
+    // Staleness-based status: if no uplink for a while, mark offline/warning
+    if (d.lastSeen) {
+      const age = now - new Date(d.lastSeen).getTime();
+      if (age > STALE_OFFLINE) {
+        status = "offline";
+        const hrs = Math.round(age / (60 * 60 * 1000));
+        lastUpdate = hrs >= 24 ? `Offline ${Math.round(hrs / 24)}d ago` : `Offline ${hrs}h ago`;
+      } else if (age > STALE_WARNING && status === "online") {
+        status = "warning";
+        lastUpdate = `Last seen ${Math.round(age / (60 * 1000))}m ago`;
+      }
+    }
+
+    // Battery-based status derivation (can worsen status further)
     const bat = typeof d.battery === "number" ? d.battery : 100;
     if (bat === 0) {
       status = "offline";
