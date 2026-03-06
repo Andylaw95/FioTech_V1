@@ -19,7 +19,7 @@ const ThemeContext = createContext<ThemeContextValue>({
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     try {
-      const stored = localStorage.getItem('fiotech-theme');
+      const stored = localStorage.getItem('fiotec-theme');
       if (stored === 'dark' || stored === 'light') return stored;
     } catch {}
     return 'light';
@@ -33,7 +33,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.remove('dark');
     }
     try {
-      localStorage.setItem('fiotech-theme', theme);
+      localStorage.setItem('fiotec-theme', theme);
     } catch {}
   }, [theme]);
 

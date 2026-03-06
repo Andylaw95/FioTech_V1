@@ -272,7 +272,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const demoLogin = useCallback(() => {
     setApiDemoMode(true);
-    setUser({ id: 'demo-user', email: 'demo@fiotech.io', name: 'Demo User' });
+    setUser({ id: 'demo-user', email: 'demo@fiotec.io', name: 'Demo User' });
     setAccessToken('demo-token');
     setIsDemoMode(true);
     setLoading(false);

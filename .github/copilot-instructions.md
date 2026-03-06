@@ -63,8 +63,8 @@ This project is managed by a virtual AI team. Each role has specific responsibil
 **Protocols**:
 - Run `npm run build` after EVERY code change
 - Check for TypeScript errors before deploying
-- Test accounts: demo@fiotech.io / [REDACTED], testing@fiotech.io / [REDACTED]
-- Master admin: master@fiotech.io / [REDACTED]
+- Test accounts: demo@fiotec.io / [REDACTED], testing@fiotec.io / [REDACTED]
+- Master admin: master@fiotec.io / [REDACTED]
 - Verify responsive at 375px (mobile), 768px (tablet), 1024px+ (desktop)
 - Check dark mode compatibility when modifying theme-aware components
 
@@ -74,14 +74,14 @@ This project is managed by a virtual AI team. Each role has specific responsibil
 
 **Frontend deployment:**
 ```bash
-cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTech"
+cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTec"
 npm run build && npx vercel --prod
 ```
 
 **Backend deployment:**
 ```bash
 # Step 1: Copy edited server files to deploy directory
-cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTech"
+cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTec"
 cp supabase/functions/server/routes.tsx supabase/functions/make-server-4916a0b9/routes.tsx
 cp supabase/functions/server/index.tsx supabase/functions/make-server-4916a0b9/index.ts
 cp supabase/functions/server/seed_data.tsx supabase/functions/make-server-4916a0b9/seed_data.tsx
@@ -182,7 +182,7 @@ Use format: `Phase N: Short description of what was done`
 | Supabase Anon Key | `eyJhbGciOiJIUzI1NiIs...` (see AI_TEAM_HANDOFF.md) |
 | Supabase Access Token | `[REDACTED — see .env.local or 1Password]` |
 | Vercel Production | https://fiotech-app.vercel.app |
-| Master Login | `master@fiotech.io` / `[REDACTED]` |
+| Master Login | `master@fiotec.io` / `[REDACTED]` |
 
 ---
 

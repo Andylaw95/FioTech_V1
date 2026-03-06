@@ -68,8 +68,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       if (detail?.role) setProfileRole(detail.role);
       if (detail?.avatar !== undefined) setProfileAvatar(detail.avatar || '');
     };
-    window.addEventListener('fiotech-profile-update', handler);
-    return () => window.removeEventListener('fiotech-profile-update', handler);
+    window.addEventListener('fiotec-profile-update', handler);
+    return () => window.removeEventListener('fiotec-profile-update', handler);
   }, []);
 
   return (

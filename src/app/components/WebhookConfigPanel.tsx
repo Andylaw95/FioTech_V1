@@ -168,7 +168,7 @@ export function WebhookConfigPanel() {
             </div>
             <h4 className="text-sm font-medium text-slate-900 mb-1">No webhook token configured</h4>
             <p className="text-xs text-slate-500 mb-4 max-w-sm mx-auto">
-              Generate a webhook token to allow your gateway to push sensor data directly to FioTech.
+              Generate a webhook token to allow your gateway to push sensor data directly to FioTec.
             </p>
             <Button
               onClick={handleGenerate}
@@ -384,7 +384,7 @@ export function WebhookConfigPanel() {
                       Open your UG65/UG67 admin panel (default: <code className="bg-violet-100 px-1 py-0.5 rounded text-[10px]">192.168.23.150</code>).
                       Navigate to{' '}
                       <strong>Network Server</strong> <ArrowRight className="inline h-3 w-3 -mt-0.5" />{' '}
-                      <strong>Applications</strong>. Create a new application or open an existing one (e.g. "FioTech").
+                      <strong>Applications</strong>. Create a new application or open an existing one (e.g. "FioTec").
                       Add your LoRaWAN end-devices (sensors) to this application if not already added.
                     </div>
                   </div>
@@ -396,7 +396,7 @@ export function WebhookConfigPanel() {
                       In the application settings, find <strong>Payload Codec</strong>.
                       Select a built-in codec for your Milesight end-device model (e.g. <em>AM307</em>, <em>EM300</em>,{' '}
                       <em>VS121</em>, etc.). This enables the gateway to decode raw LoRaWAN frames into
-                      human-readable JSON objects (temperature, humidity, CO2, etc.) before forwarding to FioTech.
+                      human-readable JSON objects (temperature, humidity, CO2, etc.) before forwarding to FioTec.
                       If set to <strong>"None"</strong>, only raw Base64 data will be sent.
                     </div>
                   </div>
@@ -487,7 +487,7 @@ export function WebhookConfigPanel() {
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-200 text-violet-800 text-[10px] font-bold shrink-0 mt-0.5">5</span>
                     <div className="text-xs text-violet-800">
                       Click <strong>Save &amp; Apply</strong> at the bottom of the page. The gateway will now
-                      POST uplink data to FioTech whenever a registered device transmits.
+                      POST uplink data to FioTec whenever a registered device transmits.
                     </div>
                   </div>
 
@@ -509,7 +509,7 @@ export function WebhookConfigPanel() {
                   <div className="text-[11px] text-amber-800 space-y-1">
                     <p className="font-semibold">Payload Codec note</p>
                     <p>
-                      Without a codec, FioTech will only receive raw Base64-encoded data in each uplink.
+                      Without a codec, FioTec will only receive raw Base64-encoded data in each uplink.
                       To get decoded sensor values (e.g. <code className="bg-amber-100 px-0.5 rounded">temperature: 25.5</code>,{' '}
                       <code className="bg-amber-100 px-0.5 rounded">smoke_status: 0</code>), select a
                       built-in codec matching your end-device model in the Application's Payload Codec dropdown,
@@ -554,7 +554,7 @@ export function WebhookConfigPanel() {
 
                 {/* Success note */}
                 <p className="text-[11px] text-violet-600 border-t border-violet-100 pt-3">
-                  Once configured, every uplink from devices in this application will be pushed to FioTech.
+                  Once configured, every uplink from devices in this application will be pushed to FioTec.
                   The parent gateway's heartbeat and signal strength will auto-update using the RSSI from each uplink
                   (formula: signal% = 2 &times; (dBm + 100), clamped 0-100).
                 </p>

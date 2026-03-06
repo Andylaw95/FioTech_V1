@@ -10,7 +10,7 @@ Purpose: Full coding context & AI interaction history for VS Code continuation
 # 1. PROJECT OVERVIEW
 ################################################################################
 
-FioTech is a minimalist IoT property management dashboard built with:
+FioTec is a minimalist IoT property management dashboard built with:
   - Frontend: React 18 + Tailwind CSS v4 + Motion (framer-motion successor)
   - Backend: Supabase Edge Function running Hono web server (Deno runtime)
   - Database: Supabase Postgres via a KV store abstraction (kv_store_4916a0b9 table)
@@ -67,13 +67,13 @@ SOLUTION — Two-phase boot:
     - If import fails, sets routeLoadError for debugging
 
   Expected boot log sequence:
-    [FioTech Server] Boot: module loading...
-    [FioTech Server] Boot: starting Deno.serve()...
-    [FioTech Server] Loading routes...
-    [FioTech Routes] Supabase client created
-    [FioTech Routes] Schema cache warm after N attempt(s)
-    [FioTech Routes] All route handlers registered.
-    [FioTech Server] All routes loaded and ready.
+    [FioTec Server] Boot: module loading...
+    [FioTec Server] Boot: starting Deno.serve()...
+    [FioTec Server] Loading routes...
+    [FioTec Routes] Supabase client created
+    [FioTec Routes] Schema cache warm after N attempt(s)
+    [FioTec Routes] All route handlers registered.
+    [FioTec Server] All routes loaded and ready.
 
   If you see "CRITICAL: Failed to load routes" — it means routes.tsx has a
   syntax/import error. Debug by checking the routeLoadError in /health response.
@@ -300,8 +300,8 @@ AWS IOT CORE (auth required — lazy-loaded from aws_routes.tsx):
   PUT    /aws/things/:name/shadow       # Update Device Shadow (desired state)
   POST   /aws/publish                   # Publish MQTT message to IoT Core
   GET    /aws/telemetry                 # Query DynamoDB (?deviceId=&hours=24&limit=50)
-  POST   /aws/sync-devices             # Sync AWS Things → FioTech devices
-  POST   /aws/push-telemetry           # Push FioTech sensor data → AWS IoT Core
+  POST   /aws/sync-devices             # Sync AWS Things → FioTec devices
+  POST   /aws/push-telemetry           # Push FioTec sensor data → AWS IoT Core
 
 
 ################################################################################
@@ -336,9 +336,9 @@ Entity shapes (TypeScript interfaces in api.ts):
 
   "standard" — Default. Seeds with 4 properties, 9 devices, 4 gateways, 6 alarms.
   "demo"     — Rich demo data: 8 properties, 25 devices, 8 gateways, 10+ alarms.
-               Simulates gateway heartbeats. Quick login: demo@fiotech.io (offline demo mode)
+               Simulates gateway heartbeats. Quick login: demo@fiotec.io (offline demo mode)
   "testing"  — Empty data. For testing clean-slate scenarios.
-               Quick login: testing@fiotech.io (server-side OTP, no password in frontend)
+               Quick login: testing@fiotec.io (server-side OTP, no password in frontend)
 
 
 ################################################################################
@@ -498,8 +498,8 @@ Entity shapes (TypeScript interfaces in api.ts):
        PUT  /aws/things/:name/shadow — Update Shadow (desired state)
        POST /aws/publish           — Publish MQTT message
        GET  /aws/telemetry         — Query DynamoDB
-       POST /aws/sync-devices      — Sync Things → FioTech devices
-       POST /aws/push-telemetry    — Push FioTech data → AWS
+       POST /aws/sync-devices      — Sync Things → FioTec devices
+       POST /aws/push-telemetry    — Push FioTec data → AWS
 
   3. ProfileProvider delay: Initial settings fetch is delayed 15s to avoid competing
      with the dashboard's sequential data waterfall. This is intentional but means
@@ -648,7 +648,7 @@ Entity shapes (TypeScript interfaces in api.ts):
     - 11 new API routes under /aws/* prefix
     - Frontend: AWSConfigPanel.tsx + Settings «AWS Cloud» tab
     - User-specific config in KV (iot endpoint, dynamo table, etc.)
-    - Device sync: Import AWS Things as FioTech devices
+    - Device sync: Import AWS Things as FioTec devices
     - Shadow control: Read/write device shadows for bidirectional control
     - MQTT publish: Send commands via IoT Core MQTT broker
     - DynamoDB: Query historical telemetry

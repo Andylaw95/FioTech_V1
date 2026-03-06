@@ -28,7 +28,7 @@ The application has **solid fundamentals** — input sanitization, rate limiting
 **File**: `src/app/pages/Login.tsx` line 59  
 **Code**:
 ```ts
-const credentials = { email: 'testing@fiotech.io', password: 'testing123456', name: 'Test Engineer' };
+const credentials = { email: 'testing@fiotec.io', password: 'testing123456', name: 'Test Engineer' };
 ```
 
 **Risk**: The testing account credentials are compiled into the production JavaScript bundle. Anyone who opens DevTools can extract them. Since the testing account is a real Supabase Auth account with full write access, an attacker can:
@@ -108,7 +108,7 @@ cors({
 - `PUT /admin/users/:id` — admin can set any user's password without confirmation
 - `DELETE /admin/users/:id` — admin can delete any user
 
-While these are admin-only (protected by `requireAdmin`), the admin check is **email-based** (`MASTER_EMAILS.has(email)`). If an attacker gains access to `master@fiotech.io`, they have god-mode access to all user data.
+While these are admin-only (protected by `requireAdmin`), the admin check is **email-based** (`MASTER_EMAILS.has(email)`). If an attacker gains access to `master@fiotec.io`, they have god-mode access to all user data.
 
 **Fix**:
 1. Implement MFA for the master account
@@ -157,7 +157,7 @@ if (body.password) {
 
 **File**: `src/app/utils/AuthContext.tsx` line 9  
 ```ts
-const MASTER_EMAILS = new Set(["master@fiotech.io"]);
+const MASTER_EMAILS = new Set(["master@fiotec.io"]);
 ```
 
 **File**: `src/app/App.tsx` — Route for `/admin` likely uses `isAdmin` from context.  

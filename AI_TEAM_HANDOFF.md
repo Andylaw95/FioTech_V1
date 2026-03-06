@@ -10,7 +10,7 @@
 
 | Key | Value |
 |-----|-------|
-| **App Name** | FioTec (originally FioTech, rebranded) |
+| **App Name** | FioTec (originally FioTec, rebranded) |
 | **Type** | IoT Property Management Dashboard |
 | **Live URL** | https://fiotech-app.vercel.app |
 | **Frontend** | React 18.3.1 + Tailwind CSS v4 + Vite 6.3.5 |
@@ -18,10 +18,10 @@
 | **Supabase Project** | `wjvbojulgpmpblmterfy` |
 | **Supabase Anon Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqdmJvanVsZ3BtcGJsbXRlcmZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzOTIzNjYsImV4cCI6MjA4NTk2ODM2Nn0.HQk9BJqz4Qna3qkarsGVLuCCHlGg3iKONBqCzH2yhKI` |
 | **Supabase Access Token** | `[REDACTED — see .env.local or 1Password]` |
-| **Master Account** | `master@fiotech.io` / `[REDACTED]` |
-| **Demo Account** | `demo@fiotech.io` / `[REDACTED]` |
-| **Testing Account** | `testing@fiotech.io` / `[REDACTED]` |
-| **Workspace Path** | `/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTech` |
+| **Master Account** | `master@fiotec.io` / `[REDACTED]` |
+| **Demo Account** | `demo@fiotec.io` / `[REDACTED]` |
+| **Testing Account** | `testing@fiotec.io` / `[REDACTED]` |
+| **Workspace Path** | `/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTec` |
 
 ---
 
@@ -29,7 +29,7 @@
 
 ### Frontend (Vercel)
 ```bash
-cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTech"
+cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTec"
 npm run build
 npx vercel --prod
 ```
@@ -43,7 +43,7 @@ npx vercel --prod
 
 **You MUST copy server → make-server before deploying:**
 ```bash
-cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTech"
+cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTec"
 cp supabase/functions/server/routes.tsx supabase/functions/make-server-4916a0b9/routes.tsx
 cp supabase/functions/server/index.tsx supabase/functions/make-server-4916a0b9/index.ts
 cp supabase/functions/server/seed_data.tsx supabase/functions/make-server-4916a0b9/seed_data.tsx
@@ -92,7 +92,7 @@ npx -y supabase@2.76.14 functions deploy make-server-4916a0b9 --project-ref wjvb
 
 ### Phase 6: Logo & Branding Changes (2026-02-23)
 - **What**: Multiple rounds of logo updates
-- **Rebranding**: FioTech → FioTec (throughout entire codebase)
+- **Rebranding**: FioTec → FioTec (throughout entire codebase)
 - **Logo files**: `src/assets/fiotech-logo.png`, `src/assets/fiotech-applogo.png`
 - **Status**: ✅ Complete
 
@@ -107,8 +107,8 @@ npx -y supabase@2.76.14 functions deploy make-server-4916a0b9 --project-ref wjvb
 - **Status**: ✅ Complete & deployed
 
 ### Phase 9: System Master Admin Account (2026-02-23)
-- **What**: Implemented `master@fiotech.io` as system master admin
-- **Credentials**: `master@fiotech.io` / `[REDACTED]`
+- **What**: Implemented `master@fiotec.io` as system master admin
+- **Credentials**: `master@fiotec.io` / `[REDACTED]`
 - **Status**: ✅ Complete
 
 ### Phase 10: Performance Optimization (2026-02-23)
@@ -178,9 +178,9 @@ Supabase Postgres (KV store table: kv_store_4916a0b9)
 | Type | Seed Data | Login |
 |------|-----------|-------|
 | standard | 4 properties, 9 devices, 4 gateways | Regular signup |
-| demo | 8 properties, 25 devices, 8 gateways | `demo@fiotech.io` / `[REDACTED]` |
-| testing | Empty (clean slate) | `testing@fiotech.io` / `[REDACTED]` |
-| master | Full admin | `master@fiotech.io` / `[REDACTED]` |
+| demo | 8 properties, 25 devices, 8 gateways | `demo@fiotec.io` / `[REDACTED]` |
+| testing | Empty (clean slate) | `testing@fiotec.io` / `[REDACTED]` |
+| master | Full admin | `master@fiotec.io` / `[REDACTED]` |
 
 ---
 
@@ -225,7 +225,7 @@ Supabase Postgres (KV store table: kv_store_4916a0b9)
 
 ### Build & Deploy Frontend
 ```bash
-cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTech"
+cd "/Users/lawmingfung/Library/CloudStorage/OneDrive-Personal/FSE Life style/FioTech_V1/FioTec"
 npm run build && npx vercel --prod
 ```
 

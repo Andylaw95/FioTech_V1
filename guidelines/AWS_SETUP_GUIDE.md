@@ -2,9 +2,9 @@
 
 ## Overview
 
-FioTech integrates with AWS IoT Core for **bidirectional** device management:
-- **AWS → FioTech**: Import IoT Things, read Device Shadows, query DynamoDB telemetry
-- **FioTech → AWS**: Update Device Shadows (desired state), publish MQTT messages, push telemetry
+FioTec integrates with AWS IoT Core for **bidirectional** device management:
+- **AWS → FioTec**: Import IoT Things, read Device Shadows, query DynamoDB telemetry
+- **FioTec → AWS**: Update Device Shadows (desired state), publish MQTT messages, push telemetry
 
 ---
 
@@ -20,7 +20,7 @@ FioTech integrates with AWS IoT Core for **bidirectional** device management:
 ## Step 1: Create IAM User
 
 1. Open **AWS Console → IAM → Users → Create User**
-2. Name: `fiotech-iot-integration`
+2. Name: `fiotec-iot-integration`
 3. Access type: **Programmatic access** (Access Key)
 4. Attach the following **custom policy**:
 
@@ -103,9 +103,9 @@ This returns something like:
 
 ---
 
-## Step 5: Configure in FioTech
+## Step 5: Configure in FioTec
 
-1. Open **FioTech → Settings → AWS Cloud**
+1. Open **FioTec → Settings → AWS Cloud**
 2. Set the **AWS Region** (must match your IoT Core region)
 3. Paste the **IoT Core Data Endpoint** from Step 4
 4. (Optional) Enter your **DynamoDB table name** and key schema
@@ -118,7 +118,7 @@ This returns something like:
 ## Step 6: Sync Devices
 
 1. In the AWS Cloud settings page, click **Sync Now**
-2. AWS IoT Things will be imported as FioTech devices
+2. AWS IoT Things will be imported as FioTec devices
 3. Existing matches (by name) are updated; new things are created
 4. Synced devices show `source: "aws-iot-core"` in their data
 
@@ -137,14 +137,14 @@ This returns something like:
 | `PUT` | `/aws/things/:name/shadow` | Update Device Shadow (desired state) |
 | `POST` | `/aws/publish` | Publish MQTT message |
 | `GET` | `/aws/telemetry` | Query DynamoDB telemetry |
-| `POST` | `/aws/sync-devices` | Sync Things → FioTech devices |
-| `POST` | `/aws/push-telemetry` | Push FioTech data → AWS IoT Core |
+| `POST` | `/aws/sync-devices` | Sync Things → FioTec devices |
+| `POST` | `/aws/push-telemetry` | Push FioTec data → AWS IoT Core |
 
 ---
 
 ## DynamoDB Table Schema (Expected)
 
-FioTech expects a DynamoDB table with:
+FioTec expects a DynamoDB table with:
 - **Partition Key**: Device identifier (default key name: `deviceId`)
 - **Sort Key**: Timestamp (default key name: `timestamp`)
 

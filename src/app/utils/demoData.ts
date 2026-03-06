@@ -164,7 +164,7 @@ export const DEMO_NOTIFICATIONS = {
 // ── Settings ─────────────────────────────────────────────
 
 export const DEMO_SETTINGS = {
-  profile: { name: "Demo User", email: "demo@fiotech.io", role: "Admin", company: "FioTec Demo", phone: "+1 (555) 000-0000" },
+  profile: { name: "Demo User", email: "demo@fiotec.io", role: "Admin", company: "FioTec Demo", phone: "+1 (555) 000-0000" },
   notifications: {
     emailAlerts: true, smsAlerts: false, pushNotifications: true,
     alertTypes: { waterLeak: true, smoke: true, deviceOffline: true, highHumidity: false, temperature: false },
@@ -445,7 +445,7 @@ export async function handleDemoRequest(path: string, options: RequestInit = {})
 
   // ── Webhook Config ────────────────────────────────────
   if (path === "/webhook-config" && method === "GET") return DEMO_WEBHOOK_CONFIG;
-  if (path === "/webhook-config" && method === "POST") return { ...DEMO_WEBHOOK_CONFIG, token: "demo-webhook-token", hasToken: true, webhookUrl: "https://demo.fiotech.io/webhook/demo-webhook-token" };
+  if (path === "/webhook-config" && method === "POST") return { ...DEMO_WEBHOOK_CONFIG, token: "demo-webhook-token", hasToken: true, webhookUrl: "https://demo.fiotec.io/webhook/demo-webhook-token" };
   if (path === "/webhook-test" && method === "POST") return { success: true, latencyMs: 42, entryId: null };
 
   // ── Sensor Data ───────────────────────────────────────
@@ -464,7 +464,7 @@ export async function handleDemoRequest(path: string, options: RequestInit = {})
   if (path === "/aws/config" && method === "PUT") return { success: true, config: { ...DEMO_AWS_CONFIG, ...body } };
   if (path.startsWith("/aws/things")) return { things: [], nextToken: null, total: 0 };
   if (path.startsWith("/aws/telemetry")) return { source: "demo", tableName: "", items: [], count: 0, queryParams: { deviceId: null, hoursBack: 24, limit: 50 } };
-  if (path === "/aws/sync-devices" && method === "POST") return { success: true, summary: { awsThingsFound: 0, created: 0, updated: 0, skipped: 0, totalFioTechDevices: _devices.length }, syncedAt: new Date().toISOString() };
+  if (path === "/aws/sync-devices" && method === "POST") return { success: true, summary: { awsThingsFound: 0, created: 0, updated: 0, skipped: 0, totalFioTecDevices: _devices.length }, syncedAt: new Date().toISOString() };
   if (path === "/aws/push-telemetry" && method === "POST") return { success: true, topic: "demo", entriesPushed: 0 };
   if (path === "/aws/publish" && method === "POST") return { success: true, topic: body.topic || "demo" };
 
@@ -475,10 +475,10 @@ export async function handleDemoRequest(path: string, options: RequestInit = {})
   if (path === "/admin/check") return { isAdmin: true };
   if (path === "/admin/users" && method === "GET") return {
     users: [
-      { id: "demo-user", email: "demo@fiotech.io", name: "Demo User", accountType: "demo", role: "Admin", company: "FioTec Demo", phone: "+852 0000 0000", createdAt: "2025-01-15T10:00:00Z", lastSignIn: new Date().toISOString(), emailConfirmed: true, isMaster: false },
+      { id: "demo-user", email: "demo@fiotec.io", name: "Demo User", accountType: "demo", role: "Admin", company: "FioTec Demo", phone: "+852 0000 0000", createdAt: "2025-01-15T10:00:00Z", lastSignIn: new Date().toISOString(), emailConfirmed: true, isMaster: false },
       { id: "user-001", email: "john@example.com", name: "John Smith", accountType: "standard", role: "Manager", company: "Acme Corp", phone: "+1 555 1234", createdAt: "2025-02-01T08:30:00Z", lastSignIn: "2025-06-10T14:20:00Z", emailConfirmed: true, isMaster: false },
       { id: "user-002", email: "sarah@example.com", name: "Sarah Chen", accountType: "standard", role: "Engineer", company: "TechBuild", phone: "+44 20 7946 0958", createdAt: "2025-03-10T12:00:00Z", lastSignIn: "2025-06-11T09:15:00Z", emailConfirmed: true, isMaster: false },
-      { id: "master-001", email: "master@fiotech.io", name: "System Admin", accountType: "standard", role: "Admin", company: "FioTec", phone: "+852 9876 5432", createdAt: "2025-01-01T00:00:00Z", lastSignIn: new Date().toISOString(), emailConfirmed: true, isMaster: true },
+      { id: "master-001", email: "master@fiotec.io", name: "System Admin", accountType: "standard", role: "Admin", company: "FioTec", phone: "+852 9876 5432", createdAt: "2025-01-01T00:00:00Z", lastSignIn: new Date().toISOString(), emailConfirmed: true, isMaster: true },
     ],
     total: 4, page: 1, perPage: 50,
   };
@@ -486,7 +486,7 @@ export async function handleDemoRequest(path: string, options: RequestInit = {})
   if (adminUserMatch) {
     const uid = adminUserMatch[1];
     if (method === "GET") {
-      return { id: uid, email: uid === "demo-user" ? "demo@fiotech.io" : "user@example.com", name: uid === "demo-user" ? "Demo User" : "User", accountType: "standard", role: "Manager", company: "Example Corp", phone: "+1 555 0000", profile: { name: "User", email: "user@example.com", role: "Manager", company: "Example Corp", phone: "+1 555 0000" }, notifications: null, dashboard: null, security: null, propertyCount: 3, deviceCount: 12, createdAt: "2025-02-01T08:30:00Z", lastSignIn: "2025-06-10T14:20:00Z", emailConfirmed: true, isMaster: false };
+      return { id: uid, email: uid === "demo-user" ? "demo@fiotec.io" : "user@example.com", name: uid === "demo-user" ? "Demo User" : "User", accountType: "standard", role: "Manager", company: "Example Corp", phone: "+1 555 0000", profile: { name: "User", email: "user@example.com", role: "Manager", company: "Example Corp", phone: "+1 555 0000" }, notifications: null, dashboard: null, security: null, propertyCount: 3, deviceCount: 12, createdAt: "2025-02-01T08:30:00Z", lastSignIn: "2025-06-10T14:20:00Z", emailConfirmed: true, isMaster: false };
     }
     if (method === "PUT") return { success: true, message: "User updated (demo)" };
     if (method === "DELETE") return { success: true, message: "User deleted (demo)" };

@@ -569,7 +569,7 @@ export function DigitalTwinDashboard() {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(() => {
     try {
-      return localStorage.getItem('fiotech_selected_property') || null;
+      return localStorage.getItem('fiotec_selected_property') || null;
     } catch { return null; }
   });
 
@@ -582,9 +582,9 @@ export function DigitalTwinDashboard() {
   useEffect(() => {
     try {
       if (selectedPropertyId) {
-        localStorage.setItem('fiotech_selected_property', selectedPropertyId);
+        localStorage.setItem('fiotec_selected_property', selectedPropertyId);
       } else {
-        localStorage.removeItem('fiotech_selected_property');
+        localStorage.removeItem('fiotec_selected_property');
       }
     } catch { /* localStorage unavailable */ }
   }, [selectedPropertyId]);

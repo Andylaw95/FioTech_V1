@@ -74,7 +74,7 @@ function startKeepAlive() {
     }
   });
 
-  console.log('[FioTech] Keep-alive pings started (every 15s, session-long, visibility-aware)');
+  console.log('[FioTec] Keep-alive pings started (every 15s, session-long, visibility-aware)');
 }
 
 export function stopKeepAlive() {
@@ -120,7 +120,7 @@ export function warmupServer(): Promise<'success' | 'exhausted'> {
           // endpoint is registered synchronously so if it responds, all
           // routes are available. No need to wait for consecutive pings.
           const elapsed = Date.now() - attemptStart;
-          console.log(`[FioTech] Server warm after ${attempt + 1} attempt(s) (${elapsed}ms)`);
+          console.log(`[FioTec] Server warm after ${attempt + 1} attempt(s) (${elapsed}ms)`);
           _serverWarmedUp = true;
           startKeepAlive();
           return 'success';
@@ -131,7 +131,7 @@ export function warmupServer(): Promise<'success' | 'exhausted'> {
         }
 
         // Any other response (e.g., 401, 404) means the server IS running
-        console.debug(`[FioTech] Server responded with ${response.status}, considering it warm`);
+        console.debug(`[FioTec] Server responded with ${response.status}, considering it warm`);
         _serverWarmedUp = true;
         startKeepAlive();
         return 'success';
@@ -142,7 +142,7 @@ export function warmupServer(): Promise<'success' | 'exhausted'> {
           // Health is instant once warm; the bottleneck is Supabase proxy boot.
           const delay = Math.max(800 - elapsed, 200);
           console.debug(
-            `[FioTech] Warming up server... attempt ${attempt + 1}/${MAX_ATTEMPTS} (retry in ${Math.round(delay)}ms)`,
+            `[FioTec] Warming up server... attempt ${attempt + 1}/${MAX_ATTEMPTS} (retry in ${Math.round(delay)}ms)`,
           );
           await new Promise((r) => setTimeout(r, delay));
         }
@@ -151,7 +151,7 @@ export function warmupServer(): Promise<'success' | 'exhausted'> {
 
     // Warmup exhausted — do NOT set _serverWarmedUp = true.
     // The gate will show an error/retry UI instead of flooding a cold server.
-    console.debug('[FioTech] Server warmup exhausted after 20 attempts');
+    console.debug('[FioTec] Server warmup exhausted after 20 attempts');
     return 'exhausted';
   })();
 
@@ -248,13 +248,13 @@ function singleFlightRefresh(): Promise<string | null> {
     try {
       const { data, error } = await supabase.auth.refreshSession();
       if (error || !data?.session?.access_token) {
-        console.debug('[FioTech] Token refresh failed:', error?.message ?? 'no session returned');
+        console.debug('[FioTec] Token refresh failed:', error?.message ?? 'no session returned');
         return null;
       }
       const t = data.session.access_token;
       return isJwtExpired(t, 5000) ? null : t;
     } catch (e) {
-      console.debug('[FioTech] Token refresh exception:', e);
+      console.debug('[FioTec] Token refresh exception:', e);
       return null;
     } finally {
       refreshPromise = null;
@@ -406,7 +406,7 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
 
       // ─── Handle 502/503/504 (cold start / proxy errors) ──
       if (response.status === 502 || response.status === 503 || response.status === 504) {
-        console.debug(`[FioTech] Server cold-start ${response.status} on ${method} ${path}`);
+        console.debug(`[FioTec] Server cold-start ${response.status} on ${method} ${path}`);
         // Signal mid-session cold start so subsequent 401s are treated as transient
         _lastColdStartSignal = Date.now();
         throw new ColdStartError(`Server returned ${response.status}`);
@@ -418,13 +418,13 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
           throw new Error('Session expired. Please sign in again.');
         }
 
-        console.debug(`[FioTech] API 401 ${method} ${path}: user token rejected.`);
+        console.debug(`[FioTec] API 401 ${method} ${path}: user token rejected.`);
 
         // During cold-start grace period, a 401 is likely transient
         // (backend auth service not ready) — skip the destructive
         // refresh→sign-out cascade and let the retry loop handle it.
         if (isInColdStartGrace()) {
-          console.debug(`[FioTech] 401 during cold-start grace for ${method} ${path} — treating as transient`);
+          console.debug(`[FioTec] 401 during cold-start grace for ${method} ${path} — treating as transient`);
           throw new TransientAuthError(`Transient 401 on ${method} ${path}`);
         }
 
@@ -466,7 +466,7 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
 
       // ─── Handle 429 ───────────────────────────────────────
       if (response.status === 429) {
-        console.debug(`[FioTech] Rate limited on ${method} ${path}`);
+        console.debug(`[FioTec] Rate limited on ${method} ${path}`);
         throw new Error('Too many requests. Please wait a moment.');
       }
 
@@ -538,7 +538,7 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
       return data;
     } catch (error) {
       if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        console.debug(`[FioTech] Network error fetching ${url}. CORS or connectivity issue.`);
+        console.debug(`[FioTec] Network error fetching ${url}. CORS or connectivity issue.`);
         // Network errors during an active session often signal a worker recycle
         _lastColdStartSignal = Date.now();
       }
@@ -575,7 +575,7 @@ async function fetchWithAuth(path: string, options: RequestInit = {}) {
         // of the time in <0.5s. Cap at 2s for later retries.
         const delay = Math.min(2000, 200 * Math.pow(2, attempt));
         console.debug(
-          `[FioTech] Retry ${attempt + 1}/${MAX_NETWORK_RETRIES} for ${method} ${path} — ${errorType} error, waiting ${delay}ms...`,
+          `[FioTec] Retry ${attempt + 1}/${MAX_NETWORK_RETRIES} for ${method} ${path} — ${errorType} error, waiting ${delay}ms...`,
         );
         await new Promise((r) => setTimeout(r, delay));
       }
@@ -1072,7 +1072,7 @@ export interface AWSSyncResult {
     created: number;
     updated: number;
     skipped: number;
-    totalFioTechDevices: number;
+    totalFioTecDevices: number;
   };
   syncedAt: string;
 }
@@ -1340,11 +1340,11 @@ export const api = {
   getAWSTelemetry: (deviceId?: string, hours = 24, limit = 50): Promise<AWSTelemetryResponse> =>
     fetchWithAuth(`/aws/telemetry?${deviceId ? `deviceId=${encodeURIComponent(deviceId)}&` : ''}hours=${hours}&limit=${limit}`),
 
-  // Sync AWS Things → FioTech devices
+  // Sync AWS Things → FioTec devices
   syncAWSDevices: (): Promise<AWSSyncResult> =>
     fetchWithAuth('/aws/sync-devices', { method: 'POST' }),
 
-  // Push FioTech telemetry → AWS IoT Core
+  // Push FioTec telemetry → AWS IoT Core
   pushTelemetryToAWS: (deviceName?: string, topic?: string): Promise<{ success: boolean; topic: string; entriesPushed: number }> =>
     fetchWithAuth('/aws/push-telemetry', {
       method: 'POST',

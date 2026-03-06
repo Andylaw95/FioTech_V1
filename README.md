@@ -1,7 +1,7 @@
 
-  # FioTech
+  # FioTec
 
-  This is a code bundle for FioTech. The original project is available at https://www.figma.com/design/H926dwoWHHvNNayaSNVwbX/FioTech.
+  This is a code bundle for FioTec. The original project is available at https://www.figma.com/design/H926dwoWHHvNNayaSNVwbX/FioTec.
 
   ## Running the code
 

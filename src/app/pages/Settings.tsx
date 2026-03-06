@@ -185,7 +185,7 @@ export function Settings() {
       const updated = await api.updateSettings({ profile: { ...settings!.profile, avatar: result.url } });
       setSettings(updated);
       // Broadcast to Layout header instantly
-      window.dispatchEvent(new CustomEvent('fiotech-profile-update', {
+      window.dispatchEvent(new CustomEvent('fiotec-profile-update', {
         detail: { name: updated.profile.name, role: updated.profile.role, avatar: result.url }
       }));
       toast.success('Profile photo updated');
@@ -203,7 +203,7 @@ export function Settings() {
       setSaving(true);
       const updated = await api.updateSettings({ profile: { ...settings.profile, avatar: '' } });
       setSettings(updated);
-      window.dispatchEvent(new CustomEvent('fiotech-profile-update', {
+      window.dispatchEvent(new CustomEvent('fiotec-profile-update', {
         detail: { name: updated.profile.name, role: updated.profile.role, avatar: '' }
       }));
       toast.success('Profile photo removed');
@@ -243,7 +243,7 @@ export function Settings() {
         setSettings(updated);
         // Instantly update profile name/avatar in header via context
         if (updated?.profile?.name) {
-          window.dispatchEvent(new CustomEvent('fiotech-profile-update', { 
+          window.dispatchEvent(new CustomEvent('fiotec-profile-update', { 
             detail: { name: updated.profile.name, role: updated.profile.role, avatar: updated.profile.avatar || '' } 
           }));
         }
@@ -350,7 +350,7 @@ export function Settings() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `fiotech-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `fiotec-export-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

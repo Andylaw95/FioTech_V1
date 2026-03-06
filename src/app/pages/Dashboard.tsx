@@ -311,7 +311,7 @@ export function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(() => {
     try {
-      return localStorage.getItem('fiotech_selected_property') || null;
+      return localStorage.getItem('fiotec_selected_property') || null;
     } catch { return null; }
   });
   const refreshTimerRef = useRef<number | null>(null);
@@ -328,9 +328,9 @@ export function Dashboard() {
   useEffect(() => {
     try {
       if (selectedPropertyId) {
-        localStorage.setItem('fiotech_selected_property', selectedPropertyId);
+        localStorage.setItem('fiotec_selected_property', selectedPropertyId);
       } else {
-        localStorage.removeItem('fiotech_selected_property');
+        localStorage.removeItem('fiotec_selected_property');
       }
     } catch { /* localStorage unavailable */ }
   }, [selectedPropertyId]);

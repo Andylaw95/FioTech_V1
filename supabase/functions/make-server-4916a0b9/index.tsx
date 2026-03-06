@@ -2,7 +2,7 @@ import { Hono } from "npm:hono@4";
 import { cors } from "npm:hono@4/cors";
 import { registerRoutes } from "./routes.tsx";
 
-console.log("[FioTech Server] Boot: module loading...");
+console.log("[FioTec Server] Boot: module loading...");
 
 const app = new Hono();
 
@@ -34,10 +34,10 @@ app.get("/make-server-4916a0b9/health", (c) => {
 // provide zero benefit and cause timing issues.
 try {
   registerRoutes(app);
-  console.log("[FioTech Server] All routes registered.");
+  console.log("[FioTec Server] All routes registered.");
 } catch (e) {
-  console.log("[FioTech Server] CRITICAL: Failed to register routes:", e);
+  console.log("[FioTec Server] CRITICAL: Failed to register routes:", e);
 }
 
-console.log("[FioTech Server] Boot: starting Deno.serve()...");
+console.log("[FioTec Server] Boot: starting Deno.serve()...");
 Deno.serve(app.fetch);

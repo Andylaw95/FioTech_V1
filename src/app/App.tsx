@@ -88,7 +88,7 @@ function ServerWarmupGate({ children }: { children: React.ReactNode }) {
   // The TransientAuthError + retry system in fetchWithAuth will handle
   // cold-start issues gracefully even without a prior warmup.
   const skipWarmup = React.useCallback(() => {
-    console.log('[FioTech] Warmup skipped by user');
+    console.log('[FioTec] Warmup skipped by user');
     setStatus('success');
   }, []);
 

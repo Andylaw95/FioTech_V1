@@ -8,7 +8,7 @@
  * to the user's personal channel and fires a sonner toast + alert beep immediately.
  *
  * Tracks seen alarm IDs in localStorage so refreshing the page doesn't re-toast old alarms.
- * Dispatches a 'fiotech-new-alarm' custom event when new alarms arrive, so
+ * Dispatches a 'fiotec-new-alarm' custom event when new alarms arrive, so
  * NotificationDropdown can update its badge immediately.
  */
 import { useEffect, useRef, useCallback } from 'react';
@@ -17,7 +17,7 @@ import { api, type Notification } from '@/app/utils/api';
 import { supabase } from '@/app/utils/AuthContext';
 
 // ─── Seen-ID persistence ────────────────────────────────────────
-const SEEN_KEY = 'fiotech_seen_alarm_ids';
+const SEEN_KEY = 'fiotec_seen_alarm_ids';
 
 function loadSeenIds(): Set<string> {
   try {
@@ -116,7 +116,7 @@ export function AlarmAlertMonitor() {
     });
 
     if (critical) playAlertSound();
-    window.dispatchEvent(new Event('fiotech-new-alarm'));
+    window.dispatchEvent(new Event('fiotec-new-alarm'));
   }, []);
 
   const checkAlarms = useCallback(async () => {
@@ -169,7 +169,7 @@ export function AlarmAlertMonitor() {
         saveSeenIds(seenIdsRef.current);
 
         // Notify NotificationDropdown to refresh its badge immediately
-        window.dispatchEvent(new Event('fiotech-new-alarm'));
+        window.dispatchEvent(new Event('fiotec-new-alarm'));
       }
     } catch (err) {
       console.debug('AlarmAlertMonitor: poll failed', err);

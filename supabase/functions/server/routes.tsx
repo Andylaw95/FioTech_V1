@@ -21,10 +21,10 @@ const supabase = (() => {
     );
     // Share with kv_store — single client for entire function
     kv.init(c);
-    console.log("[FioTech Routes] Supabase client created & shared");
+    console.log("[FioTec Routes] Supabase client created & shared");
     return c;
   } catch (e) {
-    console.log("[FioTech Routes] CRITICAL: Failed to create Supabase client:", e);
+    console.log("[FioTec Routes] CRITICAL: Failed to create Supabase client:", e);
     return createClient("https://placeholder.supabase.co", "placeholder");
   }
 })();
@@ -77,7 +77,7 @@ function errorMessage(e: unknown): string {
 
 // Admin identity from environment variables (fallback to defaults for backward compat)
 const MASTER_EMAILS = new Set(
-  (Deno.env.get("MASTER_EMAILS") || "master@fiotech.io")
+  (Deno.env.get("MASTER_EMAILS") || "master@fiotec.io")
     .split(",").map((e: string) => e.trim().toLowerCase()).filter(Boolean)
 );
 const MASTER_USER_ID = Deno.env.get("MASTER_USER_ID") || "5a386250-7710-4a83-8942-5dc45201303f";
@@ -1033,10 +1033,10 @@ export function registerRoutes(app: any) {
       await kvSetWithRetry(`account_type_${userId}`, accountType);
       accountTypeCache.set(userId, accountType);
       const profileDefaults = accountType === "demo"
-        ? { name: name || "Demo User", email, role: "Viewer", company: "FioTech Solutions", phone: "" }
+        ? { name: name || "Demo User", email, role: "Viewer", company: "FioTec Solutions", phone: "" }
         : accountType === "testing"
-        ? { name: name || "Test Engineer", email, role: "Engineer", company: "FioTech Solutions", phone: "" }
-        : { name: name || email.split("@")[0], email, role: "Admin", company: "FioTech Solutions", phone: "" };
+        ? { name: name || "Test Engineer", email, role: "Engineer", company: "FioTec Solutions", phone: "" }
+        : { name: name || email.split("@")[0], email, role: "Admin", company: "FioTec Solutions", phone: "" };
       await kvSetWithRetry(uk(userId, "settings"), { ...DEFAULT_SETTINGS, profile: profileDefaults });
       const defaults = (col: string) => getCollectionDefaults(accountType, col);
       await Promise.all([
@@ -2520,9 +2520,9 @@ export function registerRoutes(app: any) {
       const baseUrl = Deno.env.get("SUPABASE_URL") || `https://${c.req.header("host")}`;
       const webhookUrl = `${baseUrl}/functions/v1/make-server-4916a0b9/telemetry-webhook`;
       const testPayload = {
-        devEUI: "TEST000000000000", deviceName: "FioTech Test Ping", applicationName: "FioTech Webhook Test",
+        devEUI: "TEST000000000000", deviceName: "FioTec Test Ping", applicationName: "FioTec Webhook Test",
         fPort: 0, fCnt: 0, data: "",
-        object: { _test: true, message: "Webhook connectivity test from FioTech dashboard" },
+        object: { _test: true, message: "Webhook connectivity test from FioTec dashboard" },
         rxInfo: [{ gatewayID: "TEST_GATEWAY", rssi: -50, loRaSNR: 10.0 }],
         txInfo: { frequency: 868100000 }, time: new Date().toISOString(),
       };
@@ -2586,7 +2586,7 @@ export function registerRoutes(app: any) {
 
       return c.json({
         status: "ok",
-        message: "FioTech webhook endpoint is reachable. Your gateway can connect to the platform.",
+        message: "FioTec webhook endpoint is reachable. Your gateway can connect to the platform.",
         timestamp: now,
         gateway: matchedGw ? { id: matchedGw.id, name: matchedGw.name, status: "online" } : null,
         hint: "POST sensor uplink data to this same URL to start receiving telemetry.",
@@ -3155,7 +3155,7 @@ export function registerRoutes(app: any) {
     return c.json({ isAdmin: MASTER_EMAILS.has(auth.email.toLowerCase()) && auth.userId === MASTER_USER_ID });
   });
 
-  console.log("[FioTech Routes] All route handlers registered.");
+  console.log("[FioTec Routes] All route handlers registered.");
 
   // ─── ADMIN: List all users ───────────────────────────────
   // Fast single-try KV read (no retries) for enrichment — missing keys return null silently.
@@ -3479,9 +3479,9 @@ export function registerRoutes(app: any) {
     try {
       const { registerAWSRoutes } = await import("./aws_routes.tsx");
       registerAWSRoutes(app, requireAuth, cachedKvGet, cachedKvSet, uk);
-      console.log("[FioTech Routes] AWS routes loaded.");
+      console.log("[FioTec Routes] AWS routes loaded.");
     } catch (e) {
-      console.log("[FioTech Routes] AWS routes skipped (SDK not available or import error):", errorMessage(e));
+      console.log("[FioTec Routes] AWS routes skipped (SDK not available or import error):", errorMessage(e));
     }
   })();
 }

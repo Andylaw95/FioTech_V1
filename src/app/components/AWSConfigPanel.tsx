@@ -297,7 +297,7 @@ export function AWSConfigPanel() {
                 </div>
                 <div className="ml-8 space-y-2">
                   <p className="text-xs text-slate-600">
-                    In the AWS Console → IAM → Users → Create User. Name it <span className="font-mono bg-slate-100 px-1 rounded">fiotech-iot-integration</span>.
+                    In the AWS Console → IAM → Users → Create User. Name it <span className="font-mono bg-slate-100 px-1 rounded">fiotec-iot-integration</span>.
                   </p>
                   <p className="text-xs text-slate-600">
                     Attach the following managed policies (or create a custom policy):
@@ -556,7 +556,7 @@ supabase secrets set AWS_REGION=ap-east-1`}</pre>
                       <p className="text-[11px] text-amber-600">Updated</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-lg font-bold text-slate-700">{syncResult.summary.totalFioTechDevices}</p>
+                      <p className="text-lg font-bold text-slate-700">{syncResult.summary.totalFioTecDevices}</p>
                       <p className="text-[11px] text-slate-600">Total Devices</p>
                     </div>
                   </div>

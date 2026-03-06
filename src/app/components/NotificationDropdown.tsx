@@ -74,8 +74,8 @@ export function NotificationDropdown() {
   // Instant badge refresh when AlarmAlertMonitor detects new alarms
   useEffect(() => {
     const handler = () => fetchNotifications();
-    window.addEventListener('fiotech-new-alarm', handler);
-    return () => window.removeEventListener('fiotech-new-alarm', handler);
+    window.addEventListener('fiotec-new-alarm', handler);
+    return () => window.removeEventListener('fiotec-new-alarm', handler);
   }, [fetchNotifications]);
 
   // Refetch when popover opens (debounced — won't fire if already fetching)
