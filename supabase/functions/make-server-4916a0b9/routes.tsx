@@ -507,6 +507,22 @@ async function getGatewaysWithLiveStatus(userId: string): Promise<any[]> {
   return processed.map(deriveGatewayStatus);
 }
 
+/** Convert an ISO timestamp to a human-friendly relative string. */
+function friendlyAge(iso: string, now: number): string {
+  const ts = new Date(iso).getTime();
+  if (isNaN(ts)) return iso; // not a valid date, pass through
+  const diffMs = now - ts;
+  if (diffMs < 0) return "Just now"; // clock skew / future timestamp
+  const secs = Math.floor(diffMs / 1000);
+  if (secs < 60) return "Just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, string>): any[] {
   const now = Date.now();
   const STALE_OFFLINE = 60 * 60 * 1000; // 1 hour without uplink → offline
@@ -547,6 +563,11 @@ function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, strin
       const gwStatus = gatewayStatuses.get(d.gateway);
       if (gwStatus === "offline") { status = "offline"; lastUpdate = "Gateway offline"; }
       else if (gwStatus === "warning" && status === "online") { status = "warning"; lastUpdate = "Gateway unstable"; }
+    }
+
+    // Convert any remaining raw ISO timestamps to friendly relative text
+    if (lastUpdate && /^\d{4}-\d{2}-\d{2}T/.test(lastUpdate)) {
+      lastUpdate = friendlyAge(lastUpdate, now);
     }
 
     return { ...d, status, lastUpdate, battery };
