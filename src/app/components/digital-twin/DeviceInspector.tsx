@@ -75,6 +75,13 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
   const TypeIcon = meta.icon;
   const generatedTelemetry = useMemo(() => generateDeviceTelemetry(device.id, device.type), [device.id, device.type]);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyPeriod, setHistoryPeriod] = useState<string>('3d');
+  const PERIOD_OPTIONS = [
+    { value: '12h', label: '12 H' },
+    { value: '24h', label: '24 H' },
+    { value: '48h', label: '48 H' },
+    { value: '3d',  label: '3 Day' },
+  ] as const;
 
   // Use real live data if available, otherwise fall back to generated
   const hasLiveData = liveSensorData && Object.keys(liveSensorData).length > 0;
@@ -114,45 +121,69 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
   // ─── HISTORY VIEW ─────────────────────────────────────
   if (showHistory) {
     return (
-      <div className="space-y-3">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+      <div className="flex flex-col min-w-0 overflow-hidden gap-3">
+        {/* Header bar */}
+        <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => setShowHistory(false)}
-            className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
-            <ArrowLeft className="h-4 w-4" />
+            className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors rounded-lg px-2 py-1.5 hover:bg-slate-100">
+            <ArrowLeft className="h-3.5 w-3.5" />
             Back
           </button>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
-            <X className="h-4 w-4" />
+          <div className="flex-1" />
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        {/* Device title */}
-        <div className="flex items-center gap-3">
-          <div className={clsx("p-2 rounded-xl", meta.bg, meta.color)}>
+        {/* Device identity card */}
+        <div className="flex items-center gap-2.5 rounded-xl bg-slate-50 border border-slate-100 p-2.5 shrink-0">
+          <div className={clsx("p-2 rounded-lg", meta.bg, meta.color)}>
             <TypeIcon className="h-4 w-4" />
           </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">{device.name}</h3>
-            <p className="text-xs text-slate-400">{device.devEui ? `EUI: ${device.devEui}` : device.id}</p>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-slate-900 truncate">{device.name}</h3>
+            <p className="text-[10px] text-slate-400 font-mono truncate">{device.devEui ? `EUI: ${device.devEui}` : device.id}</p>
           </div>
+          <History className="h-4 w-4 text-slate-300 shrink-0" />
         </div>
 
-        {/* Full history chart — 3 days of data */}
-        {device.devEui ? (
-          <DeviceHistoryChart
-            deviceId={device.id}
-            deviceType={device.type}
-            devEui={device.devEui}
-            period="3d"
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <History className="h-8 w-8 text-slate-300 mb-3" />
-            <p className="text-sm font-medium text-slate-500">No history available</p>
-            <p className="text-xs text-slate-400 mt-1">This device has no EUI — history requires real sensor uplinks.</p>
-          </div>
-        )}
+        {/* Period selector */}
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mr-1">Period</span>
+          {PERIOD_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setHistoryPeriod(opt.value)}
+              className={clsx(
+                "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
+                historyPeriod === opt.value
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Full history chart — constrained to panel width */}
+        <div className="min-w-0 overflow-hidden flex-1">
+          {device.devEui ? (
+            <DeviceHistoryChart
+              deviceId={device.id}
+              deviceType={device.type}
+              devEui={device.devEui}
+              period={historyPeriod}
+              compact
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <History className="h-8 w-8 text-slate-300 mb-3" />
+              <p className="text-sm font-medium text-slate-500">No history available</p>
+              <p className="text-xs text-slate-400 mt-1">This device has no EUI — history requires real sensor uplinks.</p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }

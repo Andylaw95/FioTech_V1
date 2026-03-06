@@ -278,11 +278,13 @@ interface DeviceHistoryChartProps {
   focusMetric?: string;
   /** Hide the built-in metric selector cards (when parent already provides a selector, e.g. Live Sensor Readings) */
   hideMetricCards?: boolean;
-  /** Time period for history data: '24h' | '7d' | '30d' */
+  /** Time period for history data: '12h' | '24h' | '48h' | '3d' */
   period?: string;
+  /** Compact layout for narrow panels (e.g. side inspector) */
+  compact?: boolean;
 }
 
-export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, hideMetricCards, period = '24h' }: DeviceHistoryChartProps) {
+export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, hideMetricCards, period = '24h', compact }: DeviceHistoryChartProps) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DeviceHistoryPoint[]>([]);
   const [error, setError] = useState('');
@@ -395,7 +397,10 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
     <div>
       {/* Clickable metric cards — show latest value + act as selector (hidden when parent provides its own) */}
       {!hideMetricCards && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 mb-4">
+        <div className={clsx(
+          "grid gap-2 mb-4",
+          compact ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
+        )}>
           {sortedMetrics.map((m) => {
             const MIcon = m.icon;
             const isActive = m.key === selectedMetricKey;
@@ -405,27 +410,33 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
                 key={m.key as string}
                 onClick={() => setSelectedMetricKey(m.key as string)}
                 className={clsx(
-                  "relative rounded-xl p-3 text-left transition-all border-2 cursor-pointer group",
+                  "relative rounded-xl text-left transition-all border-2 cursor-pointer group",
+                  compact ? "p-2" : "p-3",
                   isActive
                     ? "border-blue-500 bg-blue-50/60 shadow-sm"
                     : "border-transparent bg-slate-50 hover:bg-slate-100 hover:border-slate-200"
                 )}
               >
-                <div className="flex items-center gap-1.5 mb-1">
-                  <MIcon className="h-3.5 w-3.5" style={{ color: m.color }} />
-                  <span className={clsx("text-xs font-medium", isActive ? "text-blue-700" : "text-slate-500")}>{m.label}</span>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <MIcon className={clsx(compact ? "h-3 w-3" : "h-3.5 w-3.5")} style={{ color: m.color }} />
+                  <span className={clsx(
+                    compact ? "text-[10px]" : "text-xs",
+                    "font-medium truncate",
+                    isActive ? "text-blue-700" : "text-slate-500"
+                  )}>{m.label}</span>
                 </div>
                 <div className="flex items-baseline gap-1">
                   <span className={clsx(
-                    "text-lg font-bold font-mono",
+                    "font-bold font-mono",
+                    compact ? "text-sm" : "text-lg",
                     isActive ? "text-blue-900" : "text-slate-900"
                   )}>
                     {latest !== undefined ? (Number.isInteger(latest) ? latest : latest.toFixed(1)) : '—'}
                   </span>
-                  <span className="text-xs text-slate-400">{m.unit}</span>
+                  <span className={clsx(compact ? "text-[10px]" : "text-xs", "text-slate-400")}>{m.unit}</span>
                 </div>
                 {isActive && (
-                  <div className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-blue-500" />
+                  <div className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-blue-500" />
                 )}
               </button>
             );
@@ -436,16 +447,20 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
       {/* Chart header + time range */}
       {selectedMetric && (
         <>
-          <div className="flex items-center gap-2 mb-1">
-            <Icon className="h-4 w-4" style={{ color: selectedMetric.color }} />
-            <span className="text-sm font-semibold text-slate-700">{selectedMetric.label}</span>
-            {selectedMetric.unit && <span className="text-xs text-slate-400">({selectedMetric.unit})</span>}
-            <span className="ml-auto text-xs text-slate-400">{data.length} pts · {timeRange}</span>
+          <div className={clsx("flex items-center gap-2 mb-1 min-w-0", compact && "flex-wrap")}>
+            <Icon className={clsx(compact ? "h-3.5 w-3.5" : "h-4 w-4")} style={{ color: selectedMetric.color }} />
+            <span className={clsx(compact ? "text-xs" : "text-sm", "font-semibold text-slate-700 truncate")}>{selectedMetric.label}</span>
+            {selectedMetric.unit && <span className={clsx(compact ? "text-[10px]" : "text-xs", "text-slate-400")}>({selectedMetric.unit})</span>}
+            {!compact && <span className="ml-auto text-xs text-slate-400 shrink-0">{data.length} pts · {timeRange}</span>}
           </div>
-          <p className="text-xs text-slate-400 mb-3">{selectedMetric.description}</p>
+          {compact ? (
+            <p className="text-[10px] text-slate-400 mb-2 truncate">{data.length} data points · 3-day history</p>
+          ) : (
+            <p className="text-xs text-slate-400 mb-3">{selectedMetric.description}</p>
+          )}
 
           {/* Chart */}
-          <div className="h-[280px] w-full min-w-0">
+          <div className={clsx(compact ? "h-[200px]" : "h-[280px]", "w-full min-w-0")}>
             <MetricChart data={data} metric={selectedMetric} period={period} />
           </div>
         </>
