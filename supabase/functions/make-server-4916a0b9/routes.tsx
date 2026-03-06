@@ -515,6 +515,7 @@ function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, strin
   return devices.map((d: any) => {
     let status = d.status || "online";
     let lastUpdate = d.lastUpdate;
+    let battery = typeof d.battery === "number" ? d.battery : 100;
 
     // Staleness-based status: if no uplink for a while, mark offline/warning
     if (d.lastSeen) {
@@ -523,6 +524,9 @@ function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, strin
         status = "offline";
         const hrs = Math.round(age / (60 * 60 * 1000));
         lastUpdate = hrs >= 24 ? `Offline ${Math.round(hrs / 24)}d ago` : `Offline ${hrs}h ago`;
+        // If last-known battery was already low, the device likely died from
+        // a depleted battery — show 0% so the UI doesn't mislead with a stale value.
+        if (battery <= 15) battery = 0;
       } else if (age > STALE_WARNING && status === "online") {
         status = "warning";
         lastUpdate = `Last seen ${Math.round(age / (60 * 1000))}m ago`;
@@ -530,11 +534,10 @@ function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, strin
     }
 
     // Battery-based status derivation (can worsen status further)
-    const bat = typeof d.battery === "number" ? d.battery : 100;
-    if (bat === 0) {
+    if (battery === 0) {
       status = "offline";
       lastUpdate = "Battery dead";
-    } else if (bat <= 15 && status === "online") {
+    } else if (battery <= 15 && status === "online") {
       status = "warning";
       lastUpdate = d.lastUpdate || "Low battery";
     }
@@ -546,7 +549,7 @@ function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, strin
       else if (gwStatus === "warning" && status === "online") { status = "warning"; lastUpdate = "Gateway unstable"; }
     }
 
-    return { ...d, status, lastUpdate };
+    return { ...d, status, lastUpdate, battery };
   });
 }
 
