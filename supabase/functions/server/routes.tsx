@@ -505,12 +505,11 @@ async function getGatewaysWithLiveStatus(userId: string): Promise<any[]> {
   const gateways = await getUserCollection(userId, "gateways");
   const accountType = await getAccountType(userId);
   let processed: any[];
-  // Simulate heartbeats for demo + master accounts (no real hardware sending pings)
-  if (accountType === "demo" || userId === MASTER_USER_ID) {
+  if (accountType === "demo") {
     processed = simulateDemoHeartbeats(gateways);
     const key = uk(userId, "gateways");
     cachedKvSet(key, processed).catch((e: unknown) => {
-      console.log("Non-fatal: heartbeat simulation persist failed:", errorMessage(e));
+      console.log("Non-fatal: demo heartbeats persist failed:", errorMessage(e));
     });
   } else {
     processed = gateways;
