@@ -9,7 +9,7 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/app/components/ui/alert-dialog';
-import { Loader2, UserPlus, Building2, Cpu, ArrowRight } from 'lucide-react';
+import { Loader2, UserPlus, Building2, Cpu, ArrowRight, Server } from 'lucide-react';
 import { api, AdminUser } from '@/app/utils/api';
 import { Label } from '@/app/components/ui/label';
 import {
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import { Checkbox } from '@/app/components/ui/checkbox';
+import { toast } from 'sonner';
 
 interface AssignPropertyDialogProps {
   property: { id: string; name: string; deviceCount?: number };
@@ -79,6 +80,10 @@ export function AssignPropertyDialog({
         includeDevices,
         removeFromSource,
       });
+      const parts = [`Property "${property.name}"`];
+      if (result.devicesCopied > 0) parts.push(`${result.devicesCopied} device(s)`);
+      if (result.gatewaysCopied > 0) parts.push(`${result.gatewaysCopied} gateway(s)`);
+      toast.success(`${parts.join(' + ')} assigned to ${result.targetUserEmail}`);
       onOpenChange(false);
       onSuccess();
     } catch (e: any) {

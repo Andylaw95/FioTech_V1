@@ -1470,6 +1470,7 @@ export const api = {
     message: string;
     property: Property;
     devicesCopied: number;
+    gatewaysCopied: number;
     devicesRemoved: number;
     targetUserEmail: string;
   }> =>

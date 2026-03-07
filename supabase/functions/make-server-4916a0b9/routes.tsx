@@ -2938,6 +2938,68 @@ export function registerRoutes(app: any) {
         }
       }
 
+      // ── Fan-out: sync live data to other users who have copies of this device ──
+      // When the admin's webhook receives data, update matching devices (by devEui)
+      // in other users' accounts so they see real-time status and charts.
+      if (devEUI) {
+        try {
+          const fanoutIndex: Record<string, string[]> = (await cachedKvGet("device_fanout_index")) || {};
+          const subscriberUserIds: string[] = fanoutIndex[devEUI.toLowerCase()] || [];
+          const nowIso = new Date().toISOString();
+          for (const subUserId of subscriberUserIds) {
+            if (subUserId === userId) continue; // skip source user (already updated above)
+            try {
+              // Update device lastSeen/status/battery/signal
+              const subDevKey = uk(subUserId, "devices");
+              const subDevices = await getUserCollection(subUserId, "devices");
+              let devChanged = false;
+              for (let i = 0; i < subDevices.length; i++) {
+                if ((subDevices[i].devEui || "").toLowerCase() === devEUI.toLowerCase()) {
+                  subDevices[i].lastSeen = nowIso;
+                  subDevices[i].lastUpdate = nowIso;
+                  subDevices[i].status = "online";
+                  if (rssi > -999) subDevices[i].signal = Math.max(0, Math.min(100, 2 * (rssi + 100)));
+                  if (decodedData && typeof decodedData.battery === "number") {
+                    subDevices[i].battery = decodedData.battery;
+                  }
+                  devChanged = true;
+                }
+              }
+              if (devChanged) await cachedKvSet(subDevKey, subDevices);
+
+              // Update gateway lastSeen if subscriber has a matching gateway
+              if (gatewayEUI) {
+                const subGwKey = uk(subUserId, "gateways");
+                const subGateways = await getUserCollection(subUserId, "gateways");
+                const subGwIdx = subGateways.findIndex((gw: any) =>
+                  (gw.devEui || "").toLowerCase() === gatewayEUI.toLowerCase()
+                );
+                if (subGwIdx !== -1) {
+                  subGateways[subGwIdx].lastSeen = nowIso;
+                  if (rssi > -999) subGateways[subGwIdx].signal = Math.max(0, Math.min(100, 2 * (rssi + 100)));
+                  await cachedKvSet(subGwKey, subGateways);
+                }
+              }
+
+              // Copy sensor data entry to subscriber
+              const subSdKey = `sensor_data_${subUserId}`;
+              let subSensorData: any[] = [];
+              try { const existing = await cachedKvGet(subSdKey); if (Array.isArray(existing)) subSensorData = existing; } catch { /* fresh */ }
+              subSensorData.unshift(entry);
+              const THREE_DAYS_FAN = 3 * 24 * 60 * 60 * 1000;
+              const pruneFan = Date.now() - THREE_DAYS_FAN;
+              subSensorData = subSensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneFan);
+              if (subSensorData.length > 1000) subSensorData = subSensorData.slice(0, 1000);
+              await cachedKvSet(subSdKey, subSensorData);
+            } catch (fanErr) {
+              console.log(`[Fanout] Error syncing to ${subUserId}: ${errorMessage(fanErr)}`);
+            }
+          }
+        } catch (fanErr) {
+          console.log(`[Fanout] Index read failed (non-fatal): ${errorMessage(fanErr)}`);
+        }
+      }
+
       // Auto-generate alarms from decoded data (supports Milesight native, Cayenne LPP, and custom codec fields)
       if (decodedData) {
         // Strip known broken sensor fields before alarm evaluation
@@ -3418,6 +3480,7 @@ export function registerRoutes(app: any) {
       // Copy linked devices if requested
       let devicesCopied = 0;
       let devicesRemoved = 0;
+      let gatewaysCopied = 0;
       if (includeDevices) {
         const srcDevsKey = uk(sourceUserId, "devices");
         const srcDevs = await getUserCollection(sourceUserId, "devices");
@@ -3433,13 +3496,131 @@ export function registerRoutes(app: any) {
             return c.json({ error: `Target user would exceed the device limit (500). They have ${tgtDevs.length} devices and this property has ${linkedDevices.length} linked devices.` }, 400);
           }
 
-          // Copy each device with new ID, keeping building name
+          // Collect unique gateway IDs referenced by the linked devices
+          const referencedGwIds = new Set<string>();
           for (const dev of linkedDevices) {
-            const newDev = { ...dev, id: `D${Date.now()}-${Math.random().toString(36).slice(2, 6)}` };
-            tgtDevs.push(newDev);
-            devicesCopied++;
+            if (dev.gateway && dev.gateway !== "Unassigned" && dev.gateway !== "Unknown") {
+              referencedGwIds.add(dev.gateway);
+            }
+          }
+
+          // Copy referenced gateways to target user (skip if already exists by devEui or id)
+          if (referencedGwIds.size > 0) {
+            const srcGateways = await getUserCollection(sourceUserId, "gateways");
+            const tgtGwKey = uk(targetUserId, "gateways");
+            const tgtGateways = await getUserCollection(targetUserId, "gateways");
+            const tgtGwIds = new Set(tgtGateways.map((g: any) => g.id));
+            const tgtGwEuis = new Set(tgtGateways.map((g: any) => (g.devEui || "").toLowerCase()).filter(Boolean));
+            const gwIdMap = new Map<string, string>(); // old ID -> new ID
+
+            for (const gwId of referencedGwIds) {
+              const srcGw = srcGateways.find((g: any) => g.id === gwId);
+              if (!srcGw) continue;
+              // Skip if target already has this gateway (by devEui match)
+              const srcEui = (srcGw.devEui || "").toLowerCase();
+              if (srcEui && tgtGwEuis.has(srcEui)) {
+                // Find existing target gateway for ID remapping
+                const existing = tgtGateways.find((g: any) => (g.devEui || "").toLowerCase() === srcEui);
+                if (existing) gwIdMap.set(gwId, existing.id);
+                continue;
+              }
+              if (tgtGwIds.has(gwId)) {
+                gwIdMap.set(gwId, gwId); // same ID already exists
+                continue;
+              }
+              const newGwId = `GW${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+              const newGw = { ...srcGw, id: newGwId, sourceGateway: gwId, sourceUser: sourceUserId };
+              tgtGateways.push(newGw);
+              gwIdMap.set(gwId, newGwId);
+              tgtGwIds.add(newGwId);
+              if (srcEui) tgtGwEuis.add(srcEui);
+              gatewaysCopied++;
+            }
+            if (gatewaysCopied > 0) {
+              await cachedKvSet(tgtGwKey, tgtGateways);
+            }
+
+            // Copy devices with remapped gateway IDs
+            for (const dev of linkedDevices) {
+              const newGwId = gwIdMap.get(dev.gateway) || dev.gateway;
+              const newDev = {
+                ...dev,
+                id: `D${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                gateway: newGwId,
+                sourceDevice: dev.id,
+                sourceUser: sourceUserId,
+              };
+              tgtDevs.push(newDev);
+              devicesCopied++;
+            }
+          } else {
+            // No gateways referenced — copy devices as-is
+            for (const dev of linkedDevices) {
+              const newDev = {
+                ...dev,
+                id: `D${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                sourceDevice: dev.id,
+                sourceUser: sourceUserId,
+              };
+              tgtDevs.push(newDev);
+              devicesCopied++;
+            }
           }
           await cachedKvSet(tgtDevsKey, tgtDevs);
+
+          // Copy recent sensor data so target user gets charts immediately
+          if (devicesCopied > 0) {
+            const srcSdKey = `sensor_data_${sourceUserId}`;
+            const tgtSdKey = `sensor_data_${targetUserId}`;
+            try {
+              const srcSensorData: any[] = (await cachedKvGet(srcSdKey)) || [];
+              const linkedEuis = new Set(linkedDevices.map((d: any) => (d.devEui || "").toLowerCase()).filter(Boolean));
+              if (linkedEuis.size > 0) {
+                const relevantEntries = srcSensorData.filter((e: any) =>
+                  linkedEuis.has((e.devEUI || "").toLowerCase())
+                );
+                if (relevantEntries.length > 0) {
+                  let tgtSensorData: any[] = (await cachedKvGet(tgtSdKey)) || [];
+                  // Avoid duplicates by checking receivedAt + devEUI
+                  const existing = new Set(tgtSensorData.map((e: any) => `${e.devEUI}_${e.receivedAt}`));
+                  const newEntries = relevantEntries.filter((e: any) => !existing.has(`${e.devEUI}_${e.receivedAt}`));
+                  tgtSensorData = [...newEntries, ...tgtSensorData].sort(
+                    (a: any, b: any) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime()
+                  ).slice(0, 1000);
+                  await cachedKvSet(tgtSdKey, tgtSensorData);
+                  console.log(`[Assign] Copied ${newEntries.length} sensor data entries to target user.`);
+                }
+              }
+            } catch (e) {
+              console.log("[Assign] Sensor data copy failed (non-fatal):", errorMessage(e));
+            }
+          }
+
+          // Update device fan-out index so webhook data is synced to this user
+          try {
+            const fanoutIndex: Record<string, string[]> = (await cachedKvGet("device_fanout_index")) || {};
+            let indexChanged = false;
+            for (const dev of linkedDevices) {
+              const eui = (dev.devEui || "").toLowerCase();
+              if (!eui) continue;
+              if (!fanoutIndex[eui]) fanoutIndex[eui] = [];
+              if (!fanoutIndex[eui].includes(targetUserId)) {
+                fanoutIndex[eui].push(targetUserId);
+                indexChanged = true;
+              }
+              // Also ensure source user is in the index
+              if (!fanoutIndex[eui].includes(sourceUserId)) {
+                fanoutIndex[eui].push(sourceUserId);
+                indexChanged = true;
+              }
+            }
+            if (indexChanged) {
+              await cachedKvSet("device_fanout_index", fanoutIndex);
+              console.log(`[Assign] Updated device fan-out index for ${linkedDevices.filter((d: any) => d.devEui).length} devices.`);
+            }
+          } catch (e) {
+            console.log("[Assign] Fan-out index update failed (non-fatal):", errorMessage(e));
+          }
 
           // Remove from source if transfer mode
           if (removeFromSource) {
@@ -3470,6 +3651,7 @@ export function registerRoutes(app: any) {
         message: `Property "${srcProperty.name}" ${removeFromSource ? 'transferred' : 'assigned'} to ${targetUser.user.email}.`,
         property: newProperty,
         devicesCopied,
+        gatewaysCopied,
         devicesRemoved: removeFromSource ? devicesRemoved : 0,
         targetUserEmail: targetUser.user.email,
       });
