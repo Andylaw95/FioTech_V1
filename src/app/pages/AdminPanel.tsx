@@ -31,6 +31,7 @@ import {
   WifiOff,
   Server,
   UserPlus,
+  Copy,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
@@ -100,6 +101,14 @@ function PropertiesTab({ userId }: { userId: string }) {
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: '', location: '', type: 'Commercial' });
 
+  // Copy from Master state
+  const [showCopyMaster, setShowCopyMaster] = useState(false);
+  const [masterProperties, setMasterProperties] = useState<Property[]>([]);
+  const [loadingMaster, setLoadingMaster] = useState(false);
+  const [selectedMasterProps, setSelectedMasterProps] = useState<Set<string>>(new Set());
+  const [copying, setCopying] = useState(false);
+  const [copyProgress, setCopyProgress] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -136,16 +145,177 @@ function PropertiesTab({ userId }: { userId: string }) {
     } catch (e: any) { toast.error(e.message || 'Failed to delete'); }
   };
 
+  // Fetch master's properties and open copy panel
+  const openCopyMaster = async () => {
+    if (showCopyMaster) { setShowCopyMaster(false); return; }
+    setShowAdd(false);
+    setShowCopyMaster(true);
+    setLoadingMaster(true);
+    setSelectedMasterProps(new Set());
+    setCopyProgress('');
+    try {
+      // getProperties() returns admin's own (master) properties
+      const master = await api.getProperties();
+      // Filter out properties that already exist on the target user (by name)
+      const existingNames = new Set(properties.map(p => p.name.toLowerCase()));
+      const available = master.filter(p => !existingNames.has(p.name.toLowerCase()));
+      setMasterProperties(available);
+      if (available.length === 0 && master.length > 0) {
+        toast.info('All master properties already assigned to this user');
+      }
+    } catch (e: any) {
+      toast.error('Failed to load master properties');
+      setShowCopyMaster(false);
+    } finally {
+      setLoadingMaster(false);
+    }
+  };
+
+  const toggleMasterProp = (id: string) => {
+    setSelectedMasterProps(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllMaster = () => {
+    if (selectedMasterProps.size === masterProperties.length) {
+      setSelectedMasterProps(new Set());
+    } else {
+      setSelectedMasterProps(new Set(masterProperties.map(p => p.id)));
+    }
+  };
+
+  const handleCopyFromMaster = async () => {
+    if (selectedMasterProps.size === 0) { toast.error('Select at least one property'); return; }
+    setCopying(true);
+    let totalDevices = 0;
+    let totalGateways = 0;
+    let successCount = 0;
+    const selected = masterProperties.filter(p => selectedMasterProps.has(p.id));
+
+    for (let i = 0; i < selected.length; i++) {
+      const p = selected[i];
+      setCopyProgress(`Copying ${i + 1}/${selected.length}: ${p.name}...`);
+      try {
+        const result = await api.adminAssignPropertyToUser(p.id, userId, {
+          includeDevices: true,
+          removeFromSource: false,
+        });
+        totalDevices += result.devicesCopied || 0;
+        totalGateways += result.gatewaysCopied || 0;
+        successCount++;
+      } catch (e: any) {
+        toast.error(`Failed to copy "${p.name}": ${e.message}`);
+      }
+    }
+
+    setCopying(false);
+    setCopyProgress('');
+    setShowCopyMaster(false);
+    setSelectedMasterProps(new Set());
+
+    if (successCount > 0) {
+      toast.success(
+        `Copied ${successCount} propert${successCount > 1 ? 'ies' : 'y'} with ${totalDevices} devices and ${totalGateways} gateways`
+      );
+      load();
+    }
+  };
+
   if (loading) return <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-blue-500" /></div>;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs text-slate-500 dark:text-slate-400">{properties.length} properties</span>
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400">
-          <Plus className="h-3.5 w-3.5" /> Add
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={openCopyMaster} className={cn(
+            "flex items-center gap-1 text-xs font-medium transition-colors",
+            showCopyMaster
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+          )}>
+            <Copy className="h-3.5 w-3.5" /> Copy from Master
+          </button>
+          <button onClick={() => { setShowAdd(!showAdd); setShowCopyMaster(false); }} className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400">
+            <Plus className="h-3.5 w-3.5" /> Add
+          </button>
+        </div>
       </div>
+
+      {/* Copy from Master panel */}
+      <AnimatePresence>
+        {showCopyMaster && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Crown className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-xs font-semibold text-amber-800 dark:text-amber-200">Master Properties</span>
+                </div>
+                {masterProperties.length > 0 && (
+                  <button onClick={selectAllMaster} className="text-[10px] font-medium text-amber-700 dark:text-amber-300 hover:underline">
+                    {selectedMasterProps.size === masterProperties.length ? 'Deselect All' : 'Select All'}
+                  </button>
+                )}
+              </div>
+
+              {loadingMaster ? (
+                <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-amber-500" /></div>
+              ) : masterProperties.length === 0 ? (
+                <p className="text-xs text-amber-600 dark:text-amber-400 py-2 text-center">No properties available to copy</p>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {masterProperties.map(p => (
+                    <label key={p.id} className={cn(
+                      "flex items-center gap-2.5 rounded-md border px-2.5 py-2 cursor-pointer transition-colors",
+                      selectedMasterProps.has(p.id)
+                        ? "border-amber-400 dark:border-amber-600 bg-amber-100/80 dark:bg-amber-900/40"
+                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-amber-300 dark:hover:border-amber-700"
+                    )}>
+                      <input
+                        type="checkbox"
+                        checked={selectedMasterProps.has(p.id)}
+                        onChange={() => toggleMasterProp(p.id)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span className="text-xs font-medium text-slate-900 dark:text-white truncate">{p.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                          {p.location && <span>{p.location}</span>}
+                          <span>{p.type}</span>
+                          {p.deviceCount != null && <span>{p.deviceCount} devices</span>}
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {masterProperties.length > 0 && (
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={handleCopyFromMaster}
+                    disabled={copying || selectedMasterProps.size === 0}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                  >
+                    {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copying ? copyProgress : `Copy ${selectedMasterProps.size} Propert${selectedMasterProps.size !== 1 ? 'ies' : 'y'}`}
+                  </button>
+                  <button onClick={() => setShowCopyMaster(false)} className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add form */}
       <AnimatePresence>
