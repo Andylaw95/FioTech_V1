@@ -60,15 +60,15 @@ const WaterMonitoringSection = ({ data }: { data: TelemetryResponse | null }) =>
   const allNormal = waterZones.every(z => z.status === 'normal');
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <div className="p-2 bg-blue-50 rounded-lg text-blue-600 shrink-0">
-            <Droplets className="h-5 w-5" />
+          <div className="p-1.5 bg-blue-50 rounded-lg text-blue-600 shrink-0">
+            <Droplets className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="text-lg lg:text-2xl font-bold text-slate-900">Water Leak & Pressure Monitoring</h3>
-            <p className="text-sm lg:text-base text-slate-500">
+            <h3 className="text-sm lg:text-base font-bold text-slate-900">Water Leak & Pressure Monitoring</h3>
+            <p className="text-xs lg:text-sm text-slate-500">
               {data?.source === 'live' ? 'Live sensor data' : 'Real-time hydraulic status'}
             </p>
           </div>
@@ -86,8 +86,8 @@ const WaterMonitoringSection = ({ data }: { data: TelemetryResponse | null }) =>
         </div>
       </div>
       {waterZones.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-slate-400">
-          <Droplets className="h-8 w-8 text-slate-200 mb-2" />
+        <div className="flex flex-col items-center justify-center py-6 text-slate-400">
+          <Droplets className="h-6 w-6 text-slate-200 mb-1.5" />
           <p className="text-sm text-slate-500">No leak sensors deployed</p>
           <p className="text-xs text-slate-400">
             {data?.source === 'live'
@@ -96,10 +96,10 @@ const WaterMonitoringSection = ({ data }: { data: TelemetryResponse | null }) =>
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {waterZones.map((item) => (
-            <div key={item.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all">
-              <div className="flex justify-between items-start mb-2">
+            <div key={item.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all">
+              <div className="flex justify-between items-start mb-1.5">
                 <span className="text-xs font-semibold text-slate-500 uppercase line-clamp-1">{item.zone}</span>
                 <div className={clsx(
                   "h-2 w-2 rounded-full shrink-0",
@@ -109,11 +109,11 @@ const WaterMonitoringSection = ({ data }: { data: TelemetryResponse | null }) =>
               <div className="space-y-1">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-500">Pressure</span>
-                  <span className="font-mono font-bold text-slate-900 text-base lg:text-lg">{item.pressure} PSI</span>
+                  <span className="font-mono font-bold text-slate-900 text-sm lg:text-base">{item.pressure} PSI</span>
                 </div>
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-xs">
                   <span className="text-slate-500">Flow</span>
-                  <span className="font-mono font-bold text-slate-900 text-base lg:text-lg">{item.flow} L/m</span>
+                  <span className="font-mono font-bold text-slate-900 text-sm lg:text-base">{item.flow} L/m</span>
                 </div>
               </div>
               {item.leakDetected && (
@@ -133,15 +133,15 @@ const BMSMonitoringSection = ({ data }: { data: TelemetryResponse | null }) => {
   const bmsItems = data?.bmsItems || [];
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600 shrink-0">
-            <Zap className="h-5 w-5" />
+          <div className="p-1.5 bg-indigo-50 rounded-lg text-indigo-600 shrink-0">
+            <Zap className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="text-lg lg:text-2xl font-bold text-slate-900">BMS & Energy Overview</h3>
-            <p className="text-sm lg:text-base text-slate-500">
+            <h3 className="text-sm lg:text-base font-bold text-slate-900">BMS & Energy Overview</h3>
+            <p className="text-xs lg:text-sm text-slate-500">
               {data?.source === 'live' ? 'Live energy data from sensors' : 'Power consumption and mechanical systems'}
             </p>
           </div>
@@ -152,20 +152,20 @@ const BMSMonitoringSection = ({ data }: { data: TelemetryResponse | null }) => {
         </div>
       </div>
       {bmsItems.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-slate-400">
-          <Zap className="h-8 w-8 text-slate-200 mb-2" />
+        <div className="flex flex-col items-center justify-center py-6 text-slate-400">
+          <Zap className="h-6 w-6 text-slate-200 mb-1.5" />
           <p className="text-sm text-slate-500">No BMS data available</p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {bmsItems.map((item) => (
-            <div key={item.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all relative overflow-hidden group">
+            <div key={item.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all relative overflow-hidden group">
               {item.status === 'generating' && (
                 <div className="absolute top-0 right-0 p-1 bg-green-500 rounded-bl-lg">
                   <Zap className="h-3 w-3 text-white fill-white" />
                 </div>
               )}
-              <h4 className="font-medium text-slate-900 text-sm mb-3 line-clamp-1">{item.system}</h4>
+              <h4 className="font-medium text-slate-900 text-sm mb-2 line-clamp-1">{item.system}</h4>
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-xs text-slate-500">Usage</p>
@@ -197,18 +197,18 @@ const EnvironmentalSection = ({ data }: { data: TelemetryResponse | null }) => {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div>
-          <h3 className="text-lg lg:text-2xl font-bold text-slate-900">Environmental Monitoring</h3>
-          <p className="text-sm lg:text-base text-slate-500">
+          <h3 className="text-sm lg:text-base font-bold text-slate-900">Environmental Monitoring</h3>
+          <p className="text-xs lg:text-sm text-slate-500">
             {data?.source === 'live' ? 'Real sensor data from webhook uplinks.' : 'Air quality indices across properties.'}
           </p>
         </div>
         <DataSourceBadge source={data?.source} />
       </div>
       {airQuality.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 flex flex-col items-center text-slate-400">
-          <ThermometerSun className="h-8 w-8 text-slate-200 mb-2" />
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 flex flex-col items-center text-slate-400">
+          <ThermometerSun className="h-6 w-6 text-slate-200 mb-1.5" />
           <p className="text-sm text-slate-500">No environmental data yet</p>
           <p className="text-xs text-slate-400">
             {data?.source === 'live'
@@ -217,7 +217,7 @@ const EnvironmentalSection = ({ data }: { data: TelemetryResponse | null }) => {
           </p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {airQuality.map(data => (
             <AirQualityCard key={data.propertyId} {...data} />
           ))}
@@ -255,11 +255,11 @@ function HealthWidget({ stats }: { stats: DashboardStats | null }) {
   const notOnline = total - online;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex flex-col md:flex-row md:items-start gap-6">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-start gap-4">
         <div className="flex-1">
-          <h3 className="font-semibold text-slate-900 mb-2">Portfolio Health</h3>
-          <p className="text-sm text-slate-500 mb-6">Device connectivity status</p>
+          <h3 className="text-sm font-semibold text-slate-900 mb-1.5">Portfolio Health</h3>
+          <p className="text-xs text-slate-500 mb-4">Device connectivity status</p>
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2 text-slate-600">
@@ -289,7 +289,7 @@ function HealthWidget({ stats }: { stats: DashboardStats | null }) {
             )}
           </div>
         </div>
-        <div className="w-full md:w-64 flex-shrink-0">
+        <div className="w-full md:w-48 lg:w-56 flex-shrink-0">
           <HealthDonut online={onlinePct} offline={100 - onlinePct} />
         </div>
       </div>
@@ -638,10 +638,10 @@ export function Dashboard() {
     water: () => <WaterMonitoringSection data={scopedTelemetry} />,
     bms: () => <BMSMonitoringSection data={scopedTelemetry} />,
     alerts: () => (
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
           <div>
-            <h3 className="font-semibold text-slate-900">Weekly Alert Trends</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Weekly Alert Trends</h3>
             <p className="text-sm text-slate-500">Aggregated from actual alarm records (last 7 days)</p>
           </div>
         </div>
@@ -665,12 +665,12 @@ export function Dashboard() {
 
   return (
     <DndProvider backend={HTML5Backend}>
-    <div className="space-y-6 lg:space-y-8">
+    <div className="space-y-4 lg:space-y-5">
       {/* Welcome Section */}
       <div className="flex flex-col gap-3 sm:gap-4">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
-            <h2 className="text-2xl lg:text-3xl font-extrabold text-slate-900 tracking-tight">
+            <h2 className="text-xl lg:text-2xl font-extrabold text-slate-900 tracking-tight">
               {selectedProperty ? selectedProperty.name : 'Portfolio Overview'}
             </h2>
             <p className="text-sm lg:text-base text-slate-500 mt-1">
@@ -865,7 +865,7 @@ export function Dashboard() {
       </div>
 
       {/* Stats Grid — Dynamic */}
-      <div className="grid gap-4 sm:gap-6 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard 
           title={selectedProperty ? "Property" : "Managed Properties"} 
           value={scopedStats?.properties.total?.toString() ?? properties.length.toString()} 
@@ -873,12 +873,12 @@ export function Dashboard() {
           icon={Building2} 
           trend={0}
         >
-          <div className="mt-4 flex -space-x-2 overflow-hidden">
+          <div className="mt-2 flex -space-x-2 overflow-hidden">
              {(scopedStats?.properties.images ?? properties.slice(0, 3).map(p => p.image))?.slice(0, 3).map((img, i) => (
-               <img key={i} className="inline-block h-8 w-8 rounded-full ring-2 ring-white object-cover" src={img} alt="" />
+               <img key={i} className="inline-block h-7 w-7 rounded-full ring-2 ring-white object-cover" src={img} alt="" />
              ))}
              {!selectedProperty && (scopedStats?.properties.total ?? properties.length) > 3 && (
-               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 ring-2 ring-white text-xs font-medium text-slate-500">
+               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 ring-2 ring-white text-xs font-medium text-slate-500">
                  +{(scopedStats?.properties.total ?? properties.length) - 3}
                </div>
              )}
@@ -892,7 +892,7 @@ export function Dashboard() {
           icon={AlertTriangle} 
           status={scopedStats?.alarms.totalPending && scopedStats.alarms.totalPending > 0 ? "warning" : "normal"}
         >
-          <div className="mt-4 flex flex-col gap-2">
+          <div className="mt-2 flex flex-col gap-1.5">
              <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 text-slate-600"><Droplets className="h-3 w-3 text-blue-500" /> Water Leaks</span>
                 <span className="font-semibold text-slate-900">{scopedStats?.alarms.waterLeaks ?? 0}</span>
@@ -910,8 +910,8 @@ export function Dashboard() {
           unit="Devices" 
           icon={Activity} 
         >
-           <div className="mt-4 text-xs text-slate-500">
-             <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2">
+           <div className="mt-2 text-xs text-slate-500">
+             <div className="w-full bg-slate-100 rounded-full h-1.5 mb-1.5">
                <div 
                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-500" 
                  style={{ width: `${scopedStats?.devices.onlinePercent ?? 0}%` }}
@@ -927,9 +927,9 @@ export function Dashboard() {
           icon={Droplets} 
           status={scopedStats?.water.status === 'Warning' ? 'warning' : 'normal'}
         >
-           <div className="mt-4 flex items-center gap-3">
+           <div className="mt-2 flex items-center gap-2">
              <div className={clsx(
-               "flex h-10 w-10 items-center justify-center rounded-full",
+               "flex h-8 w-8 items-center justify-center rounded-full",
                scopedStats?.water.status === 'Warning' ? "bg-amber-50" : "bg-blue-50"
              )}>
                {scopedStats?.water.status === 'Warning' 
@@ -951,7 +951,7 @@ export function Dashboard() {
       </div>
 
       {/* --- Dynamic Draggable Widget Area --- */}
-      <div className="space-y-6 min-h-[400px]">
+      <div className="space-y-4 min-h-[300px]">
         {visibleWidgets.length === 0 && layoutLoaded && (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
             <Layout className="h-10 w-10 mb-3 text-slate-300" />
@@ -977,8 +977,8 @@ export function Dashboard() {
 
       {/* Buildings at a Glance (Always Visible) */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-slate-100 px-4 sm:px-6 py-4 flex items-center justify-between">
-          <h3 className="font-semibold text-slate-900">Property Status</h3>
+        <div className="border-b border-slate-100 px-3 sm:px-4 py-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-900">Property Status</h3>
           <Link to="/buildings" className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1">
             View All <ArrowRight className="h-4 w-4" />
           </Link>

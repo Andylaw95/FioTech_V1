@@ -38,24 +38,24 @@ export function StatCard({
   const trendColor = trend && trend > 0 ? 'text-green-600' : 'text-red-600';
 
   return (
-    <div className={cn("rounded-2xl border border-slate-100 bg-white p-4 sm:p-6 shadow-sm transition-all hover:shadow-md", className)}>
-      <div className="flex items-start justify-between mb-3 sm:mb-4">
+    <div className={cn("rounded-xl border border-slate-100 bg-white p-3 sm:p-4 shadow-sm transition-all hover:shadow-md", className)}>
+      <div className="flex items-start justify-between mb-2 sm:mb-3">
         <div>
-          <p className="text-xs sm:text-sm font-medium text-slate-500">{title}</p>
-          <div className="mt-1 flex items-baseline gap-1">
-            <span className={cn("text-xl sm:text-2xl font-semibold tracking-tight", statusColors[status])}>
+          <p className="text-xs font-medium text-slate-500">{title}</p>
+          <div className="mt-0.5 flex items-baseline gap-1">
+            <span className={cn("text-lg sm:text-xl font-semibold tracking-tight", statusColors[status])}>
               {value}
             </span>
-            {unit && <span className="text-xs sm:text-sm font-medium text-slate-400">{unit}</span>}
+            {unit && <span className="text-xs font-medium text-slate-400">{unit}</span>}
           </div>
         </div>
         {Icon && (
-          <div className={cn("rounded-full p-2 sm:p-2.5", 
+          <div className={cn("rounded-full p-1.5 sm:p-2", 
             status === 'critical' ? "bg-red-50 text-red-500" : 
             status === 'warning' ? "bg-amber-50 text-amber-500" : 
             "bg-blue-50 text-blue-500"
           )}>
-            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+            <Icon className="h-4 w-4" />
           </div>
         )}
       </div>
@@ -63,7 +63,7 @@ export function StatCard({
       {children}
 
       {trend !== undefined && (
-        <div className="mt-4 flex items-center text-xs">
+        <div className="mt-3 flex items-center text-xs">
           <span className={cn("font-medium", trendColor)}>
             {trend > 0 ? '+' : ''}{trend}%
           </span>

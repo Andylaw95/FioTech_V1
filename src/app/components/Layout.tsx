@@ -383,7 +383,7 @@ export function Layout() {
 
         {/* Page Content */}
         <main className={cn(
-          "flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 transition-colors duration-500",
+          "flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 transition-colors duration-500",
           isDark ? "bg-slate-900" : "bg-slate-50"
         )}>
           <Outlet />
