@@ -446,13 +446,22 @@ async function autoGenerateAlarm(userId: string, device: any, newStatus: string)
 async function updatePropertySensorCounts(userId: string, buildingName: string) {
   try {
     if (!buildingName || buildingName === "Unassigned") return;
-    const [properties, devices] = await Promise.all([kvGetWithRetry(uk(userId, "properties")), kvGetWithRetry(uk(userId, "devices"))]);
-    if (!Array.isArray(properties) || !Array.isArray(devices)) return;
+    const [properties, rawDevices, gateways] = await Promise.all([
+      kvGetWithRetry(uk(userId, "properties")),
+      kvGetWithRetry(uk(userId, "devices")),
+      getGatewaysWithLiveStatus(userId),
+    ]);
+    if (!Array.isArray(properties) || !Array.isArray(rawDevices)) return;
     const idx = properties.findIndex((p: any) => p.name === buildingName);
     if (idx === -1) return;
-    const assigned = devices.filter((d: any) => d.building === buildingName);
-    const online = assigned.filter((d: any) => d.status === "online").length;
-    properties[idx] = { ...properties[idx], waterSensors: `${online}/${assigned.length}` };
+    // Derive statuses with staleness / battery / gateway checks so that
+    // the stored waterSensors value is accurate (not just raw status).
+    const gwMap = new Map<string, string>();
+    gateways.forEach((gw: any) => { gwMap.set(gw.id, gw.status); if (gw.devEui) gwMap.set(gw.devEui.toLowerCase(), gw.status); });
+    const enriched = deriveDeviceStatuses(rawDevices, gwMap);
+    const assigned = enriched.filter((d: any) => d.building === buildingName);
+    const s = countStatuses(assigned);
+    properties[idx] = { ...properties[idx], waterSensors: `${s.online}/${s.total}`, deviceCount: s.total, onlineDevices: s.online, offlineDevices: s.offline, warningDevices: s.warning };
     await kvSetWithRetry(uk(userId, "properties"), properties);
     invalidateKvCache(uk(userId, "properties"));
   } catch (e) { console.log("Sensor count update error:", errorMessage(e)); }
@@ -1106,7 +1115,7 @@ export function registerRoutes(app: any) {
       if (!property) return c.json({ error: "Property not found." }, 404);
       const assigned = devices.filter((d: any) => d.building === property.name);
       const s = countStatuses(assigned);
-      return c.json({ ...property, devices: assigned, deviceCount: s.total, onlineDevices: s.online, offlineDevices: s.offline, warningDevices: s.warning });
+      return c.json({ ...property, devices: assigned, waterSensors: `${s.online}/${s.total}`, deviceCount: s.total, onlineDevices: s.online, offlineDevices: s.offline, warningDevices: s.warning });
     } catch (e) {
       console.log("Error fetching property:", errorMessage(e));
       return c.json({ error: "Failed to fetch property." }, 500);

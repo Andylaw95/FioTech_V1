@@ -277,8 +277,11 @@ export function BuildingDetails() {
 
   const waterParts = useMemo(() => {
     if (!property) return { active: 0, total: 0 };
-    const parts = (property.waterSensors || '0/0').split('/');
-    return { active: parseInt(parts[0]) || 0, total: parseInt(parts[1]) || 0 };
+    // Use enriched device-status counts (derived with staleness checks) instead of
+    // the stale waterSensors string stored in KV which only updates on webhook uplinks.
+    const total = property.deviceCount ?? 0;
+    const active = property.onlineDevices ?? 0;
+    return { active, total };
   }, [property]);
 
   const statusLabel = property?.status?.toLowerCase() || 'normal';
