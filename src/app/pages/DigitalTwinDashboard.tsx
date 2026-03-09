@@ -923,7 +923,7 @@ export function DigitalTwinDashboard() {
               : <>Floor 17 — Real-time building intelligence &middot; {properties.length} properties &middot; {stats?.devices?.total ?? 0} sensors</>}
             {lastUpdated && (
               <span className={clsx('ml-2 text-xs', isDark ? 'text-slate-600' : 'text-slate-400')}>
-                · Updated {lastUpdated.toLocaleTimeString()}
+                · Updated {lastUpdated.toLocaleTimeString('en-GB', { timeZone: 'Asia/Hong_Kong' })}
               </span>
             )}
           </p>

@@ -141,7 +141,7 @@ export function WebhookConfigPanel() {
           {config?.hasToken ? (
             <div className="flex items-center gap-2">
               {config.lastReceived && (
-                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700" title={`Last received: ${new Date(config.lastReceived).toLocaleString()}`}>
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700" title={`Last received: ${new Date(config.lastReceived).toLocaleString('en-GB', { timeZone: 'Asia/Hong_Kong' })}`}>
                   <Clock className="h-3 w-3" />
                   {formatRelativeTime(config.lastReceived)}
                 </span>
@@ -239,8 +239,8 @@ export function WebhookConfigPanel() {
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-slate-600">Last Received</p>
                   {config.lastReceived ? (
-                    <p className="text-xs text-slate-500 truncate" title={new Date(config.lastReceived).toLocaleString()}>
-                      {new Date(config.lastReceived).toLocaleString()} ({formatRelativeTime(config.lastReceived)})
+                    <p className="text-xs text-slate-500 truncate" title={new Date(config.lastReceived).toLocaleString('en-GB', { timeZone: 'Asia/Hong_Kong' })}>
+                      {new Date(config.lastReceived).toLocaleString('en-GB', { timeZone: 'Asia/Hong_Kong' })} ({formatRelativeTime(config.lastReceived)})
                     </p>
                   ) : (
                     <p className="text-xs text-slate-400 italic">No data received yet</p>

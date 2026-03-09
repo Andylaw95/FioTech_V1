@@ -980,7 +980,7 @@ function GatewaysInner() {
               </button>
               {lastRefreshed && (
                 <span className="text-[10px] text-slate-400 hidden sm:inline">
-                  Updated {lastRefreshed.toLocaleTimeString()}
+                  Updated {lastRefreshed.toLocaleTimeString('en-GB', { timeZone: 'Asia/Hong_Kong' })}
                 </span>
               )}
             </div>

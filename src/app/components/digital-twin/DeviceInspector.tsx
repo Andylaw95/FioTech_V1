@@ -268,7 +268,7 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
         </div>
         {liveDataTime && currentReading.isLive && (
           <p className="text-[10px] text-slate-500 mt-0.5">
-            Last received: {new Date(liveDataTime).toLocaleTimeString()}
+            Last received: {new Date(liveDataTime).toLocaleTimeString('en-GB', { timeZone: 'Asia/Hong_Kong' })}
           </p>
         )}
       </div>

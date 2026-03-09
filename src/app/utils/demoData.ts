@@ -170,7 +170,7 @@ export const DEMO_SETTINGS = {
     alertTypes: { waterLeak: true, smoke: true, deviceOffline: true, highHumidity: false, temperature: false },
     quietHoursEnabled: false, quietHoursStart: "22:00", quietHoursEnd: "07:00",
   },
-  dashboard: { temperatureUnit: "celsius" as const, refreshInterval: 30, compactMode: false, dateFormat: "MM/DD/YYYY", timezone: "America/New_York" },
+  dashboard: { temperatureUnit: "celsius" as const, refreshInterval: 30, compactMode: false, dateFormat: "DD/MM/YYYY", timezone: "Asia/Hong_Kong" },
   security: { twoFactorEnabled: false, sessionTimeout: 30, loginNotifications: true },
 };
 

@@ -507,7 +507,7 @@ supabase secrets set AWS_REGION=ap-east-1`}</pre>
                 <p className="text-xs text-slate-500">
                   Import AWS things as FioTec devices. Existing matches are updated, new things are created.
                   {config?.lastSyncAt && (
-                    <span className="ml-1 text-slate-400">Last sync: {new Date(config.lastSyncAt).toLocaleString()}</span>
+                    <span className="ml-1 text-slate-400">Last sync: {new Date(config.lastSyncAt).toLocaleString('en-GB', { timeZone: 'Asia/Hong_Kong' })}</span>
                   )}
                 </p>
               </div>

@@ -68,7 +68,7 @@ function formatTimeAgo(isoString: string): string {
   if (diffMs < 3600000) return `${Math.round(diffMs / 60000)} min ago`;
   if (diffMs < 86400000) return `${Math.round(diffMs / 3600000)} hour${Math.round(diffMs / 3600000) !== 1 ? 's' : ''} ago`;
   if (diffMs < 604800000) return `${Math.round(diffMs / 86400000)} day${Math.round(diffMs / 86400000) !== 1 ? 's' : ''} ago`;
-  return new Date(isoString).toLocaleDateString();
+  return new Date(isoString).toLocaleDateString('en-GB', { timeZone: 'Asia/Hong_Kong' });
 }
 
 type FilterType = 'all' | 'pending' | 'resolved';
@@ -254,7 +254,7 @@ export function AlarmTypePage({ config }: { config: AlarmTypeConfig }) {
                 </span>
                 {!loading && (
                   <span className="text-xs text-slate-400">
-                    Last checked {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    Last checked {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Hong_Kong' })}
                   </span>
                 )}
                 {deviceCount > 0 && (

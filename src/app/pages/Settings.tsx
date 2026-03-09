@@ -718,14 +718,15 @@ export function Settings() {
                         onChange={(e) => updateLocal('dashboard.timezone', e.target.value)}
                         className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-blue-500 transition-all"
                       >
-                        <option value="America/New_York">Eastern (ET)</option>
-                        <option value="America/Chicago">Central (CT)</option>
-                        <option value="America/Denver">Mountain (MT)</option>
-                        <option value="America/Los_Angeles">Pacific (PT)</option>
-                        <option value="Europe/London">London (GMT)</option>
-                        <option value="Europe/Paris">Paris (CET)</option>
+                        <option value="Asia/Hong_Kong">Hong Kong (HKT)</option>
+                        <option value="Asia/Shanghai">China (CST)</option>
                         <option value="Asia/Tokyo">Tokyo (JST)</option>
                         <option value="Asia/Singapore">Singapore (SGT)</option>
+                        <option value="Asia/Taipei">Taipei (CST)</option>
+                        <option value="Europe/London">London (GMT)</option>
+                        <option value="Europe/Paris">Paris (CET)</option>
+                        <option value="America/New_York">Eastern (ET)</option>
+                        <option value="America/Los_Angeles">Pacific (PT)</option>
                       </select>
                     </SettingsRow>
 

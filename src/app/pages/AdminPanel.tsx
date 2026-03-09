@@ -44,6 +44,8 @@ function cn(...inputs: (string | undefined | null | false)[]) {
   return clsx(inputs);
 }
 
+const HK_TZ = 'Asia/Hong_Kong';
+
 function formatDate(dateStr: string | null) {
   if (!dateStr) return 'Never';
   return new Date(dateStr).toLocaleDateString('en-GB', {
@@ -52,6 +54,7 @@ function formatDate(dateStr: string | null) {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: HK_TZ,
   });
 }
 
@@ -61,6 +64,7 @@ function formatDateShort(dateStr: string | null) {
     day: 'numeric',
     month: 'short',
     year: '2-digit',
+    timeZone: HK_TZ,
   });
 }
 
@@ -812,7 +816,7 @@ function GatewaysTab({ userId }: { userId: string }) {
             const isOnline = g.status === 'online';
             const isWarning = g.status === 'warning';
             const isOffline = !isOnline && !isWarning;
-            const lastSeenStr = g.lastSeen ? new Date(g.lastSeen).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null;
+            const lastSeenStr = g.lastSeen ? new Date(g.lastSeen).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: HK_TZ }) : null;
             return (
             <div key={g.id} className={cn(
               'rounded-lg border p-3',
