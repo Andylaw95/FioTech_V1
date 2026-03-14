@@ -205,7 +205,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Use rate-limited login proxy via Edge Function
       const res = await fetch(`${BASE_URL}/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${publicAnonKey}`,
+        },
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
