@@ -629,10 +629,14 @@ function seededRandom(seed: string): number {
 
 function buildRealTelemetry(sensorData: any[], properties: any[], devices: any[]): any {
   const now = new Date();
+  const STALE_CUTOFF = 60 * 60 * 1000; // 1 hour — ignore entries older than this for dashboard display
   const latestByDevice = new Map<string, any>();
   for (const entry of sensorData) {
     if (!entry.devEUI || entry.devEUI.startsWith("TEST")) continue;
     if (entry.eventType === "join" || entry.eventType === "ack") continue;
+    // Skip stale data — device is offline if no uplink in the last hour
+    const entryAge = now.getTime() - new Date(entry.receivedAt).getTime();
+    if (entryAge > STALE_CUTOFF) continue;
     if (!latestByDevice.has(entry.devEUI)) latestByDevice.set(entry.devEUI, entry);
   }
   const airQuality: any[] = [];
@@ -1166,9 +1170,13 @@ export function registerRoutes(app: any) {
       const latestByDevice = new Map<string, any>();
       const mergedDecoded = new Map<string, Record<string, any>>();
       const MERGE_WINDOW = 30 * 60 * 1000; // merge data from last 30 minutes
+      const STALE_CUTOFF = 60 * 60 * 1000; // ignore entries older than 1 hour
+      const nowMs = Date.now();
       for (const entry of sensorData) {
         if (!entry.devEUI) continue;
         if (entry.eventType === "join" || entry.eventType === "ack") continue;
+        // Skip stale data — device is offline if no uplink in the last hour
+        if (nowMs - new Date(entry.receivedAt).getTime() > STALE_CUTOFF) continue;
         const eui = entry.devEUI.toLowerCase();
         const eName = (entry.deviceName || "").toLowerCase();
 
