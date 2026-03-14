@@ -21,18 +21,14 @@ import { AuthProvider, useAuth } from '@/app/utils/AuthContext';
 import { ThemeProvider } from '@/app/utils/ThemeContext';
 import { Loader2 } from 'lucide-react';
 import { warmupServer, resetWarmup } from '@/app/utils/api';
-import { isDemoMode } from '@/app/utils/demoMode';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading, isDemoMode: demo } = useAuth();
+  const { user, loading } = useAuth();
 
   // PERF: Start server warmup in parallel with auth check.
-  // Skip warmup entirely when in demo mode (no backend needed).
   React.useEffect(() => {
-    if (!demo) {
-      warmupServer().catch(() => { /* handled by warmupServer itself */ });
-    }
-  }, [demo]);
+    warmupServer().catch(() => { /* handled by warmupServer itself */ });
+  }, []);
 
   if (loading) {
     return (
@@ -68,11 +64,6 @@ function ServerWarmupGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = React.useState<'loading' | 'success' | 'failed'>('loading');
   const [elapsed, setElapsed] = React.useState(0);
   const startRef = React.useRef(Date.now());
-
-  // Skip warmup entirely in demo mode — no backend needed
-  if (isDemoMode()) {
-    return <>{children}</>;
-  }
 
   const attemptWarmup = React.useCallback(() => {
     setStatus('loading');

@@ -2,18 +2,17 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import fiotechLogo from '@/assets/fiotech-logo.png';
 import fiotechAppLogo from '@/assets/fiotech-applogo.png';
-import { Eye, EyeOff, Loader2, AlertCircle, Building2, Cpu, Shield, Activity, Play } from 'lucide-react';
+import { Eye, EyeOff, Loader2, AlertCircle, Building2, Cpu, Shield, Activity } from 'lucide-react';
 import { useAuth } from '@/app/utils/AuthContext';
-import { setDemoMode } from '@/app/utils/demoMode';
 import { clsx } from 'clsx';
 
 export function Login() {
-  const { signIn, demoLogin } = useAuth();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [quickLoading, setQuickLoading] = useState<'demo' | null>(null);
+
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -39,16 +38,6 @@ export function Login() {
     }
   };
 
-  const handleQuickLogin = async (type: 'demo') => {
-    setError(null);
-    setQuickLoading(type);
-
-    // Demo account: fully offline, no backend needed
-    setDemoMode(true);
-    demoLogin();
-    setQuickLoading(null);
-  };
-
   const features = [
     { icon: Building2, label: 'Property Management', desc: 'Manage buildings, floors, and zones' },
     { icon: Cpu, label: 'IoT Device Control', desc: 'Monitor sensors in real-time' },
@@ -56,7 +45,7 @@ export function Login() {
     { icon: Shield, label: 'Smart Alarms', desc: 'Auto-generated threshold alerts' },
   ];
 
-  const isAnyLoading = loading || quickLoading !== null;
+  const isAnyLoading = loading;
 
   return (
     <div className="min-h-screen flex bg-slate-50">
@@ -213,46 +202,7 @@ export function Login() {
             </p>
           </div>
 
-          {/* Quick Access Accounts */}
-          <div className="mt-6 space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Quick Access</span>
-                <div className="flex-1 h-px bg-slate-200" />
-              </div>
 
-              <div className="flex justify-center">
-                {/* Demo Account */}
-                <button
-                  onClick={() => handleQuickLogin('demo')}
-                  disabled={isAnyLoading}
-                  className={clsx(
-                    "relative overflow-hidden rounded-xl border p-4 text-left transition-all group w-full max-w-xs",
-                    isAnyLoading
-                      ? "opacity-50 cursor-not-allowed border-slate-200"
-                      : "border-purple-200 hover:border-purple-300 hover:shadow-md hover:shadow-purple-500/10 cursor-pointer"
-                  )}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-50 to-indigo-50/50 opacity-60" />
-                  <div className="relative">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="h-8 w-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                        {quickLoading === 'demo' ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
-                        ) : (
-                          <Play className="h-4 w-4 text-purple-600" />
-                        )}
-                      </div>
-                      <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">Demo</span>
-                    </div>
-                    <p className="text-xs font-semibold text-slate-800 mb-0.5">Demonstration</p>
-                    <p className="text-[11px] text-slate-500 leading-tight">
-                      Pre-loaded with 8 properties, 25 devices, and live alarms
-                    </p>
-                  </div>
-                </button>
-              </div>
-            </div>
         </motion.div>
       </div>
     </div>

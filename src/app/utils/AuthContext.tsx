@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
-import { setDemoMode as setApiDemoMode } from '@/app/utils/demoMode';
+
 
 const supabaseUrl = `https://${projectId}.supabase.co`;
 const BASE_URL = `${supabaseUrl}/functions/v1/make-server-4916a0b9`;
@@ -21,36 +21,32 @@ interface AuthContextType {
   user: AuthUser | null;
   accessToken: string | null;
   loading: boolean;
-  isDemoMode: boolean;
   isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signUp: (email: string, password: string, name: string, accountType?: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
-  demoLogin: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   accessToken: null,
   loading: true,
-  isDemoMode: false,
   isAdmin: false,
   signIn: async () => ({}),
   signUp: async () => ({}),
   signOut: async () => {},
-  demoLogin: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+
   const [isAdmin, setIsAdmin] = useState(false);
 
   // Check admin status from server whenever accessToken changes
   const checkAdminStatus = useCallback(async (token: string | null) => {
-    if (!token || token === 'demo-token') {
+    if (!token) {
       setIsAdmin(false);
       return;
     }
@@ -277,22 +273,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
     setUser(null);
     setAccessToken(null);
-    setIsDemoMode(false);
     setIsAdmin(false);
-    setApiDemoMode(false);
-  }, []);
-
-  const demoLogin = useCallback(() => {
-    setApiDemoMode(true);
-    setUser({ id: 'demo-user', email: 'demo@fiotec.io', name: 'Demo User' });
-    setAccessToken('demo-token');
-    setIsDemoMode(true);
-    setLoading(false);
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, accessToken, loading, isDemoMode, isAdmin, signIn, signUp, signOut, demoLogin }}
+      value={{ user, accessToken, loading, isAdmin, signIn, signUp, signOut }}
     >
       {children}
     </AuthContext.Provider>

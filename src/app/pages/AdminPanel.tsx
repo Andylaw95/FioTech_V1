@@ -1392,7 +1392,7 @@ function CreateUserDialog({ open, onClose, onCreated }: { open: boolean; onClose
 // ─── Main Admin Panel ───────────────────────────────────
 
 export function AdminPanel() {
-  const { isAdmin, isDemoMode } = useAuth();
+  const { isAdmin } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -1416,7 +1416,7 @@ export function AdminPanel() {
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
   // Redirect non-admins (unless demo mode) — placed after all hooks
-  if (!isAdmin && !isDemoMode) {
+  if (!isAdmin) {
     return <Navigate to="/" replace />;
   }
 

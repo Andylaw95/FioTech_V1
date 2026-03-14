@@ -1022,8 +1022,8 @@ export function registerRoutes(app: any) {
       const password = typeof body.password === "string" ? body.password : "";
       if (!email || !password) return c.json({ error: "Email and password are required." }, 400);
 
-      // Rate limit by IP (10/15min) and by email (10/15min) — KV-persisted across isolates
-      const windowMs = 15 * 60 * 1000;
+      // Rate limit by IP (10/hour) and by email (10/hour) — KV-persisted across isolates
+      const windowMs = 60 * 60 * 1000;
       const maxAttempts = 10;
       const rlIpKey = `rl:login:ip:${ip}`;
       const rlEmailKey = `rl:login:em:${email.replace(/[^a-z0-9@._-]/g, "")}`;
