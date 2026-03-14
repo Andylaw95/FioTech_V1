@@ -272,8 +272,8 @@ function getClientIp(c: any): string {
   const xff = c.req.header("x-forwarded-for");
   if (xff) {
     const parts = xff.split(",").map((s: string) => s.trim()).filter(Boolean);
-    // Use the rightmost IP — the last proxy-appended entry is the most trustworthy
-    return parts[parts.length - 1] || "unknown";
+    // Use the leftmost (first) IP — this is the original client IP
+    return parts[0] || "unknown";
   }
   return c.req.header("x-real-ip") || "unknown";
 }
@@ -1012,6 +1012,58 @@ export function registerRoutes(app: any) {
     return next();
   });
 
+  // ─── LOGIN (rate-limited proxy to Supabase Auth) ─────────────
+
+  app.post("/make-server-4916a0b9/login", async (c: any) => {
+    const ip = getClientIp(c);
+    try {
+      const body = await c.req.json();
+      const email = typeof body.email === "string" ? body.email.trim().slice(0, 254).toLowerCase() : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      if (!email || !password) return c.json({ error: "Email and password are required." }, 400);
+
+      // Rate limit by IP (10/15min) and by email (10/15min) — KV-persisted across isolates
+      const windowMs = 15 * 60 * 1000;
+      const maxAttempts = 10;
+      const rlIpKey = `rl:login:ip:${ip}`;
+      const rlEmailKey = `rl:login:em:${email.replace(/[^a-z0-9@._-]/g, "")}`;
+      try {
+        const [ipData, emData] = await kv.mget([rlIpKey, rlEmailKey]) as [
+          { count: number; resetAt: number } | null,
+          { count: number; resetAt: number } | null
+        ];
+        const now = Date.now();
+        if (ipData && now < ipData.resetAt && ipData.count >= maxAttempts) {
+          return c.json({ error: "Too many login attempts. Please try again later." }, 429);
+        }
+        if (emData && now < emData.resetAt && emData.count >= maxAttempts) {
+          return c.json({ error: "Too many login attempts for this account. Please try again later." }, 429);
+        }
+        const ipCount = (ipData && now < ipData.resetAt) ? ipData.count + 1 : 1;
+        const ipReset = (ipData && now < ipData.resetAt) ? ipData.resetAt : now + windowMs;
+        const emCount = (emData && now < emData.resetAt) ? emData.count + 1 : 1;
+        const emReset = (emData && now < emData.resetAt) ? emData.resetAt : now + windowMs;
+        await kv.mset([rlIpKey, rlEmailKey], [
+          { count: ipCount, resetAt: ipReset },
+          { count: emCount, resetAt: emReset },
+        ]);
+      } catch { /* KV failure — don't block login, fall through */ }
+
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_KEY") || "";
+      const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": supabaseAnonKey },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      return c.json(data, res.status);
+    } catch (e) {
+      console.log("Login proxy error:", errorMessage(e));
+      return c.json({ error: "Login failed." }, 500);
+    }
+  });
+
   // ─── SIGNUP (Admin-only account creation) ─────────────
 
   app.post("/make-server-4916a0b9/signup", async (c: any) => {
@@ -1171,12 +1223,12 @@ export function registerRoutes(app: any) {
       const mergedDecoded = new Map<string, Record<string, any>>();
       const MERGE_WINDOW = 30 * 60 * 1000; // merge data from last 30 minutes
       const STALE_CUTOFF = 60 * 60 * 1000; // ignore entries older than 1 hour
-      const nowMs = Date.now();
+      const staleNow = Date.now();
       for (const entry of sensorData) {
         if (!entry.devEUI) continue;
         if (entry.eventType === "join" || entry.eventType === "ack") continue;
         // Skip stale data — device is offline if no uplink in the last hour
-        if (nowMs - new Date(entry.receivedAt).getTime() > STALE_CUTOFF) continue;
+        if (staleNow - new Date(entry.receivedAt).getTime() > STALE_CUTOFF) continue;
         const eui = entry.devEUI.toLowerCase();
         const eName = (entry.deviceName || "").toLowerCase();
 

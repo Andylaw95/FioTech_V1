@@ -206,23 +206,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // Use rate-limited login proxy via Edge Function
+      const res = await fetch(`${BASE_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
-      if (error) {
-        console.error('Sign in error:', error.message);
-        return { error: error.message };
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data.error || data.error_description || data.msg || 'Login failed';
+        console.error('Sign in error:', msg);
+        return { error: msg };
       }
-      if (data.session) {
-        setAccessToken(data.session.access_token);
-        setUser({
-          id: data.session.user.id,
-          email: data.session.user.email || '',
-          name:
-            data.session.user.user_metadata?.name || email.split('@')[0],
+      // Set session from the proxied auth response
+      if (data.access_token && data.refresh_token) {
+        const { error: setErr } = await supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
         });
-        checkAdminStatus(data.session.access_token);
+        if (setErr) {
+          console.error('Session set error:', setErr.message);
+          return { error: setErr.message };
+        }
+        setAccessToken(data.access_token);
+        setUser({
+          id: data.user?.id || '',
+          email: data.user?.email || email,
+          name: data.user?.user_metadata?.name || email.split('@')[0],
+        });
+        checkAdminStatus(data.access_token);
       }
       return {};
     } catch (err: any) {
