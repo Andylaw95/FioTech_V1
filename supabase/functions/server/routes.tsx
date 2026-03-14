@@ -76,7 +76,7 @@ function errorMessage(e: unknown): string {
 
 // Admin identity from environment variables (fallback to defaults for backward compat)
 const MASTER_EMAILS = new Set(
-  (Deno.env.get("MASTER_EMAILS") || "master@fiotec.io")
+  (Deno.env.get("MASTER_EMAILS") || "andylaw@fsenv.com.hk")
     .split(",").map((e: string) => e.trim().toLowerCase()).filter(Boolean)
 );
 const MASTER_USER_ID = Deno.env.get("MASTER_USER_ID") || "5a386250-7710-4a83-8942-5dc45201303f";
