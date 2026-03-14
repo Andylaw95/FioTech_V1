@@ -1023,6 +1023,10 @@ export function registerRoutes(app: any) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: "Invalid email." }, 400);
       if (password.length < 8) return c.json({ error: "Password must be at least 8 characters." }, 400);
       if (password.length > 128) return c.json({ error: "Password too long." }, 400);
+      if (!/[A-Z]/.test(password)) return c.json({ error: "Password must contain an uppercase letter." }, 400);
+      if (!/[a-z]/.test(password)) return c.json({ error: "Password must contain a lowercase letter." }, 400);
+      if (!/[0-9]/.test(password)) return c.json({ error: "Password must contain a number." }, 400);
+      if (!/[^A-Za-z0-9]/.test(password)) return c.json({ error: "Password must contain a special character." }, 400);
       const { data, error } = await supabase.auth.admin.createUser({
         email, password, user_metadata: { name: name || email.split("@")[0], accountType }, email_confirm: false,
       });

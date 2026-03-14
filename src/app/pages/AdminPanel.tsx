@@ -1254,6 +1254,10 @@ function CreateUserDialog({ open, onClose, onCreated }: { open: boolean; onClose
     if (!email.trim()) { toast.error('Email is required'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error('Invalid email format'); return; }
     if (password.length < 8) { toast.error('Password must be at least 8 characters'); return; }
+    if (!/[A-Z]/.test(password)) { toast.error('Password must contain an uppercase letter'); return; }
+    if (!/[a-z]/.test(password)) { toast.error('Password must contain a lowercase letter'); return; }
+    if (!/[0-9]/.test(password)) { toast.error('Password must contain a number'); return; }
+    if (!/[^A-Za-z0-9]/.test(password)) { toast.error('Password must contain a special character'); return; }
     setCreating(true);
     try {
       await api.signup({ email: email.trim(), password, name: name.trim() || email.split('@')[0], accountType });
@@ -1340,6 +1344,9 @@ function CreateUserDialog({ open, onClose, onCreated }: { open: boolean; onClose
             {password && password.length < 8 && (
               <p className="mt-1 text-xs text-amber-600">Password must be at least 8 characters</p>
             )}
+            {password && password.length >= 8 && (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) && (
+              <p className="mt-1 text-xs text-amber-600">Requires uppercase, lowercase, number, and special character</p>
+            )}
           </div>
 
           {/* Account Type */}
@@ -1370,7 +1377,7 @@ function CreateUserDialog({ open, onClose, onCreated }: { open: boolean; onClose
           </button>
           <button
             onClick={handleCreate}
-            disabled={creating || !email.trim() || password.length < 8}
+            disabled={creating || !email.trim() || password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)}
             className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
