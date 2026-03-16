@@ -3195,7 +3195,13 @@ export function registerRoutes(app: any) {
       if (!deviceId) return c.json({ error: "Missing device_id (or serial/sn)." }, 400);
 
       const deviceName = sanitizeString(body.device_name || body.deviceName || body.name || `4G-${deviceId.slice(-6)}`, 200);
-      const uplinkTime = sanitizeString(body.time || body.timestamp || new Date().toISOString(), 50);
+      // Handle timestamp: Unix epoch (integer seconds) or ISO 8601 string
+      let uplinkTime: string;
+      if (typeof body.timestamp === "number") {
+        uplinkTime = new Date(body.timestamp * (body.timestamp > 1e12 ? 1 : 1000)).toISOString();
+      } else {
+        uplinkTime = sanitizeString(body.time || body.timestamp || new Date().toISOString(), 50);
+      }
 
       // ── Extract sensor data — support multiple payload shapes ──
       const decodedData: Record<string, number> = {};
@@ -3226,6 +3232,25 @@ export function registerRoutes(app: any) {
       if (typeof body.lmin === "number") { decodedData.sound_level_lmin = body.lmin; }
       if (typeof body.la === "number" && !decodedData.sound_level_leq) { decodedData.sound_level_leq = body.la; }
       if (typeof body.battery === "number") { decodedData.battery = body.battery; }
+
+      // Shape 4: HY108-1 via HaaS506-LD1 firmware (noise_lp, noise_lmax, noise_lmin, noise_inst)
+      if (typeof decodedData.noise_lp === "number") {
+        decodedData.sound_level_leq = decodedData.noise_lp; delete decodedData.noise_lp;
+      }
+      if (typeof decodedData.noise_lmax === "number") {
+        decodedData.sound_level_lmax = decodedData.noise_lmax; delete decodedData.noise_lmax;
+      }
+      if (typeof decodedData.noise_lmin === "number") {
+        decodedData.sound_level_lmin = decodedData.noise_lmin; delete decodedData.noise_lmin;
+      }
+      if (typeof decodedData.noise_inst === "number") {
+        decodedData.sound_level_inst = decodedData.noise_inst; delete decodedData.noise_inst;
+      }
+      // Also accept body-level HY108 fields (if not already captured via flat scan)
+      if (typeof body.noise_lp === "number" && !decodedData.sound_level_leq) decodedData.sound_level_leq = body.noise_lp;
+      if (typeof body.noise_lmax === "number" && !decodedData.sound_level_lmax) decodedData.sound_level_lmax = body.noise_lmax;
+      if (typeof body.noise_lmin === "number" && !decodedData.sound_level_lmin) decodedData.sound_level_lmin = body.noise_lmin;
+      if (typeof body.noise_inst === "number" && !decodedData.sound_level_inst) decodedData.sound_level_inst = body.noise_inst;
 
       if (Object.keys(decodedData).length === 0) {
         return c.json({ error: "No sensor readings found in payload." }, 400);
@@ -3284,16 +3309,17 @@ export function registerRoutes(app: any) {
         const hasSoundLevel = "sound_level_leq" in decodedData || "sound_level_lmax" in decodedData;
         const nameUpper = (deviceName || "").toUpperCase();
         const isLD1 = nameUpper.includes("LD1") || nameUpper.includes("HAAS") || nameUpper.includes("506");
+        const isHY108 = nameUpper.includes("HY108") || nameUpper.includes("HY-108");
 
         let inferredType = "4G Sensor";
         let inferredModel = "";
         let inferredManufacturer = "";
         let inferredCapabilities: string[] = [];
 
-        if (hasSoundLevel || isLD1 || nameUpper.includes("SOUND") || nameUpper.includes("NOISE") || nameUpper.includes("DECIBEL")) {
+        if (hasSoundLevel || isLD1 || isHY108 || nameUpper.includes("SOUND") || nameUpper.includes("NOISE") || nameUpper.includes("DECIBEL")) {
           inferredType = "Sound Level Sensor";
-          inferredModel = isLD1 ? "HaaS506-LD1" : "4G Sound Level Meter";
-          inferredManufacturer = isLD1 ? "HaaS" : "";
+          inferredModel = isHY108 ? "HY108-1" : (isLD1 ? "HaaS506-LD1" : "4G Sound Level Meter");
+          inferredManufacturer = isHY108 ? "Hunan Shengyi" : (isLD1 ? "HaaS" : "");
           inferredCapabilities = ["sound_level", "battery"];
         } else {
           // Infer from data keys

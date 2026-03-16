@@ -1,23 +1,42 @@
-# HaaS506-LD1 Sound Level Meter — FioTec Integration Guide
+# HaaS506-LD1 + HY108-1 Sound Level Meter — FioTec Integration Guide
 
 ## Overview
 
-This document describes how to configure a **HaaS506-LD1** (4G panel) to send sound level meter data to the **FioTec IoT Platform**. The LD1 posts sensor readings directly over HTTP/HTTPS via its 4G cellular connection — it does **not** use LoRaWAN.
+This document describes how the **HaaS506-LD1** (4G RTU panel) sends **HY108-1** sound level meter data to the **FioTec IoT Platform**. The LD1 reads the HY108-1 via RS232 (reverse-engineered proprietary protocol), then uploads readings over 4G HTTP POST. It does **not** use LoRaWAN.
 
 ---
 
 ## 1. Architecture
 
 ```
-┌──────────────┐     4G / HTTP POST      ┌───────────────────┐     KV Store     ┌──────────────┐
-│  Sound Level │  ─────────────────────>  │  FioTec Backend   │  ────────────>   │  Dashboard   │
-│  Meter + LD1 │                          │  /telemetry-4g    │                  │  (Frontend)  │
-└──────────────┘                          └───────────────────┘                  └──────────────┘
+┌──────────────────────────┐
+│   HY108-1 Sound Meter    │
+│   (RS232 DB9, 9600 8N1)  │
+└──────────┬───────────────┘
+           │ RS232 (TX/RX/GND)
+┌──────────▼───────────────┐
+│   HaaS506-LD1 RTU        │
+│   MicroPython firmware    │
+│   • HY108-1 decoder      │
+│   • 4 commands/cycle      │
+│   • Checksum verify       │
+│   • HTTP POST upload      │
+│   EC200U 4G module        │
+└──────────┬───────────────┘
+           │ 4G Cellular (HTTPS POST)
+┌──────────▼───────────────┐
+│   FioTec Backend          │
+│   POST /telemetry-4g      │
+│   • Auto-registers device │
+│   • Maps noise_* fields   │
+│   • Stores & charts data  │
+│   • 85 dB alarm threshold │
+└──────────────────────────┘
 ```
 
-- The LD1 panel collects readings from the sound level meter via RS-485/analog input.
-- The LD1 sends periodic HTTP POST requests to the FioTec backend over 4G.
-- FioTec stores the data, auto-registers the device, and displays it in the dashboard.
+- The LD1 reads LP (Leq), Lmax, Lmin, and Instantaneous dB from the HY108-1 every cycle
+- The LD1 firmware POSTs JSON to the FioTec `/telemetry-4g` endpoint over 4G
+- FioTec auto-maps `noise_lp` → `sound_level_leq`, etc., stores data, and displays charts
 
 ---
 
@@ -44,33 +63,45 @@ This document describes how to configure a **HaaS506-LD1** (4G panel) to send so
 
 ## 3. Payload Format
 
-### 3.1 Recommended Format (Flat)
+### 3.1 HY108-1 Native Format (from LD1 firmware `main.py`)
+
+This is the **actual payload** sent by the LD1 firmware:
 
 ```json
 {
-  "device_id": "LD1-001",
-  "device_name": "HaaS506-LD1 Sound Meter Floor 3",
-  "sound_level_leq": 65.2,
-  "sound_level_lmax": 78.4,
-  "sound_level_lmin": 42.1,
-  "battery": 85,
-  "timestamp": "2025-01-15T08:30:00Z"
+  "device_id": "HY108-001",
+  "timestamp": 1742104800,
+  "noise_lp": 52.7,
+  "noise_lmax": 71.3,
+  "noise_lmin": 51.1,
+  "noise_inst": 23.3
 }
 ```
 
-### 3.2 Alternative Format (Nested)
+The backend **automatically maps** these to FioTec's standard field names:
+
+| LD1 Firmware Field | → FioTec Internal Field | Description |
+|--------------------|-------------------------|-------------|
+| `noise_lp`         | `sound_level_leq`      | LP (Leq) — equivalent continuous sound level |
+| `noise_lmax`       | `sound_level_lmax`     | Maximum level since last reset |
+| `noise_lmin`       | `sound_level_lmin`     | Minimum level since last reset |
+| `noise_inst`       | `sound_level_inst`     | Instantaneous (real-time) level |
+| `timestamp` (int)  | ISO 8601 string        | Unix epoch → auto-converted |
+
+### 3.2 Alternative Format (FioTec-native field names)
+
+You can also use FioTec's standard field names directly:
 
 ```json
 {
-  "device_id": "LD1-001",
+  "device_id": "HY108-001",
   "device_name": "HaaS506-LD1 Sound Meter Floor 3",
-  "data": {
-    "sound_level_leq": 65.2,
-    "sound_level_lmax": 78.4,
-    "sound_level_lmin": 42.1
-  },
+  "sound_level_leq": 52.7,
+  "sound_level_lmax": 71.3,
+  "sound_level_lmin": 51.1,
+  "sound_level_inst": 23.3,
   "battery": 85,
-  "timestamp": "2025-01-15T08:30:00Z"
+  "timestamp": "2026-03-16T08:30:00Z"
 }
 ```
 
@@ -78,10 +109,10 @@ This document describes how to configure a **HaaS506-LD1** (4G panel) to send so
 
 ```json
 {
-  "device_id": "LD1-001",
-  "leq": 65.2,
-  "lmax": 78.4,
-  "lmin": 42.1
+  "device_id": "HY108-001",
+  "leq": 52.7,
+  "lmax": 71.3,
+  "lmin": 51.1
 }
 ```
 
@@ -91,81 +122,104 @@ This document describes how to configure a **HaaS506-LD1** (4G panel) to send so
 |---------------------|----------|----------|-----------------------------------------------------------|
 | `device_id`         | string   | **Yes**  | Unique device identifier. Also accepts `serial`, `sn`, `deviceId` |
 | `device_name`       | string   | No       | Human-readable name. Defaults to `4G-<last6chars>`        |
-| `sound_level_leq`   | number   | No*      | Equivalent continuous sound level (dB). Also accepts `leq` or `la` |
-| `sound_level_lmax`  | number   | No*      | Maximum sound level (dB). Also accepts `lmax`             |
-| `sound_level_lmin`  | number   | No*      | Minimum sound level (dB). Also accepts `lmin`             |
+| `noise_lp`          | number   | No*      | LP (Leq) from HY108-1 (dB). Auto-mapped to `sound_level_leq` |
+| `noise_lmax`        | number   | No*      | Lmax from HY108-1 (dB). Auto-mapped to `sound_level_lmax` |
+| `noise_lmin`        | number   | No*      | Lmin from HY108-1 (dB). Auto-mapped to `sound_level_lmin` |
+| `noise_inst`        | number   | No*      | Instantaneous from HY108-1 (dB). Auto-mapped to `sound_level_inst` |
+| `sound_level_leq`   | number   | No*      | FioTec-native Leq field. Also accepts `leq` or `la`      |
+| `sound_level_lmax`  | number   | No*      | FioTec-native Lmax field. Also accepts `lmax`             |
+| `sound_level_lmin`  | number   | No*      | FioTec-native Lmin field. Also accepts `lmin`             |
+| `sound_level_inst`  | number   | No*      | FioTec-native Instantaneous field                         |
 | `battery`           | number   | No       | Battery percentage (0–100)                                |
-| `temperature`       | number   | No       | Temperature in °C (if sensor supports it)                 |
-| `timestamp`         | string   | No       | ISO 8601 timestamp. Defaults to server receive time       |
+| `timestamp`         | int/str  | No       | Unix epoch (seconds) or ISO 8601. Defaults to server time |
 | `application`       | string   | No       | Application / project name for grouping                   |
 
-> *At least one sensor reading field is required.
+> *At least one sensor reading field is required. Any field may be `null` if the HY108-1 didn't respond.
 
 ---
 
-## 4. LD1 Panel Configuration
+## 4. LD1 Firmware Configuration
 
-### 4.1 HTTP Client Setup
+### 4.1 Parameters in `main.py`
 
-On the HaaS506-LD1 panel (via its web interface or AT commands):
+Update these constants in the LD1's `main.py` before flashing:
 
-1. **Protocol**: HTTP / HTTPS
-2. **Method**: POST
-3. **URL**: `https://wjvbojulgpmpblmterfy.supabase.co/functions/v1/make-server-4916a0b9/telemetry-4g?token=YOUR_TOKEN`
-4. **Content-Type**: `application/json`
-5. **Reporting Interval**: Set to desired interval (e.g., 60 seconds, 300 seconds)
+```python
+# ═══ MUST CHANGE ═══
 
-> **Tip**: Using the `?token=` query parameter is simpler for most 4G panels. If the panel supports custom headers, use `X-Webhook-Token` header instead for better security.
+# FioTec webhook token (from Settings → Webhook Configuration)
+WEBHOOK_TOKEN = "YOUR_WEBHOOK_TOKEN"
 
-### 4.2 Data Mapping
+# FioTec 4G endpoint URL
+FIOTECH_URL = "https://wjvbojulgpmpblmterfy.supabase.co/functions/v1/make-server-4916a0b9/telemetry-4g"
 
-Map the sound level meter's Modbus/analog registers to JSON fields:
+# Supabase anon key (for Authorization header)
+ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqdmJvanVsZ3BtcGJsbXRlcmZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzOTIzNjYsImV4cCI6MjA4NTk2ODM2Nn0.HQk9BJqz4Qna3qkarsGVLuCCHlGg3iKONBqCzH2yhKI"
 
-| Meter Register / Signal  | JSON Field           | Unit  |
-|--------------------------|----------------------|-------|
-| Leq (A-weighted)         | `sound_level_leq`   | dB(A) |
-| Lmax                     | `sound_level_lmax`   | dB    |
-| Lmin                     | `sound_level_lmin`   | dB    |
-| Battery voltage → %      | `battery`            | %     |
+# Device identifier (unique per physical HY108-1 installation)
+DEVICE_ID = "HY108-001"
 
-### 4.3 Lua Script (if LD1 supports scripting)
-
-If the HaaS506-LD1 supports custom Lua scripts for data formatting:
-
-```lua
--- Example Lua script for HaaS506-LD1
-local json = require("json")
-
--- Read sound level meter values from Modbus/serial
-local leq = read_register(0x0001)   -- Adjust register addresses
-local lmax = read_register(0x0002)
-local lmin = read_register(0x0003)
-
-local payload = json.encode({
-    device_id = "LD1-001",
-    device_name = "HaaS506-LD1 Sound Meter",
-    sound_level_leq = leq / 10.0,
-    sound_level_lmax = lmax / 10.0,
-    sound_level_lmin = lmin / 10.0,
-    battery = get_battery_percent(),
-    timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-})
-
--- POST to FioTec
-http_post(
-    "https://wjvbojulgpmpblmterfy.supabase.co/functions/v1/make-server-4916a0b9/telemetry-4g?token=YOUR_TOKEN",
-    payload,
-    { ["Content-Type"] = "application/json" }
-)
+# ═══ OPTIONAL ═══
+UPLOAD_INTERVAL = 5  # seconds between readings (2-60)
+RETRY_COUNT = 3
 ```
 
-> **Note**: Adjust register addresses and scaling factors based on your specific sound level meter's Modbus map.
+### 4.2 Upload Function in Firmware
+
+The firmware's `upload_to_fiotech()` function should POST to the `/telemetry-4g` endpoint:
+
+```python
+def upload_to_fiotech(data):
+    """Upload HY108-1 readings to FioTec platform."""
+    import ujson
+    import urequests
+    
+    url = FIOTECH_URL + "?token=" + WEBHOOK_TOKEN
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + ANON_KEY
+    }
+    payload = ujson.dumps({
+        "device_id": DEVICE_ID,
+        "timestamp": int(utime.time()),
+        "noise_lp": data.get("lp"),
+        "noise_lmax": data.get("lmax"),
+        "noise_lmin": data.get("lmin"),
+        "noise_inst": data.get("inst")
+    })
+    
+    for attempt in range(RETRY_COUNT):
+        try:
+            resp = urequests.post(url, data=payload, headers=headers)
+            if resp.status_code == 200:
+                print("[OK] FioTech upload success")
+                resp.close()
+                return True
+            else:
+                print("[ERR] FioTech HTTP", resp.status_code)
+                resp.close()
+        except Exception as e:
+            print("[ERR] FioTech upload:", e)
+    return False
+```
+
+### 4.3 Hardware Wiring (HY108-1 → LD1)
+
+```
+HY108-1 (DB9 Male)          HaaS506-LD1 (Terminal Block)
+──────────────────           ──────────────────────────
+Pin 2 (TX)  ───────────────→  serial2 RX
+Pin 3 (RX)  ←───────────────  serial2 TX
+Pin 5 (GND) ────────────────  GND
+```
+
+RS232 levels (±12V) — LD1's serial2 has built-in level conversion.
 
 ---
 
 ## 5. Testing with cURL
 
-### Quick Test (verify connectivity)
+### Quick Test (HY108-1 native format)
 
 ```bash
 curl -X POST \
@@ -174,12 +228,12 @@ curl -X POST \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqdmJvanVsZ3BtcGJsbXRlcmZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzOTIzNjYsImV4cCI6MjA4NTk2ODM2Nn0.HQk9BJqz4Qna3qkarsGVLuCCHlGg3iKONBqCzH2yhKI" \
   -H "X-Webhook-Token: YOUR_WEBHOOK_TOKEN" \
   -d '{
-    "device_id": "LD1-TEST-001",
-    "device_name": "HaaS506-LD1 Test",
-    "sound_level_leq": 55.3,
-    "sound_level_lmax": 72.1,
-    "sound_level_lmin": 38.5,
-    "battery": 90
+    "device_id": "HY108-TEST",
+    "timestamp": 1742104800,
+    "noise_lp": 52.7,
+    "noise_lmax": 71.3,
+    "noise_lmin": 51.1,
+    "noise_inst": 23.3
   }'
 ```
 
@@ -207,36 +261,59 @@ curl -X POST \
 
 ## 6. What Happens After Data Arrives
 
-1. **Auto-Registration**: The first time a `device_id` is seen, FioTec automatically creates a device entry with type "Sound Level Sensor" and model "HaaS506-LD1".
+1. **Auto-Registration**: The first time a `device_id` containing "HY108" or "HY-108" is seen, FioTec auto-creates a device with:
+   - **Type**: "4G Sound Level Meter"
+   - **Model**: "HY108-1"
+   - **Manufacturer**: "Hunan Shengyi"
+   - Other `device_id` patterns create generic "4G Sensor" type
 
-2. **Dashboard Display**: The device appears on the dashboard with:
-   - Violet-themed card showing Leq, Lmax, Lmin readings
-   - Historical chart with reference lines at 70 dB and 85 dB
-   - Battery indicator
+2. **Field Mapping**: The backend translates HY108-1 firmware field names:
+   - `noise_lp` → `sound_level_leq` (LP/Leq equivalent continuous level)
+   - `noise_lmax` → `sound_level_lmax` (maximum level)
+   - `noise_lmin` → `sound_level_lmin` (minimum level)
+   - `noise_inst` → `sound_level_inst` (instantaneous level)
+   - `timestamp` (Unix epoch int) → ISO 8601 string
 
-3. **Alarms**: If `sound_level_leq` exceeds **85 dB**, an automatic "High Noise" alarm is generated.
+3. **Dashboard Display**: The device appears with:
+   - Violet-themed card showing Leq, Lmax, Lmin, and Inst readings
+   - Historical chart with all 4 metrics plotted
+   - Reference lines at 70 dB and 85 dB
 
-4. **Property Assignment**: After auto-registration, assign the device to a property and set its location via the dashboard's device panel.
+4. **Alarms**: If `sound_level_leq` exceeds **85 dB**, an automatic "High Noise" alarm is generated.
+
+5. **Property Assignment**: After auto-registration, assign the device to a property and set its location via the dashboard.
 
 ---
 
-## 7. Supported Additional Sensors
+## 7. HY108-1 Protocol Reference
 
-The 4G endpoint accepts any numeric sensor data. If the LD1 panel connects to additional sensors, include their readings in the same payload:
+The HY108-1 uses a proprietary binary/ASCII hybrid protocol over RS232 (9600 baud, 8N1):
 
-```json
-{
-  "device_id": "LD1-001",
-  "sound_level_leq": 65.2,
-  "sound_level_lmax": 78.4,
-  "sound_level_lmin": 42.1,
-  "temperature": 24.5,
-  "humidity": 62,
-  "battery": 85
-}
+### Commands (single byte)
+
+| Command | Byte | Response            |
+|---------|------|---------------------|
+| M       | 0x4D | LP (Leq) reading    |
+| P       | 0x50 | Lmax reading        |
+| L       | 0x4C | Lmin reading        |
+| N       | 0x4E | Instantaneous level |
+| S       | 0x53 | Status/model info   |
+
+### Response Frame (9 bytes)
+
+```
+[0x01] [5 ASCII chars = dB value] [0x00] [checksum] [0xFF]
 ```
 
-All numeric fields are automatically stored and charted.
+- Bytes 1–5: ASCII decimal digits (e.g., `"052.7"` → 52.7 dB)
+- Checksum: `SUM(bytes[1..5]) & 0xFF`
+- Example: `01 30 35 32 2E 37 00 CB FF` → 52.7 dB
+
+### Timing
+
+- Inter-command delay: ≥50 ms
+- Response timeout: 100–200 ms per command
+- LD1 firmware polls all 4 commands per cycle (~0.8s per full read)
 
 ---
 
@@ -260,5 +337,7 @@ All numeric fields are automatically stored and charted.
 | 401 Unauthorized         | Verify webhook token in Settings → Webhook Configuration              |
 | Device not appearing     | Ensure `device_id` is non-empty and consistent across POSTs           |
 | No chart data            | Confirm at least one numeric sensor field is present in payload       |
-| Stale readings           | Check LD1 reporting interval; verify 4G SIM has active data plan      |
-| "Rate limited" error     | Reduce POST frequency (max 120/min); increase reporting interval      |
+| Stale readings           | Check LD1 upload interval; verify 4G SIM has active data plan         |
+| "Rate limited" error     | Reduce POST frequency (max 120/min); increase `UPLOAD_INTERVAL`       |
+| Some fields null         | HY108-1 may not respond to a command — check RS232 wiring & baud rate |
+| Checksum mismatch        | Verify `SUM(bytes[1..5]) & 0xFF` matches byte 7 in response frame     |

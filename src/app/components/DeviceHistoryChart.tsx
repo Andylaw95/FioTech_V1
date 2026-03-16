@@ -112,6 +112,10 @@ const METRICS: MetricDef[] = [
     key: 'sound_level_lmin', label: 'Sound Lmin', unit: 'dB', icon: Volume2, color: '#c084fc',
     description: 'Minimum sound level',
   },
+  {
+    key: 'sound_level_inst', label: 'Sound Inst', unit: 'dB', icon: Volume2, color: '#7c3aed',
+    description: 'Instantaneous sound level',
+  },
 ];
 
 // ── Exported mapping: reading label → metric key ─────────
@@ -132,6 +136,10 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
   'Sound Lmax': 'sound_level_lmax',
   'Sound Lmin': 'sound_level_lmin',
   'Leq': 'sound_level_leq',
+  'Lmax': 'sound_level_lmax',
+  'Lmin': 'sound_level_lmin',
+  'Inst': 'sound_level_inst',
+  'Instantaneous': 'sound_level_inst',
   'Noise': 'sound_level_leq',
   'Battery': 'battery',
 };
@@ -140,10 +148,10 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
 const TYPE_METRIC_PRIORITY: Record<string, string[]> = {
   IAQ:         ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],
   Temperature: ['temperature', 'humidity', 'co2', 'pressure', 'battery'],
-  Noise:       ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
-  'Sound Level Sensor': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
-  '4G Sensor': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
-  '4G Sound Level Meter': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
+  Noise:       ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_inst', 'battery'],
+  'Sound Level Sensor': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_inst', 'battery'],
+  '4G Sensor': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_inst', 'battery'],
+  '4G Sound Level Meter': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_inst', 'battery'],
   Leakage:     ['temperature', 'humidity', 'battery'],
   'Water Leakage Sensor': ['temperature', 'humidity', 'battery'],
   'Environment Sensor': ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],
