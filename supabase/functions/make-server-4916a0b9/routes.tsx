@@ -380,17 +380,23 @@ function getCollectionDefaults(accountType: string, collection: string): any[] {
 
 async function getUserCollection(userId: string, collection: string): Promise<any[]> {
   const key = uk(userId, collection);
+  let kvFailed = false;
   try {
     const data = await cachedKvGet(key);
     if (data && Array.isArray(data)) return data;
   } catch (e) {
     console.log(`getUserCollection(${collection}): KV read failed:`, errorMessage(e));
+    kvFailed = true;
   }
   const accountType = await getAccountType(userId);
   const defaults = getCollectionDefaults(accountType, collection);
-  try { await cachedKvSet(key, defaults); } catch (e) {
-    console.log(`getUserCollection(${collection}): KV seed failed:`, errorMessage(e));
-    kvCache.set(key, { data: defaults, expiresAt: Date.now() + KV_CACHE_TTL_SLOW * 2 });
+  // ONLY seed defaults when the KV read succeeded but returned null (genuinely new account).
+  // Do NOT overwrite on transient KV failures — that would destroy user's saved data.
+  if (!kvFailed) {
+    try { await cachedKvSet(key, defaults); } catch (e) {
+      console.log(`getUserCollection(${collection}): KV seed failed:`, errorMessage(e));
+      kvCache.set(key, { data: defaults, expiresAt: Date.now() + KV_CACHE_TTL_SLOW * 2 });
+    }
   }
   return defaults;
 }
