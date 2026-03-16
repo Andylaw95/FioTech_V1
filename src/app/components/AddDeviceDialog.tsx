@@ -21,7 +21,7 @@ import { Plus, Loader2, Router } from 'lucide-react';
 import { api, type Property, type Gateway } from '@/app/utils/api';
 import { toast } from 'sonner';
 
-const DEVICE_TYPES = ['IAQ', 'Noise', 'Leakage', 'Smoke', 'Fire', 'Temperature'];
+const DEVICE_TYPES = ['IAQ', 'Noise', 'Leakage', 'Smoke', 'Fire', 'Temperature', '4G Sound Level Meter'];
 
 interface AddDeviceDialogProps {
   onSuccess: () => void;

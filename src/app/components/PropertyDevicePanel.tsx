@@ -40,6 +40,7 @@ const deviceMeta: Record<string, { icon: React.ElementType; bg: string; color: s
   'Water Leakage Sensor': { icon: Droplets, bg: 'bg-blue-50', color: 'text-blue-600', label: 'Water Leak' },
   Noise:       { icon: Volume2,     bg: 'bg-violet-50',   color: 'text-violet-600',   label: 'Noise' },
   'Sound Level Sensor': { icon: Volume2, bg: 'bg-violet-50', color: 'text-violet-600', label: 'Sound Level' },
+  '4G Sensor': { icon: Volume2, bg: 'bg-violet-50', color: 'text-violet-600', label: '4G Sensor' },
   Smoke:       { icon: Shield,      bg: 'bg-slate-100',   color: 'text-slate-600',    label: 'Smoke Detector' },
   Fire:        { icon: Flame,       bg: 'bg-red-50',      color: 'text-red-600',      label: 'Fire Alarm' },
   'Environment Sensor': { icon: Wind, bg: 'bg-emerald-50', color: 'text-emerald-600', label: 'Environment' },
@@ -57,7 +58,8 @@ function getSimulatedReading(device: Device) {
     case 'Temperature': return { value: (19 + (h % 80) / 10).toFixed(1), unit: '°C', label: 'Temp' };
     case 'Leakage':     return { value: h % 5 === 0 ? 'LEAK' : 'DRY', unit: '', label: 'Status' };
     case 'Noise':
-    case 'Sound Level Sensor': return { value: (30 + (h % 45)).toString(), unit: 'dB', label: 'Leq' };
+    case 'Sound Level Sensor':
+    case '4G Sensor': return { value: (30 + (h % 45)).toString(), unit: 'dB', label: 'Leq' };
     case 'Water Leakage Sensor': return { value: h % 5 === 0 ? 'LEAK' : 'DRY', unit: '', label: 'Status' };
     case 'Smoke':       return { value: (0.05 + (h % 30) / 100).toFixed(2), unit: 'μg/m³', label: 'Particles' };
     case 'Fire':        return { value: (20 + (h % 40) / 10).toFixed(1), unit: '°C', label: 'Heat' };

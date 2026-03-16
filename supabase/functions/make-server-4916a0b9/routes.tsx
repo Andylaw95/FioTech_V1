@@ -2905,8 +2905,9 @@ export function registerRoutes(app: any) {
             } else if (nUp.includes("ENVIRONMENT MONITORING") || nUp.includes("WATER LEAK") || nUp.includes("WS50") || nUp.includes("WS52")) {
               devices[devIdx].type = "Water Leakage Sensor"; devices[devIdx].model = "EM300-SLD";
               devices[devIdx].capabilities = ["water_leak", "temperature", "humidity", "battery"];
-            } else if (nUp.includes("WS302") || nUp.includes("SOUND LEVEL")) {
-              devices[devIdx].type = "Sound Level Sensor"; devices[devIdx].model = "WS302";
+            } else if (nUp.includes("WS302") || nUp.includes("SOUND LEVEL") || nUp.includes("LD1") || nUp.includes("HAAS")) {
+              devices[devIdx].type = "Sound Level Sensor";
+              devices[devIdx].model = nUp.includes("LD1") || nUp.includes("HAAS") ? "HaaS506-LD1" : "WS302";
               devices[devIdx].capabilities = ["sound_level", "battery"];
             } else if (nUp.includes("WS301") || (nUp.includes("WS30") && !nUp.includes("WS302"))) {
               devices[devIdx].type = "Door/Window Sensor"; devices[devIdx].model = "WS301";
@@ -2954,8 +2955,8 @@ export function registerRoutes(app: any) {
               inferredModel = "VS121";
               inferredCapabilities = ["people_count", "battery"];
               inferredType = "People Counter";
-            } else if (nameUpper.includes("WS302") || nameUpper.includes("SOUND LEVEL")) {
-              inferredModel = "WS302";
+            } else if (nameUpper.includes("WS302") || nameUpper.includes("SOUND LEVEL") || nameUpper.includes("LD1") || nameUpper.includes("HAAS")) {
+              inferredModel = nameUpper.includes("LD1") || nameUpper.includes("HAAS") ? "HaaS506-LD1" : "WS302";
               inferredCapabilities = ["sound_level", "battery"];
               inferredType = "Sound Level Sensor";
             } else if (nameUpper.includes("WS301") || (nameUpper.includes("WS30") && !nameUpper.includes("WS302"))) {
@@ -3162,6 +3163,251 @@ export function registerRoutes(app: any) {
     } catch (e) {
       console.log("Webhook error:", errorMessage(e));
       return c.json({ error: "Failed to process webhook data." }, 500);
+    }
+  });
+
+  // ─── 4G TELEMETRY ENDPOINT (HaaS506-LD1 and other direct HTTP-posting devices) ───
+  // Unlike the LoRaWAN webhook, 4G devices POST sensor readings directly via HTTP.
+  // They have no devEUI/fPort/rxInfo — instead they use a device_id or serial number.
+  // Payload format: { device_id, sound_level_leq, sound_level_lmax, sound_level_lmin, ... }
+  app.post("/make-server-4916a0b9/telemetry-4g", async (c: any) => {
+    const ip = getClientIp(c);
+    if (!rateLimit(ip + ":telem4g", 120, 60000)) return c.json({ error: "Rate limited." }, 429);
+
+    let body: any = null;
+    try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body." }, 400); }
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid JSON body." }, 400);
+
+    try {
+      // Auth: same token-based auth as the LoRaWAN webhook
+      const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
+      if (!token || token.length < 10) return c.json({ error: "Missing or invalid webhook token." }, 401);
+      const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
+      if (!tokenOwner) return c.json({ error: "Invalid webhook token." }, 401);
+      const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
+      if (storedToken !== token) return c.json({ error: "Webhook token revoked." }, 401);
+
+      const userId = tokenOwner;
+
+      // ── Parse 4G device payload ──
+      // Required: device_id (unique identifier for this 4G device)
+      const deviceId = sanitizeString(body.device_id || body.deviceId || body.serial || body.sn || "", 64);
+      if (!deviceId) return c.json({ error: "Missing device_id (or serial/sn)." }, 400);
+
+      const deviceName = sanitizeString(body.device_name || body.deviceName || body.name || `4G-${deviceId.slice(-6)}`, 200);
+      const uplinkTime = sanitizeString(body.time || body.timestamp || new Date().toISOString(), 50);
+
+      // ── Extract sensor data — support multiple payload shapes ──
+      const decodedData: Record<string, number> = {};
+
+      // Shape 1: flat keys (sound_level_leq, sound_level_lmax, sound_level_lmin, temperature, etc.)
+      for (const [k, v] of Object.entries(body)) {
+        if (typeof v === "number" && !["fPort", "fCnt"].includes(k)) {
+          // Accept known sensor fields directly
+          const sanitizedKey = k.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 50);
+          if (sanitizedKey) decodedData[sanitizedKey] = v;
+        }
+      }
+
+      // Shape 2: nested "data" or "readings" object
+      const nested = body.data || body.readings || body.payload;
+      if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+        for (const [k, v] of Object.entries(nested)) {
+          if (typeof v === "number") {
+            const sanitizedKey = k.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 50);
+            if (sanitizedKey && !(sanitizedKey in decodedData)) decodedData[sanitizedKey] = v;
+          }
+        }
+      }
+
+      // Shape 3: LD1-specific — raw dB values (leq, lmax, lmin shorthand)
+      if (typeof body.leq === "number") { decodedData.sound_level_leq = body.leq; }
+      if (typeof body.lmax === "number") { decodedData.sound_level_lmax = body.lmax; }
+      if (typeof body.lmin === "number") { decodedData.sound_level_lmin = body.lmin; }
+      if (typeof body.la === "number" && !decodedData.sound_level_leq) { decodedData.sound_level_leq = body.la; }
+      if (typeof body.battery === "number") { decodedData.battery = body.battery; }
+
+      if (Object.keys(decodedData).length === 0) {
+        return c.json({ error: "No sensor readings found in payload." }, 400);
+      }
+
+      // ── Build sensor data entry (compatible with existing LoRaWAN format) ──
+      const entry: any = {
+        id: `SD${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        eventType: "uplink",
+        devEUI: deviceId, // 4G devices use device_id in place of devEUI
+        deviceName,
+        applicationName: sanitizeString(body.application || body.app || "4G Sensors", 200),
+        gatewayEUI: "", rssi: -999, snr: 0, frequency: 0,
+        fPort: 0, fCnt: 0, rawData: "",
+        decodedData,
+        receivedAt: new Date().toISOString(),
+        uplinkTime,
+        source: "4g", // Distinguish from LoRaWAN uplinks
+      };
+
+      // ── Store sensor data ──
+      const sdKey = `sensor_data_${userId}`;
+      let sensorData: any[] = [];
+      try { const existing = await kvGetWithRetry(sdKey); if (Array.isArray(existing)) sensorData = existing; } catch {}
+      sensorData.unshift(entry);
+      const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+      const pruneCutoff = Date.now() - THREE_DAYS;
+      sensorData = sensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneCutoff);
+      if (sensorData.length > 1000) sensorData = sensorData.slice(0, 1000);
+      await kvSetWithRetry(sdKey, sensorData);
+
+      // ── Auto-register / update device ──
+      const devKey = uk(userId, "devices");
+      const devices = await getUserCollection(userId, "devices");
+      const devIdx = devices.findIndex((d: any) =>
+        (d.devEui || "").toLowerCase() === deviceId.toLowerCase()
+      );
+
+      if (devIdx !== -1) {
+        // Update existing device
+        devices[devIdx].lastSeen = new Date().toISOString();
+        devices[devIdx].lastUpdate = new Date().toISOString();
+        devices[devIdx].status = "online";
+        if (typeof decodedData.battery === "number") devices[devIdx].battery = decodedData.battery;
+        // Re-classify generic devices
+        if (devices[devIdx].type === "LoRaWAN Sensor" || devices[devIdx].type === "4G Sensor") {
+          const hasSoundLevel = "sound_level_leq" in decodedData || "sound_level_lmax" in decodedData;
+          if (hasSoundLevel) {
+            devices[devIdx].type = "Sound Level Sensor";
+            devices[devIdx].capabilities = ["sound_level", "battery"];
+          }
+        }
+        await cachedKvSet(devKey, devices);
+      } else {
+        // Auto-register new 4G device
+        const hasSoundLevel = "sound_level_leq" in decodedData || "sound_level_lmax" in decodedData;
+        const nameUpper = (deviceName || "").toUpperCase();
+        const isLD1 = nameUpper.includes("LD1") || nameUpper.includes("HAAS") || nameUpper.includes("506");
+
+        let inferredType = "4G Sensor";
+        let inferredModel = "";
+        let inferredManufacturer = "";
+        let inferredCapabilities: string[] = [];
+
+        if (hasSoundLevel || isLD1 || nameUpper.includes("SOUND") || nameUpper.includes("NOISE") || nameUpper.includes("DECIBEL")) {
+          inferredType = "Sound Level Sensor";
+          inferredModel = isLD1 ? "HaaS506-LD1" : "4G Sound Level Meter";
+          inferredManufacturer = isLD1 ? "HaaS" : "";
+          inferredCapabilities = ["sound_level", "battery"];
+        } else {
+          // Infer from data keys
+          const dataKeys = Object.keys(decodedData);
+          if (dataKeys.some(k => /temperature/i.test(k))) inferredCapabilities.push("temperature");
+          if (dataKeys.some(k => /humidity/i.test(k))) inferredCapabilities.push("humidity");
+          if (dataKeys.some(k => /co2/i.test(k))) inferredCapabilities.push("co2");
+          if (dataKeys.some(k => /battery/i.test(k))) inferredCapabilities.push("battery");
+        }
+
+        const newDevice: any = {
+          id: `D${Date.now()}`,
+          name: deviceName,
+          type: inferredType,
+          devEui: deviceId, // 4G ID stored in devEui field for compatibility
+          gateway: "4G Direct",
+          building: "Unassigned",
+          location: "Auto-registered (4G)",
+          status: "online",
+          battery: typeof decodedData.battery === "number" ? decodedData.battery : 100,
+          lastUpdate: new Date().toISOString(),
+          lastSeen: new Date().toISOString(),
+          signal: 100, // 4G direct = full signal
+          serialNumber: deviceId,
+          connectionType: "4G",
+        };
+        if (inferredManufacturer) newDevice.manufacturer = inferredManufacturer;
+        if (inferredModel) newDevice.model = inferredModel;
+        if (inferredCapabilities.length > 0) newDevice.capabilities = inferredCapabilities;
+
+        devices.push(newDevice);
+        await cachedKvSet(devKey, devices);
+        console.log(`[4G Auto-Register] New device: ${newDevice.name} (${inferredModel || "4G"}) ID=${deviceId}`);
+      }
+
+      // ── Fan-out to subscribers ──
+      if (deviceId) {
+        try {
+          const fanoutIndex: Record<string, string[]> = (await cachedKvGet("device_fanout_index")) || {};
+          const subscriberUserIds: string[] = fanoutIndex[deviceId.toLowerCase()] || [];
+          const nowIso = new Date().toISOString();
+          for (const subUserId of subscriberUserIds) {
+            if (subUserId === userId) continue;
+            try {
+              const subDevKey = uk(subUserId, "devices");
+              const subDevices = await getUserCollection(subUserId, "devices");
+              let devChanged = false;
+              for (let i = 0; i < subDevices.length; i++) {
+                if ((subDevices[i].devEui || "").toLowerCase() === deviceId.toLowerCase()) {
+                  subDevices[i].lastSeen = nowIso;
+                  subDevices[i].lastUpdate = nowIso;
+                  subDevices[i].status = "online";
+                  if (typeof decodedData.battery === "number") subDevices[i].battery = decodedData.battery;
+                  devChanged = true;
+                }
+              }
+              if (devChanged) await cachedKvSet(subDevKey, subDevices);
+
+              const subSdKey = `sensor_data_${subUserId}`;
+              let subSensorData: any[] = [];
+              try { const existing = await cachedKvGet(subSdKey); if (Array.isArray(existing)) subSensorData = existing; } catch {}
+              subSensorData.unshift(entry);
+              const THREE_DAYS_FAN = 3 * 24 * 60 * 60 * 1000;
+              const pruneFan = Date.now() - THREE_DAYS_FAN;
+              subSensorData = subSensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneFan);
+              if (subSensorData.length > 1000) subSensorData = subSensorData.slice(0, 1000);
+              await cachedKvSet(subSdKey, subSensorData);
+            } catch (fanErr) {
+              console.log(`[4G Fanout] Error syncing to ${subUserId}: ${errorMessage(fanErr)}`);
+            }
+          }
+        } catch (fanErr) {
+          console.log(`[4G Fanout] Index read failed: ${errorMessage(fanErr)}`);
+        }
+      }
+
+      // ── Auto-generate alarms (reuse same threshold logic) ──
+      if (Object.keys(decodedData).length > 0) {
+        const normalized: Record<string, number> = { ...decodedData };
+        if (normalized.sound_level_leq && !normalized.sound_level) normalized.sound_level = normalized.sound_level_leq;
+        const alarmChecks = [
+          { field: "sound_level", threshold: 85, type: "High Noise", desc: "Sound level exceeding 85dB threshold", above: true },
+          { field: "temperature", threshold: 50, type: "Temperature", desc: "Temperature exceeding 50°C threshold", above: true },
+          { field: "battery", threshold: 10, type: "Low Battery", desc: "Device battery below 10%", above: false },
+        ];
+        for (const check of alarmChecks) {
+          const val = normalized[check.field];
+          if (typeof val === "number" && ((check.above && val > check.threshold) || (!check.above && val < check.threshold))) {
+            const alarmKey = uk(userId, "alarms");
+            let alarms = await kvGetWithRetry(alarmKey);
+            if (!Array.isArray(alarms)) alarms = [];
+            const recentDupe = alarms.find((a: any) => a.type === check.type && a.status === "pending" && (Date.now() - new Date(a.time).getTime()) < 300000);
+            if (!recentDupe) {
+              const newAlarm = {
+                id: `A${Date.now()}`, type: check.type, location: deviceName,
+                property: sanitizeString(body.application || "4G Sensor", 200),
+                severity: "medium",
+                time: new Date().toISOString(), status: "pending",
+                description: `${check.desc}: ${deviceName} reported ${check.field}=${val}`,
+              };
+              alarms.unshift(newAlarm);
+              if (alarms.length > 1000) alarms = alarms.slice(0, 1000);
+              await kvSetWithRetry(alarmKey, alarms);
+              invalidateKvCache(alarmKey);
+            }
+          }
+        }
+      }
+
+      console.log(`[4G Telemetry] Processed: ${deviceName} (${deviceId}), fields: ${Object.keys(decodedData).join(", ")}`);
+      return c.json({ success: true, id: entry.id, message: "4G telemetry data received." });
+    } catch (e) {
+      console.log("4G Telemetry error:", errorMessage(e));
+      return c.json({ error: "Failed to process 4G telemetry data." }, 500);
     }
   });
 

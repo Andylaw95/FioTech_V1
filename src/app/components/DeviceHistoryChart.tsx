@@ -142,6 +142,8 @@ const TYPE_METRIC_PRIORITY: Record<string, string[]> = {
   Temperature: ['temperature', 'humidity', 'co2', 'pressure', 'battery'],
   Noise:       ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
   'Sound Level Sensor': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
+  '4G Sensor': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
+  '4G Sound Level Meter': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
   Leakage:     ['temperature', 'humidity', 'battery'],
   'Water Leakage Sensor': ['temperature', 'humidity', 'battery'],
   'Environment Sensor': ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],
