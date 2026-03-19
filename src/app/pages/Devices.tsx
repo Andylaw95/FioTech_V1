@@ -7,6 +7,7 @@ import {
   Battery, 
   BatteryMedium, 
   BatteryLow,
+  Plug,
   Wifi,
   WifiOff,
   ChevronDown,
@@ -38,7 +39,7 @@ interface Device {
   building: string;
   location: string;
   lastUpdate: string;
-  battery: number;
+  battery: number | null;
   status: string;
   gateway?: string;
 }
@@ -428,14 +429,15 @@ export function Devices() {
                       <span className="capitalize text-xs text-slate-600">{device.status}</span>
                     </div>
                     <div className="flex items-center gap-1 text-xs text-slate-500">
-                      {device.battery > 80 ? (
-                        <Battery className="h-3.5 w-3.5 text-emerald-500" />
+                      {device.battery === null ? (
+                        <><Plug className="h-3.5 w-3.5 text-blue-500" /><span>AC</span></>
+                      ) : device.battery > 80 ? (
+                        <><Battery className="h-3.5 w-3.5 text-emerald-500" /><span>{device.battery}%</span></>
                       ) : device.battery > 20 ? (
-                        <BatteryMedium className="h-3.5 w-3.5 text-amber-500" />
+                        <><BatteryMedium className="h-3.5 w-3.5 text-amber-500" /><span>{device.battery}%</span></>
                       ) : (
-                        <BatteryLow className="h-3.5 w-3.5 text-red-500" />
+                        <><BatteryLow className="h-3.5 w-3.5 text-red-500" /><span>{device.battery}%</span></>
                       )}
-                      <span>{device.battery}%</span>
                     </div>
                     <span className="text-xs text-slate-400">{device.lastUpdate}</span>
                   </div>
@@ -544,14 +546,15 @@ export function Devices() {
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2 text-slate-600">
-                        {device.battery > 80 ? (
-                          <Battery className="h-4 w-4 text-emerald-500" />
+                        {device.battery === null ? (
+                          <><Plug className="h-4 w-4 text-blue-500" /><span>AC</span></>
+                        ) : device.battery > 80 ? (
+                          <><Battery className="h-4 w-4 text-emerald-500" /><span>{device.battery}%</span></>
                         ) : device.battery > 20 ? (
-                          <BatteryMedium className="h-4 w-4 text-amber-500" />
+                          <><BatteryMedium className="h-4 w-4 text-amber-500" /><span>{device.battery}%</span></>
                         ) : (
-                          <BatteryLow className="h-4 w-4 text-red-500" />
+                          <><BatteryLow className="h-4 w-4 text-red-500" /><span>{device.battery}%</span></>
                         )}
-                        <span>{device.battery}%</span>
                       </div>
                     </td>
                     <td className="px-4 py-4 text-slate-500 whitespace-nowrap">{device.lastUpdate}</td>

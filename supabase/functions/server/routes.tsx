@@ -556,7 +556,7 @@ function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, strin
   return devices.map((d: any) => {
     let status = d.status || "online";
     let lastUpdate = d.lastUpdate;
-    let battery = typeof d.battery === "number" ? d.battery : 100;
+    let battery = typeof d.battery === "number" ? d.battery : (d.connectionType === "4G" ? null : 100);
 
     // Staleness-based status: if no uplink for a while, mark offline/warning
     if (d.lastSeen) {
@@ -567,18 +567,18 @@ function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, strin
         lastUpdate = hrs >= 24 ? `Offline ${Math.round(hrs / 24)}d ago` : `Offline ${hrs}h ago`;
         // If last-known battery was already low, the device likely died from
         // a depleted battery — show 0% so the UI doesn't mislead with a stale value.
-        if (battery <= 15) battery = 0;
+        if (battery !== null && battery <= 15) battery = 0;
       } else if (age > STALE_WARNING && status === "online") {
         status = "warning";
         lastUpdate = `Last seen ${Math.round(age / (60 * 1000))}m ago`;
       }
     }
 
-    // Battery-based status derivation (can worsen status further)
+    // Battery-based status derivation (can worsen status further, skip for external-power devices)
     if (battery === 0) {
       status = "offline";
       lastUpdate = "Battery dead";
-    } else if (battery <= 15 && status === "online") {
+    } else if (battery !== null && battery <= 15 && status === "online") {
       status = "warning";
       lastUpdate = d.lastUpdate || "Low battery";
     }
@@ -3326,7 +3326,7 @@ export function registerRoutes(app: any) {
           inferredType = "Sound Level Sensor";
           inferredModel = isHY108 ? "HY108-1" : (isLD1 ? "HaaS506-LD1" : "4G Sound Level Meter");
           inferredManufacturer = isHY108 ? "Hunan Shengyi" : (isLD1 ? "HaaS" : "");
-          inferredCapabilities = ["sound_level", "battery"];
+          inferredCapabilities = ["sound_level"];
         } else {
           // Infer from data keys
           const dataKeys = Object.keys(decodedData);
@@ -3345,7 +3345,7 @@ export function registerRoutes(app: any) {
           building: "Unassigned",
           location: "Auto-registered (4G)",
           status: "online",
-          battery: typeof decodedData.battery === "number" ? decodedData.battery : 100,
+          battery: typeof decodedData.battery === "number" ? decodedData.battery : null,
           lastUpdate: new Date().toISOString(),
           lastSeen: new Date().toISOString(),
           signal: 100, // 4G direct = full signal
