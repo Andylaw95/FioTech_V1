@@ -3299,16 +3299,28 @@ export function registerRoutes(app: any) {
         source: "4g", // Distinguish from LoRaWAN uplinks
       };
 
-      // ── Store sensor data ──
-      const sdKey = `sensor_data_${userId}`;
-      let sensorData: any[] = [];
-      try { const existing = await kvGetWithRetry(sdKey); if (Array.isArray(existing)) sensorData = existing; } catch {}
-      sensorData.unshift(entry);
-      const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
-      const pruneCutoff = Date.now() - THREE_DAYS;
-      sensorData = sensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneCutoff);
-      if (sensorData.length > 1000) sensorData = sensorData.slice(0, 1000);
-      await kvSetWithRetry(sdKey, sensorData);
+      // ── 15-minute storage throttle ──
+      // The firmware sends data every few seconds, but we only store to sensor_data
+      // every 15 minutes to reduce DB I/O. Device lastSeen is always updated.
+      const STORE_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+      const storeTimestampKey = `last_4g_store_${userId}_${deviceId.toLowerCase()}`;
+      let lastStoreTime = 0;
+      try { const ts = await kvGetWithRetry(storeTimestampKey); if (typeof ts === "number") lastStoreTime = ts; } catch {}
+      const shouldStore = (Date.now() - lastStoreTime) >= STORE_INTERVAL_MS;
+
+      // ── Store sensor data (only every 15 minutes) ──
+      if (shouldStore) {
+        const sdKey = `sensor_data_${userId}`;
+        let sensorData: any[] = [];
+        try { const existing = await kvGetWithRetry(sdKey); if (Array.isArray(existing)) sensorData = existing; } catch {}
+        sensorData.unshift(entry);
+        const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+        const pruneCutoff = Date.now() - THREE_DAYS;
+        sensorData = sensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneCutoff);
+        if (sensorData.length > 1000) sensorData = sensorData.slice(0, 1000);
+        await kvSetWithRetry(sdKey, sensorData);
+        await kvSetWithRetry(storeTimestampKey, Date.now());
+      }
 
       // ── Auto-register / update device ──
       const devKey = uk(userId, "devices");
@@ -3406,15 +3418,17 @@ export function registerRoutes(app: any) {
               }
               if (devChanged) await cachedKvSet(subDevKey, subDevices);
 
-              const subSdKey = `sensor_data_${subUserId}`;
-              let subSensorData: any[] = [];
-              try { const existing = await cachedKvGet(subSdKey); if (Array.isArray(existing)) subSensorData = existing; } catch {}
-              subSensorData.unshift(entry);
-              const THREE_DAYS_FAN = 3 * 24 * 60 * 60 * 1000;
-              const pruneFan = Date.now() - THREE_DAYS_FAN;
-              subSensorData = subSensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneFan);
-              if (subSensorData.length > 1000) subSensorData = subSensorData.slice(0, 1000);
-              await cachedKvSet(subSdKey, subSensorData);
+              if (shouldStore) {
+                const subSdKey = `sensor_data_${subUserId}`;
+                let subSensorData: any[] = [];
+                try { const existing = await cachedKvGet(subSdKey); if (Array.isArray(existing)) subSensorData = existing; } catch {}
+                subSensorData.unshift(entry);
+                const THREE_DAYS_FAN = 3 * 24 * 60 * 60 * 1000;
+                const pruneFan = Date.now() - THREE_DAYS_FAN;
+                subSensorData = subSensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneFan);
+                if (subSensorData.length > 1000) subSensorData = subSensorData.slice(0, 1000);
+                await cachedKvSet(subSdKey, subSensorData);
+              }
             } catch (fanErr) {
               console.log(`[4G Fanout] Error syncing to ${subUserId}: ${errorMessage(fanErr)}`);
             }
@@ -3457,8 +3471,8 @@ export function registerRoutes(app: any) {
         }
       }
 
-      console.log(`[4G Telemetry] Processed: ${deviceName} (${deviceId}), fields: ${Object.keys(decodedData).join(", ")}`);
-      return c.json({ success: true, id: entry.id, message: "4G telemetry data received." });
+      console.log(`[4G Telemetry] ${shouldStore ? "Stored" : "Throttled"}: ${deviceName} (${deviceId}), fields: ${Object.keys(decodedData).join(", ")}`);
+      return c.json({ success: true, id: entry.id, stored: shouldStore, message: shouldStore ? "4G telemetry data stored." : "4G telemetry received (throttled — next store in " + Math.ceil((STORE_INTERVAL_MS - (Date.now() - lastStoreTime)) / 60000) + "m)." });
     } catch (e) {
       console.log("4G Telemetry error:", errorMessage(e));
       return c.json({ error: "Failed to process 4G telemetry data." }, 500);
