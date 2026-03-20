@@ -1320,9 +1320,10 @@ export function registerRoutes(app: any) {
         const bp = fv(decoded, ["barometric_pressure", "pressure", "baro"]);
         const lux = fv(decoded, ["illuminance", "light", "lux"]);
         const motion = fv(decoded, ["pir", "occupancy", "motion"]);
-        const sleq = fv(decoded, ["sound_level_leq", "leq"]);
-        const slmin = fv(decoded, ["sound_level_lmin", "lmin"]);
-        const slmax = fv(decoded, ["sound_level_lmax", "lmax"]);
+        const sleq = fv(decoded, ["sound_level_leq", "noise_leq", "noise_lp", "leq"]);
+        const slmin = fv(decoded, ["sound_level_lmin", "noise_lafmin", "noise_lmin", "lmin"]);
+        const slmax = fv(decoded, ["sound_level_lmax", "noise_lafmax", "noise_lmax", "lmax"]);
+        const slinst = fv(decoded, ["sound_level_inst", "noise_laf", "noise_inst"]);
         const wleak = fv(decoded, ["water_leak", "digital_input"]);
         if (t !== null) { temperature = t; tempSum.push(t); }
         if (h !== null) { humidity = h; humSum.push(h); }
@@ -1336,6 +1337,7 @@ export function registerRoutes(app: any) {
         if (sleq !== null) sound_level_leq = sleq;
         if (slmin !== null) sound_level_lmin = slmin;
         if (slmax !== null) sound_level_lmax = slmax;
+        if (slinst !== null) { /* stored per-device below */ }
         if (wleak !== null) water_leak = wleak;
 
         // Build per-device reading
@@ -1358,6 +1360,7 @@ export function registerRoutes(app: any) {
             ...(sleq !== null && { sound_level_leq: sleq }),
             ...(slmin !== null && { sound_level_lmin: slmin }),
             ...(slmax !== null && { sound_level_lmax: slmax }),
+            ...(slinst !== null && { sound_level_inst: slinst }),
             ...(wleak !== null && { water_leak: wleak }),
           },
         };
@@ -3202,9 +3205,23 @@ export function registerRoutes(app: any) {
 
       const deviceName = sanitizeString(body.device_name || body.deviceName || body.name || `4G-${deviceId.slice(-6)}`, 200);
       // Handle timestamp: Unix epoch (integer seconds) or ISO 8601 string
+      // Detect firmware RTC timezone offset: if timestamp is in the future vs server time,
+      // the firmware clock is likely set to local time (e.g. HKT=UTC+8) but generating UTC epoch.
       let uplinkTime: string;
+      const serverNowMs = Date.now();
       if (typeof body.timestamp === "number") {
-        uplinkTime = new Date(body.timestamp * (body.timestamp > 1e12 ? 1 : 1000)).toISOString();
+        const tsMs = body.timestamp * (body.timestamp > 1e12 ? 1 : 1000);
+        const driftMs = tsMs - serverNowMs;
+        if (driftMs > 2 * 60 * 1000) {
+          // Timestamp is >2 min in the future — likely firmware RTC timezone offset
+          // Round drift to nearest hour and subtract
+          const offsetHours = Math.round(driftMs / (60 * 60 * 1000));
+          const correctedMs = tsMs - offsetHours * 60 * 60 * 1000;
+          uplinkTime = new Date(correctedMs).toISOString();
+          console.log(`[4G Timestamp] Corrected +${offsetHours}h RTC offset for device ${deviceId}`);
+        } else {
+          uplinkTime = new Date(tsMs).toISOString();
+        }
       } else {
         uplinkTime = sanitizeString(body.time || body.timestamp || new Date().toISOString(), 50);
       }
@@ -3239,24 +3256,29 @@ export function registerRoutes(app: any) {
       if (typeof body.la === "number" && !decodedData.sound_level_leq) { decodedData.sound_level_leq = body.la; }
       if (typeof body.battery === "number") { decodedData.battery = body.battery; }
 
-      // Shape 4: HY108-1 via HaaS506-LD1 firmware (noise_lp, noise_lmax, noise_lmin, noise_inst)
-      if (typeof decodedData.noise_lp === "number") {
-        decodedData.sound_level_leq = decodedData.noise_lp; delete decodedData.noise_lp;
+      // Shape 4: HY108-1 noise field mapping — supports BOTH old and new firmware field names
+      // Old firmware: noise_lp, noise_lmax, noise_lmin, noise_inst
+      // New firmware: noise_leq, noise_lafmax, noise_lafmin, noise_laf
+      const NOISE_MAP: Record<string, string> = {
+        noise_lp: "sound_level_leq",
+        noise_leq: "sound_level_leq",
+        noise_lmax: "sound_level_lmax",
+        noise_lafmax: "sound_level_lmax",
+        noise_lmin: "sound_level_lmin",
+        noise_lafmin: "sound_level_lmin",
+        noise_inst: "sound_level_inst",
+        noise_laf: "sound_level_inst",
+      };
+      for (const [raw, mapped] of Object.entries(NOISE_MAP)) {
+        if (typeof decodedData[raw] === "number") {
+          if (!(mapped in decodedData)) decodedData[mapped] = decodedData[raw];
+          delete decodedData[raw];
+        }
+        // Also check body-level fields
+        if (typeof (body as any)[raw] === "number" && !(mapped in decodedData)) {
+          decodedData[mapped] = (body as any)[raw];
+        }
       }
-      if (typeof decodedData.noise_lmax === "number") {
-        decodedData.sound_level_lmax = decodedData.noise_lmax; delete decodedData.noise_lmax;
-      }
-      if (typeof decodedData.noise_lmin === "number") {
-        decodedData.sound_level_lmin = decodedData.noise_lmin; delete decodedData.noise_lmin;
-      }
-      if (typeof decodedData.noise_inst === "number") {
-        decodedData.sound_level_inst = decodedData.noise_inst; delete decodedData.noise_inst;
-      }
-      // Also accept body-level HY108 fields (if not already captured via flat scan)
-      if (typeof body.noise_lp === "number" && !decodedData.sound_level_leq) decodedData.sound_level_leq = body.noise_lp;
-      if (typeof body.noise_lmax === "number" && !decodedData.sound_level_lmax) decodedData.sound_level_lmax = body.noise_lmax;
-      if (typeof body.noise_lmin === "number" && !decodedData.sound_level_lmin) decodedData.sound_level_lmin = body.noise_lmin;
-      if (typeof body.noise_inst === "number" && !decodedData.sound_level_inst) decodedData.sound_level_inst = body.noise_inst;
 
       if (Object.keys(decodedData).length === 0) {
         return c.json({ error: "No sensor readings found in payload." }, 400);
@@ -3505,9 +3527,10 @@ export function registerRoutes(app: any) {
           illuminance: fv(d, ["illuminance", "light", "lux"]),
           pir: fv(d, ["pir", "occupancy", "motion"]),
           battery: fv(d, ["battery"]),
-          sound_level_leq: fv(d, ["sound_level_leq", "leq"]),
-          sound_level_lmin: fv(d, ["sound_level_lmin", "lmin"]),
-          sound_level_lmax: fv(d, ["sound_level_lmax", "lmax"]),
+          sound_level_leq: fv(d, ["sound_level_leq", "noise_leq", "noise_lp", "leq"]),
+          sound_level_lmin: fv(d, ["sound_level_lmin", "noise_lafmin", "noise_lmin", "lmin"]),
+          sound_level_lmax: fv(d, ["sound_level_lmax", "noise_lafmax", "noise_lmax", "lmax"]),
+          sound_level_inst: fv(d, ["sound_level_inst", "noise_laf", "noise_inst"]),
           water_leak: fv(d, ["water_leak"]),
         };
       }).reverse(); // oldest first
