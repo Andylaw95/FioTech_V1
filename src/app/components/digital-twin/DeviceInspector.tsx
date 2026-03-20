@@ -93,8 +93,8 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
         IAQ: { keys: ['co2', 'tvoc'], unit: 'ppm', label: 'CO₂ Level' },
         Temperature: { keys: ['temperature'], unit: '°C', label: 'Temperature' },
         Leakage: { keys: ['humidity', 'water_leak'], unit: '%', label: 'Humidity' },
-        Noise: { keys: ['sound_level_inst', 'sound_level_leq', 'sound_level_lmax', 'sound_level_lmin'], unit: 'dB(A)', label: 'LAF' },
-        'Sound Level Sensor': { keys: ['sound_level_inst', 'sound_level_leq', 'sound_level_lmax', 'sound_level_lmin'], unit: 'dB(A)', label: 'LAF' },
+        Noise: { keys: ['sound_level_inst', 'sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_lcpeak'], unit: 'dB(A)', label: 'LAF' },
+        'Sound Level Sensor': { keys: ['sound_level_inst', 'sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_lcpeak'], unit: 'dB(A)', label: 'LAF' },
         Smoke: { keys: ['pm2_5', 'pm10'], unit: 'μg/m³', label: 'PM2.5' },
         Fire: { keys: ['temperature'], unit: '°C', label: 'Temperature' },
       };

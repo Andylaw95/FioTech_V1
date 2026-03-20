@@ -116,6 +116,10 @@ const METRICS: MetricDef[] = [
     key: 'sound_level_leq', label: 'LAeq', unit: 'dB(A)', icon: Volume2, color: '#8b5cf6',
     description: 'A-weighted equivalent continuous sound level',
   },
+  {
+    key: 'sound_level_lcpeak', label: 'LCPeak', unit: 'dB(C)', icon: Volume2, color: '#dc2626',
+    description: 'C-weighted peak sound level',
+  },
 ];
 
 // ── Exported mapping: reading label → metric key ─────────
@@ -136,6 +140,7 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
   'LAFmax': 'sound_level_lmax',
   'LAFmin': 'sound_level_lmin',
   'LAeq': 'sound_level_leq',
+  'LCPeak': 'sound_level_lcpeak',
   'Sound Leq': 'sound_level_leq',
   'Sound Lmax': 'sound_level_lmax',
   'Sound Lmin': 'sound_level_lmin',
@@ -152,10 +157,10 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
 const TYPE_METRIC_PRIORITY: Record<string, string[]> = {
   IAQ:         ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],
   Temperature: ['temperature', 'humidity', 'co2', 'pressure', 'battery'],
-  Noise:       ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'battery'],
-  'Sound Level Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'battery'],
-  '4G Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'battery'],
-  '4G Sound Level Meter': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'battery'],
+  Noise:       ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
+  'Sound Level Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
+  '4G Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
+  '4G Sound Level Meter': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
   Leakage:     ['temperature', 'humidity', 'battery'],
   'Water Leakage Sensor': ['temperature', 'humidity', 'battery'],
   'Environment Sensor': ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],

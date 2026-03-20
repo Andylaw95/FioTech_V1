@@ -12,6 +12,7 @@ interface SoundLevelMeterCardProps {
   lmax: number | null;
   lmin: number | null;
   inst: number | null;
+  lcpeak: number | null;
   trend: 'up' | 'down' | 'stable' | null;
   receivedAt: string;
 }
@@ -34,6 +35,7 @@ export function SoundLevelMeterCard({
   lmax,
   lmin,
   inst,
+  lcpeak,
   trend,
   receivedAt,
 }: SoundLevelMeterCardProps) {
@@ -94,8 +96,8 @@ export function SoundLevelMeterCard({
             </div>
           </div>
 
-          {/* 3-metric grid */}
-          <div className="grid grid-cols-3 gap-2.5">
+          {/* 4-metric grid */}
+          <div className="grid grid-cols-4 gap-2.5">
             {/* LAFmax */}
             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
               <div className="flex items-center gap-1.5 text-slate-500 mb-1">
@@ -129,6 +131,18 @@ export function SoundLevelMeterCard({
               <div className={clsx("text-sm font-bold font-mono", metricColor(inst))}>
                 {inst != null ? inst.toFixed(1) : '—'}
                 <span className="text-[10px] text-slate-400 font-normal ml-0.5">dBA</span>
+              </div>
+            </div>
+
+            {/* LCPeak */}
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+              <div className="flex items-center gap-1.5 text-slate-500 mb-1">
+                <Volume2 className="h-3 w-3" />
+                <span className="text-[10px] font-semibold uppercase tracking-wide">LCPeak</span>
+              </div>
+              <div className={clsx("text-sm font-bold font-mono", lcpeak != null && lcpeak > 135 ? 'text-red-600' : lcpeak != null && lcpeak > 120 ? 'text-orange-600' : 'text-slate-900')}>
+                {lcpeak != null ? lcpeak.toFixed(1) : '—'}
+                <span className="text-[10px] text-slate-400 font-normal ml-0.5">dBC</span>
               </div>
             </div>
           </div>

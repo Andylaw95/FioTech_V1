@@ -1273,6 +1273,35 @@ export function registerRoutes(app: any) {
         stripBrokenFields(eui, entry.decodedData);
       }
 
+      // ── Inject live readings from device records ──
+      // sensor_data is throttled (4G stores every 15 min), but device.decoded
+      // updates on every call. Use the device record as live source if fresher.
+      for (const d of assigned) {
+        if (!d.decoded || !d.decodedAt || !d.devEui) continue;
+        const eui = d.devEui.toLowerCase();
+        const devTs = new Date(d.decodedAt).getTime();
+        const existing = latestByDevice.get(eui);
+        const existingTs = existing ? new Date(existing.receivedAt).getTime() : 0;
+        if (devTs > existingTs) {
+          // Device record has fresher data — use it
+          latestByDevice.set(eui, {
+            devEUI: d.devEui,
+            deviceName: d.name || d.devEui,
+            receivedAt: d.decodedAt,
+            decodedData: d.decoded,
+            fCnt: existing?.fCnt || 0,
+            rssi: existing?.rssi || -999,
+          });
+          // Merge into mergedDecoded too
+          if (!mergedDecoded.has(eui)) mergedDecoded.set(eui, {});
+          const merged = mergedDecoded.get(eui)!;
+          for (const [k, v] of Object.entries(d.decoded)) {
+            if (!(k in merged)) merged[k] = v;
+          }
+          latestByDevice.get(eui)!.decodedData = { ...merged, ...d.decoded };
+        }
+      }
+
       // Build aggregated environment from all latest readings
       const fv = (decoded: any, patterns: string[]): number | null => {
         if (!decoded || typeof decoded !== "object") return null;
@@ -1298,6 +1327,7 @@ export function registerRoutes(app: any) {
       let sound_level_leq: number | null = null;
       let sound_level_lmin: number | null = null;
       let sound_level_lmax: number | null = null;
+      let sound_level_lcpeak: number | null = null;
       let water_leak: number | null = null;
       let count = 0;
       const tempSum: number[] = [];
@@ -1323,7 +1353,8 @@ export function registerRoutes(app: any) {
         const sleq = fv(decoded, ["sound_level_leq", "noise_leq", "noise_lp", "leq"]);
         const slmin = fv(decoded, ["sound_level_lmin", "noise_lafmin", "noise_lmin", "lmin"]);
         const slmax = fv(decoded, ["sound_level_lmax", "noise_lafmax", "noise_lmax", "lmax"]);
-        const slinst = fv(decoded, ["sound_level_inst", "noise_laf", "noise_inst"]);
+        const slinst = fv(decoded, ["sound_level_inst", "noise_laf", "noise_inst", "noise_laf_inst"]);
+        const slpeak = fv(decoded, ["sound_level_lcpeak", "noise_lcpeak", "lcpeak"]);
         const wleak = fv(decoded, ["water_leak", "digital_input"]);
         if (t !== null) { temperature = t; tempSum.push(t); }
         if (h !== null) { humidity = h; humSum.push(h); }
@@ -1337,6 +1368,7 @@ export function registerRoutes(app: any) {
         if (sleq !== null) sound_level_leq = sleq;
         if (slmin !== null) sound_level_lmin = slmin;
         if (slmax !== null) sound_level_lmax = slmax;
+        if (slpeak !== null) sound_level_lcpeak = slpeak;
         if (slinst !== null) { /* stored per-device below */ }
         if (wleak !== null) water_leak = wleak;
 
@@ -1360,6 +1392,7 @@ export function registerRoutes(app: any) {
             ...(sleq !== null && { sound_level_leq: sleq }),
             ...(slmin !== null && { sound_level_lmin: slmin }),
             ...(slmax !== null && { sound_level_lmax: slmax }),
+            ...(slpeak !== null && { sound_level_lcpeak: slpeak }),
             ...(slinst !== null && { sound_level_inst: slinst }),
             ...(wleak !== null && { water_leak: wleak }),
           },
@@ -1436,6 +1469,7 @@ export function registerRoutes(app: any) {
           sound_level_leq: fv(d, ["sound_level_leq", "leq"]),
           sound_level_lmin: fv(d, ["sound_level_lmin", "lmin"]),
           sound_level_lmax: fv(d, ["sound_level_lmax", "lmax"]),
+          sound_level_lcpeak: fv(d, ["sound_level_lcpeak", "lcpeak"]),
           water_leak: fv(d, ["water_leak", "digital_input"]),
         });
       }
@@ -1466,7 +1500,7 @@ export function registerRoutes(app: any) {
         environment: {
           temperature, humidity, co2, tvoc, pm2_5, pm10,
           barometric_pressure, illuminance, pir,
-          sound_level_leq, sound_level_lmin, sound_level_lmax, water_leak,
+          sound_level_leq, sound_level_lmin, sound_level_lmax, sound_level_lcpeak, water_leak,
         },
         zones,
         sensorList,
@@ -1487,6 +1521,7 @@ export function registerRoutes(app: any) {
           sound_level_leq: p.sound_level_leq,
           sound_level_lmin: p.sound_level_lmin,
           sound_level_lmax: p.sound_level_lmax,
+          sound_level_lcpeak: p.sound_level_lcpeak,
           water_leak: p.water_leak,
         })),
       });
@@ -3257,8 +3292,9 @@ export function registerRoutes(app: any) {
       if (typeof body.battery === "number") { decodedData.battery = body.battery; }
 
       // Shape 4: HY108-1 noise field mapping — supports BOTH old and new firmware field names
+      // RS232 commands: M(0x4D)=LAFMax, P(0x50)=LCPeak, L(0x4C)=LAF, N(0x4E)=LAFmin
       // Old firmware: noise_lp, noise_lmax, noise_lmin, noise_inst
-      // New firmware: noise_leq, noise_lafmax, noise_lafmin, noise_laf
+      // New firmware: noise_leq, noise_lafmax, noise_lafmin, noise_laf, noise_lcpeak
       const NOISE_MAP: Record<string, string> = {
         noise_lp: "sound_level_leq",
         noise_leq: "sound_level_leq",
@@ -3268,6 +3304,8 @@ export function registerRoutes(app: any) {
         noise_lafmin: "sound_level_lmin",
         noise_inst: "sound_level_inst",
         noise_laf: "sound_level_inst",
+        noise_lcpeak: "sound_level_lcpeak",
+        noise_laf_inst: "sound_level_inst",
       };
       for (const [raw, mapped] of Object.entries(NOISE_MAP)) {
         if (typeof decodedData[raw] === "number") {
@@ -3335,6 +3373,10 @@ export function registerRoutes(app: any) {
         devices[devIdx].lastUpdate = new Date().toISOString();
         devices[devIdx].status = "online";
         if (typeof decodedData.battery === "number") devices[devIdx].battery = decodedData.battery;
+        // Store latest decoded data on device record for live readings
+        // (sensor_data is throttled to 15-min intervals, but device record updates every call)
+        devices[devIdx].decoded = decodedData;
+        devices[devIdx].decodedAt = new Date().toISOString();
         // Re-classify generic devices
         if (devices[devIdx].type === "LoRaWAN Sensor" || devices[devIdx].type === "4G Sensor") {
           const hasSoundLevel = "sound_level_leq" in decodedData || "sound_level_lmax" in decodedData;
@@ -3413,6 +3455,8 @@ export function registerRoutes(app: any) {
                   subDevices[i].lastUpdate = nowIso;
                   subDevices[i].status = "online";
                   if (typeof decodedData.battery === "number") subDevices[i].battery = decodedData.battery;
+                  subDevices[i].decoded = decodedData;
+                  subDevices[i].decodedAt = nowIso;
                   devChanged = true;
                 }
               }
@@ -3544,7 +3588,8 @@ export function registerRoutes(app: any) {
           sound_level_leq: fv(d, ["sound_level_leq", "noise_leq", "noise_lp", "leq"]),
           sound_level_lmin: fv(d, ["sound_level_lmin", "noise_lafmin", "noise_lmin", "lmin"]),
           sound_level_lmax: fv(d, ["sound_level_lmax", "noise_lafmax", "noise_lmax", "lmax"]),
-          sound_level_inst: fv(d, ["sound_level_inst", "noise_laf", "noise_inst"]),
+          sound_level_inst: fv(d, ["sound_level_inst", "noise_laf", "noise_inst", "noise_laf_inst"]),
+          sound_level_lcpeak: fv(d, ["sound_level_lcpeak", "noise_lcpeak", "lcpeak"]),
           water_leak: fv(d, ["water_leak"]),
         };
       }).reverse(); // oldest first

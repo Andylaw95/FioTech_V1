@@ -83,6 +83,7 @@ function getRealReading(decoded: Record<string, number>): { primary: { value: st
   if (decoded.sound_level_lmax !== undefined) all.push({ label: 'LAFmax', value: decoded.sound_level_lmax.toFixed(1), unit: 'dB(A)' });
   if (decoded.sound_level_lmin !== undefined) all.push({ label: 'LAFmin', value: decoded.sound_level_lmin.toFixed(1), unit: 'dB(A)' });
   if (decoded.sound_level_leq !== undefined) all.push({ label: 'LAeq', value: decoded.sound_level_leq.toFixed(1), unit: 'dB(A)' });
+  if (decoded.sound_level_lcpeak !== undefined) all.push({ label: 'LCPeak', value: decoded.sound_level_lcpeak.toFixed(1), unit: 'dB(C)' });
   if (decoded.water_leak !== undefined) all.push({ label: 'Leak', value: decoded.water_leak > 0 ? 'LEAK!' : 'Dry', unit: '' });
   const primary = all[0] || { value: '--', unit: '', label: 'No Data' };
   return { primary, all };

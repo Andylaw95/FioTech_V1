@@ -736,6 +736,7 @@ export function DigitalTwinDashboard() {
       const soundLeqs = readings.map((r: any) => r?.sound_level_leq).filter((v: any): v is number => typeof v === 'number');
       const soundMaxs = readings.map((r: any) => r?.sound_level_lmax).filter((v: any): v is number => typeof v === 'number');
       const soundMins = readings.map((r: any) => r?.sound_level_lmin).filter((v: any): v is number => typeof v === 'number');
+      const soundPeaks = readings.map((r: any) => r?.sound_level_lcpeak).filter((v: any): v is number => typeof v === 'number');
 
       // Determine device type for this zone
       const hasIAQ = temps.length > 0 || hums.length > 0 || co2s.length > 0;
@@ -765,6 +766,9 @@ export function DigitalTwinDashboard() {
           : null,
         soundLevelMin: soundMins.length > 0
           ? Math.round(soundMins.reduce((a: number, b: number) => a + b, 0) / soundMins.length * 10) / 10
+          : null,
+        soundLevelPeak: soundPeaks.length > 0
+          ? Math.round(soundPeaks.reduce((a: number, b: number) => a + b, 0) / soundPeaks.length * 10) / 10
           : null,
         deviceType,
         alerts: i === 0 ? totalAlerts : 0,
