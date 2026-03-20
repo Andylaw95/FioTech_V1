@@ -572,13 +572,13 @@ export function BuildingDetails() {
                     <EnvironmentGauge label="PIR" value={envData.pir} unit="" min={0} max={1} color={envData.pir > 0 ? '#8b5cf6' : '#64748b'} icon={Eye} />
                   )}
                   {envData.sound_level_leq !== null && envData.sound_level_leq !== undefined && (
-                    <EnvironmentGauge label="Noise Leq" value={envData.sound_level_leq} unit="dB" min={20} max={100} color={envData.sound_level_leq > 85 ? '#ef4444' : envData.sound_level_leq > 70 ? '#f59e0b' : '#8b5cf6'} icon={Volume2} />
+                    <EnvironmentGauge label="LAeq" value={envData.sound_level_leq} unit="dB(A)" min={20} max={100} color={envData.sound_level_leq > 85 ? '#ef4444' : envData.sound_level_leq > 70 ? '#f59e0b' : '#8b5cf6'} icon={Volume2} />
                   )}
                   {envData.sound_level_lmax !== null && envData.sound_level_lmax !== undefined && (
-                    <EnvironmentGauge label="Noise Lmax" value={envData.sound_level_lmax} unit="dB" min={20} max={120} color={envData.sound_level_lmax > 85 ? '#ef4444' : '#a855f7'} icon={Volume2} />
+                    <EnvironmentGauge label="LAFmax" value={envData.sound_level_lmax} unit="dB(A)" min={20} max={120} color={envData.sound_level_lmax > 85 ? '#ef4444' : '#a855f7'} icon={Volume2} />
                   )}
                   {envData.sound_level_lmin !== null && envData.sound_level_lmin !== undefined && (
-                    <EnvironmentGauge label="Noise Lmin" value={envData.sound_level_lmin} unit="dB" min={20} max={100} color="#06b6d4" icon={Volume2} />
+                    <EnvironmentGauge label="LAFmin" value={envData.sound_level_lmin} unit="dB(A)" min={20} max={100} color="#06b6d4" icon={Volume2} />
                   )}
                   {envData.water_leak !== null && envData.water_leak !== undefined && (
                     <EnvironmentGauge label="Water Leak" value={envData.water_leak} unit="" min={0} max={1} color={envData.water_leak > 0 ? '#ef4444' : '#10b981'} icon={Droplets} />

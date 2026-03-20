@@ -95,9 +95,9 @@ const METRICS: MetricDef[] = [
     domain: [0, 100],
   },
   {
-    key: 'sound_level_leq', label: 'Sound Leq', unit: 'dB', icon: Volume2, color: '#8b5cf6',
-    description: 'Equivalent continuous sound level',
-    referenceLines: [{ y: 70, color: '#f59e0b', label: '70 dB' }, { y: 85, color: '#ef4444', label: '85 dB' }],
+    key: 'sound_level_inst', label: 'LAF', unit: 'dB(A)', icon: Volume2, color: '#7c3aed',
+    description: 'A-weighted instantaneous sound level (fast)',
+    referenceLines: [{ y: 70, color: '#f59e0b', label: '70 dB(A)' }, { y: 85, color: '#ef4444', label: '85 dB(A)' }],
     referenceAreas: [
       { y1: 0, y2: 55, color: '#dcfce7', opacity: 0.3 },
       { y1: 55, y2: 70, color: '#fef9c3', opacity: 0.3 },
@@ -105,16 +105,16 @@ const METRICS: MetricDef[] = [
     ],
   },
   {
-    key: 'sound_level_lmax', label: 'Sound Lmax', unit: 'dB', icon: Volume2, color: '#a855f7',
-    description: 'Maximum sound level',
+    key: 'sound_level_lmax', label: 'LAFmax', unit: 'dB(A)', icon: Volume2, color: '#a855f7',
+    description: 'A-weighted maximum sound level',
   },
   {
-    key: 'sound_level_lmin', label: 'Sound Lmin', unit: 'dB', icon: Volume2, color: '#c084fc',
-    description: 'Minimum sound level',
+    key: 'sound_level_lmin', label: 'LAFmin', unit: 'dB(A)', icon: Volume2, color: '#c084fc',
+    description: 'A-weighted minimum sound level',
   },
   {
-    key: 'sound_level_inst', label: 'Sound Inst', unit: 'dB', icon: Volume2, color: '#7c3aed',
-    description: 'Instantaneous sound level',
+    key: 'sound_level_leq', label: 'LAeq', unit: 'dB(A)', icon: Volume2, color: '#8b5cf6',
+    description: 'A-weighted equivalent continuous sound level',
   },
 ];
 
@@ -132,6 +132,10 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
   'Pressure': 'pressure',
   'Light': 'illuminance',
   'PIR': 'pir',
+  'LAF': 'sound_level_inst',
+  'LAFmax': 'sound_level_lmax',
+  'LAFmin': 'sound_level_lmin',
+  'LAeq': 'sound_level_leq',
   'Sound Leq': 'sound_level_leq',
   'Sound Lmax': 'sound_level_lmax',
   'Sound Lmin': 'sound_level_lmin',
@@ -140,7 +144,7 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
   'Lmin': 'sound_level_lmin',
   'Inst': 'sound_level_inst',
   'Instantaneous': 'sound_level_inst',
-  'Noise': 'sound_level_leq',
+  'Noise': 'sound_level_inst',
   'Battery': 'battery',
 };
 
@@ -148,10 +152,10 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
 const TYPE_METRIC_PRIORITY: Record<string, string[]> = {
   IAQ:         ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],
   Temperature: ['temperature', 'humidity', 'co2', 'pressure', 'battery'],
-  Noise:       ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_inst', 'battery'],
-  'Sound Level Sensor': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_inst', 'battery'],
-  '4G Sensor': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_inst', 'battery'],
-  '4G Sound Level Meter': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_inst', 'battery'],
+  Noise:       ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'battery'],
+  'Sound Level Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'battery'],
+  '4G Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'battery'],
+  '4G Sound Level Meter': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'battery'],
   Leakage:     ['temperature', 'humidity', 'battery'],
   'Water Leakage Sensor': ['temperature', 'humidity', 'battery'],
   'Environment Sensor': ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],

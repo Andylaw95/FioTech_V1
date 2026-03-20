@@ -59,7 +59,7 @@ function getSimulatedReading(device: Device) {
     case 'Leakage':     return { value: h % 5 === 0 ? 'LEAK' : 'DRY', unit: '', label: 'Status' };
     case 'Noise':
     case 'Sound Level Sensor':
-    case '4G Sensor': return { value: (30 + (h % 45)).toString(), unit: 'dB', label: 'Leq' };
+    case '4G Sensor': return { value: (30 + (h % 45)).toString(), unit: 'dB(A)', label: 'LAF' };
     case 'Water Leakage Sensor': return { value: h % 5 === 0 ? 'LEAK' : 'DRY', unit: '', label: 'Status' };
     case 'Smoke':       return { value: (0.05 + (h % 30) / 100).toFixed(2), unit: 'μg/m³', label: 'Particles' };
     case 'Fire':        return { value: (20 + (h % 40) / 10).toFixed(1), unit: '°C', label: 'Heat' };
@@ -79,10 +79,10 @@ function getRealReading(decoded: Record<string, number>): { primary: { value: st
   if (decoded.barometric_pressure !== undefined) all.push({ label: 'Pressure', value: decoded.barometric_pressure.toFixed(1), unit: 'hPa' });
   if (decoded.illuminance !== undefined) all.push({ label: 'Light', value: Math.round(decoded.illuminance).toString(), unit: 'lux' });
   if (decoded.pir !== undefined) all.push({ label: 'PIR', value: decoded.pir > 0 ? 'Motion' : 'Clear', unit: '' });
-  if (decoded.sound_level_leq !== undefined) all.push({ label: 'Leq', value: decoded.sound_level_leq.toFixed(1), unit: 'dB' });
-  if (decoded.sound_level_lmax !== undefined) all.push({ label: 'Lmax', value: decoded.sound_level_lmax.toFixed(1), unit: 'dB' });
-  if (decoded.sound_level_lmin !== undefined) all.push({ label: 'Lmin', value: decoded.sound_level_lmin.toFixed(1), unit: 'dB' });
-  if (decoded.sound_level_inst !== undefined) all.push({ label: 'Inst', value: decoded.sound_level_inst.toFixed(1), unit: 'dB' });
+  if (decoded.sound_level_inst !== undefined) all.push({ label: 'LAF', value: decoded.sound_level_inst.toFixed(1), unit: 'dB(A)' });
+  if (decoded.sound_level_lmax !== undefined) all.push({ label: 'LAFmax', value: decoded.sound_level_lmax.toFixed(1), unit: 'dB(A)' });
+  if (decoded.sound_level_lmin !== undefined) all.push({ label: 'LAFmin', value: decoded.sound_level_lmin.toFixed(1), unit: 'dB(A)' });
+  if (decoded.sound_level_leq !== undefined) all.push({ label: 'LAeq', value: decoded.sound_level_leq.toFixed(1), unit: 'dB(A)' });
   if (decoded.water_leak !== undefined) all.push({ label: 'Leak', value: decoded.water_leak > 0 ? 'LEAK!' : 'Dry', unit: '' });
   const primary = all[0] || { value: '--', unit: '', label: 'No Data' };
   return { primary, all };

@@ -58,7 +58,7 @@ function formatDecodedValue(key: string, value: any): string {
     if (lower.includes('humid')) return `${value.toFixed(1)}%`;
     if (lower.includes('battery')) return `${value}%`;
     if (lower.includes('pressure')) return `${value.toFixed(1)} hPa`;
-    if (lower.includes('sound') || lower.includes('leq') || lower.includes('lmin') || lower.includes('lmax')) return `${value.toFixed(1)} dB`;
+    if (lower.includes('sound') || lower.includes('leq') || lower.includes('lmin') || lower.includes('lmax')) return `${value.toFixed(1)} dB(A)`;
     if (lower.includes('water_leak') || lower.includes('leak')) return value > 0 ? 'LEAK!' : 'Dry';
     return String(value);
   }
