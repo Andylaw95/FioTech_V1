@@ -1134,21 +1134,21 @@ export function DigitalTwinDashboard() {
                     {selectedTableData.deviceType === 'sound' ? (
                       <>
                         <div>
-                          <p className={clsx('text-xs', isDark ? 'text-slate-500' : 'text-slate-400')}>Sound Level (Leq)</p>
+                          <p className={clsx('text-xs', isDark ? 'text-slate-500' : 'text-slate-400')}>LAeq</p>
                           <p className={clsx('text-base font-bold', selectedTableData.soundLevel && selectedTableData.soundLevel > 70 ? 'text-amber-500' : isDark ? 'text-violet-400' : 'text-violet-600')}>
-                            {selectedTableData.soundLevel !== null ? `${selectedTableData.soundLevel.toFixed(1)} dB` : '—'}
+                            {selectedTableData.soundLevel !== null ? `${selectedTableData.soundLevel.toFixed(1)} dB(A)` : '—'}
                           </p>
                         </div>
                         <div>
-                          <p className={clsx('text-xs', isDark ? 'text-slate-500' : 'text-slate-400')}>Peak (Lmax)</p>
+                          <p className={clsx('text-xs', isDark ? 'text-slate-500' : 'text-slate-400')}>LAFmax</p>
                           <p className={clsx('text-base font-bold', isDark ? 'text-white' : 'text-slate-900')}>
-                            {selectedTableData.soundLevelMax !== null ? `${selectedTableData.soundLevelMax.toFixed(1)} dB` : '—'}
+                            {selectedTableData.soundLevelMax !== null ? `${selectedTableData.soundLevelMax.toFixed(1)} dB(A)` : '—'}
                           </p>
                         </div>
                         <div>
-                          <p className={clsx('text-xs', isDark ? 'text-slate-500' : 'text-slate-400')}>Min (Lmin)</p>
+                          <p className={clsx('text-xs', isDark ? 'text-slate-500' : 'text-slate-400')}>LAFmin</p>
                           <p className={clsx('text-base font-bold', isDark ? 'text-white' : 'text-slate-900')}>
-                            {selectedTableData.soundLevelMin !== null ? `${selectedTableData.soundLevelMin.toFixed(1)} dB` : '—'}
+                            {selectedTableData.soundLevelMin !== null ? `${selectedTableData.soundLevelMin.toFixed(1)} dB(A)` : '—'}
                           </p>
                         </div>
                       </>

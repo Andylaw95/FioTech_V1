@@ -615,11 +615,11 @@ export function BuildingDetails() {
                     {
                       key: 'sound',
                       label: 'Sound Level',
-                      subtitle: 'Leq, Lmax & Lmin noise measurements',
+                      subtitle: 'LAF, LAFmax & LAFmin A-weighted measurements',
                       metrics: [
-                        { dataKey: 'sound_level_leq', name: 'Leq (dB)', stroke: '#8b5cf6', yAxisId: 'left' },
-                        { dataKey: 'sound_level_lmax', name: 'Lmax (dB)', stroke: '#ef4444', yAxisId: 'left' },
-                        { dataKey: 'sound_level_lmin', name: 'Lmin (dB)', stroke: '#06b6d4', yAxisId: 'left' },
+                        { dataKey: 'sound_level_leq', name: 'LAeq dB(A)', stroke: '#8b5cf6', yAxisId: 'left' },
+                        { dataKey: 'sound_level_lmax', name: 'LAFmax dB(A)', stroke: '#ef4444', yAxisId: 'left' },
+                        { dataKey: 'sound_level_lmin', name: 'LAFmin dB(A)', stroke: '#06b6d4', yAxisId: 'left' },
                       ],
                     },
                     {

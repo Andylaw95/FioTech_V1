@@ -42,8 +42,8 @@ function generateDeviceTelemetry(deviceId: string, type: string) {
     IAQ: { base: 420, variance: 80, unit: 'ppm', label: 'CO₂ Level' },
     Temperature: { base: 22, variance: 3, unit: '°C', label: 'Temperature' },
     Leakage: { base: 55, variance: 8, unit: 'PSI', label: 'Water Pressure' },
-    Noise: { base: 45, variance: 15, unit: 'dB', label: 'Noise Level' },
-    'Sound Level Sensor': { base: 45, variance: 15, unit: 'dB', label: 'Sound Level (Leq)' },
+    Noise: { base: 45, variance: 15, unit: 'dB(A)', label: 'LAF' },
+    'Sound Level Sensor': { base: 45, variance: 15, unit: 'dB(A)', label: 'LAF' },
     Smoke: { base: 0.3, variance: 0.2, unit: 'μg/m³', label: 'Particle Density' },
     Fire: { base: 24, variance: 2, unit: '°C', label: 'Ambient Temp' },
   };
@@ -93,8 +93,8 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
         IAQ: { keys: ['co2', 'tvoc'], unit: 'ppm', label: 'CO₂ Level' },
         Temperature: { keys: ['temperature'], unit: '°C', label: 'Temperature' },
         Leakage: { keys: ['humidity', 'water_leak'], unit: '%', label: 'Humidity' },
-        Noise: { keys: ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin'], unit: 'dB', label: 'Sound Level (Leq)' },
-        'Sound Level Sensor': { keys: ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin'], unit: 'dB', label: 'Sound Level (Leq)' },
+        Noise: { keys: ['sound_level_inst', 'sound_level_leq', 'sound_level_lmax', 'sound_level_lmin'], unit: 'dB(A)', label: 'LAF' },
+        'Sound Level Sensor': { keys: ['sound_level_inst', 'sound_level_leq', 'sound_level_lmax', 'sound_level_lmin'], unit: 'dB(A)', label: 'LAF' },
         Smoke: { keys: ['pm2_5', 'pm10'], unit: 'μg/m³', label: 'PM2.5' },
         Fire: { keys: ['temperature'], unit: '°C', label: 'Temperature' },
       };
