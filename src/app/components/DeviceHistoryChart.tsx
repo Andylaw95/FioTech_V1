@@ -301,9 +301,11 @@ interface DeviceHistoryChartProps {
   period?: string;
   /** Compact layout for narrow panels (e.g. side inspector) */
   compact?: boolean;
+  /** Live decoded data from device record (fresher than throttled history) */
+  liveDecoded?: Record<string, number>;
 }
 
-export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, hideMetricCards, period = '24h', compact }: DeviceHistoryChartProps) {
+export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, hideMetricCards, period = '24h', compact, liveDecoded }: DeviceHistoryChartProps) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DeviceHistoryPoint[]>([]);
   const [error, setError] = useState('');
@@ -330,10 +332,14 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
   // Determine which metrics have data
+  // Determine which metrics have data (from history OR live decoded)
   const availableMetrics = useMemo(() => {
-    if (data.length === 0) return [];
-    return METRICS.filter((m) => data.some((d) => d[m.key] != null));
-  }, [data]);
+    return METRICS.filter((m) => {
+      if (data.some((d) => d[m.key] != null)) return true;
+      if (liveDecoded && typeof liveDecoded[m.key as string] === 'number') return true;
+      return false;
+    });
+  }, [data, liveDecoded]);
 
   // Sort by device type priority
   const sortedMetrics = useMemo(() => {
@@ -365,18 +371,27 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
 
   const selectedMetric = sortedMetrics.find(m => m.key === selectedMetricKey) || sortedMetrics[0];
 
-  // Get latest value for each metric (last non-null reading)
+  // Get latest value for each metric — prefer liveDecoded (real-time) over history (throttled)
   const latestValues = useMemo(() => {
     const vals: Record<string, number> = {};
-    if (data.length === 0) return vals;
-    for (const m of METRICS) {
-      for (let i = data.length - 1; i >= 0; i--) {
-        const v = data[i][m.key];
-        if (v != null) { vals[m.key as string] = v as number; break; }
+    // First, fill from history data (oldest source)
+    if (data.length > 0) {
+      for (const m of METRICS) {
+        for (let i = data.length - 1; i >= 0; i--) {
+          const v = data[i][m.key];
+          if (v != null) { vals[m.key as string] = v as number; break; }
+        }
+      }
+    }
+    // Override with liveDecoded values (fresher, updated every webhook call)
+    if (liveDecoded) {
+      for (const m of METRICS) {
+        const v = liveDecoded[m.key as string];
+        if (typeof v === 'number') vals[m.key as string] = v;
       }
     }
     return vals;
-  }, [data]);
+  }, [data, liveDecoded]);
 
   // Data time range for display
   const timeRange = useMemo(() => {

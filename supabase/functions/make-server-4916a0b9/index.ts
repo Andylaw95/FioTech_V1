@@ -24,9 +24,9 @@ app.onError((err, c) => {
   return c.json({ error: "Internal server error." }, 500);
 });
 
-// Health endpoint
+// Health endpoint — minimal safe payload (no internal state disclosure)
 app.get("/make-server-4916a0b9/health", (c) => {
-  return c.json({ status: "ok", schemaReady: true });
+  return c.json({ status: "ok" });
 });
 
 // Register ALL routes synchronously — the Supabase CLI already

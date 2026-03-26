@@ -240,6 +240,7 @@ export function BuildingDetails() {
             sound_level_leq: d.sound_level_leq ?? null,
             sound_level_lmax: d.sound_level_lmax ?? null,
             sound_level_lmin: d.sound_level_lmin ?? null,
+            sound_level_inst: d.sound_level_inst ?? null,
             sound_level_lcpeak: d.sound_level_lcpeak ?? null,
             water_leak: d.water_leak ?? null,
           };
@@ -261,6 +262,7 @@ export function BuildingDetails() {
           sound_level_leq: e.sound_level_leq,
           sound_level_lmax: e.sound_level_lmax,
           sound_level_lmin: e.sound_level_lmin,
+          sound_level_inst: e.sound_level_inst,
           sound_level_lcpeak: e.sound_level_lcpeak,
           water_leak: e.water_leak,
         };
@@ -582,6 +584,9 @@ export function BuildingDetails() {
                   {envData.sound_level_lmin !== null && envData.sound_level_lmin !== undefined && (
                     <EnvironmentGauge label="LAFmin" value={envData.sound_level_lmin} unit="dB(A)" min={20} max={100} color="#06b6d4" icon={Volume2} />
                   )}
+                  {envData.sound_level_inst !== null && envData.sound_level_inst !== undefined && (
+                    <EnvironmentGauge label="LAF" value={envData.sound_level_inst} unit="dB(A)" min={20} max={120} color={envData.sound_level_inst > 85 ? '#ef4444' : envData.sound_level_inst > 70 ? '#f59e0b' : '#7c3aed'} icon={Volume2} />
+                  )}
                   {envData.sound_level_lcpeak !== null && envData.sound_level_lcpeak !== undefined && (
                     <EnvironmentGauge label="LCPeak" value={envData.sound_level_lcpeak} unit="dB(C)" min={20} max={140} color={envData.sound_level_lcpeak > 135 ? '#ef4444' : '#dc2626'} icon={Volume2} />
                   )}
@@ -625,6 +630,7 @@ export function BuildingDetails() {
                         { dataKey: 'sound_level_leq', name: 'LAeq dB(A)', stroke: '#8b5cf6', yAxisId: 'left' },
                         { dataKey: 'sound_level_lmax', name: 'LAFmax dB(A)', stroke: '#ef4444', yAxisId: 'left' },
                         { dataKey: 'sound_level_lmin', name: 'LAFmin dB(A)', stroke: '#06b6d4', yAxisId: 'left' },
+                        { dataKey: 'sound_level_inst', name: 'LAF dB(A)', stroke: '#7c3aed', yAxisId: 'left' },
                         { dataKey: 'sound_level_lcpeak', name: 'LCPeak dB(C)', stroke: '#dc2626', yAxisId: 'left' },
                       ],
                     },

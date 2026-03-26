@@ -1327,6 +1327,7 @@ export function registerRoutes(app: any) {
       let sound_level_leq: number | null = null;
       let sound_level_lmin: number | null = null;
       let sound_level_lmax: number | null = null;
+      let sound_level_inst: number | null = null;
       let sound_level_lcpeak: number | null = null;
       let water_leak: number | null = null;
       let count = 0;
@@ -1369,7 +1370,7 @@ export function registerRoutes(app: any) {
         if (slmin !== null) sound_level_lmin = slmin;
         if (slmax !== null) sound_level_lmax = slmax;
         if (slpeak !== null) sound_level_lcpeak = slpeak;
-        if (slinst !== null) { /* stored per-device below */ }
+        if (slinst !== null) sound_level_inst = slinst;
         if (wleak !== null) water_leak = wleak;
 
         // Build per-device reading
@@ -1469,6 +1470,7 @@ export function registerRoutes(app: any) {
           sound_level_leq: fv(d, ["sound_level_leq", "leq"]),
           sound_level_lmin: fv(d, ["sound_level_lmin", "lmin"]),
           sound_level_lmax: fv(d, ["sound_level_lmax", "lmax"]),
+          sound_level_inst: fv(d, ["sound_level_inst", "noise_laf", "noise_inst"]),
           sound_level_lcpeak: fv(d, ["sound_level_lcpeak", "lcpeak"]),
           water_leak: fv(d, ["water_leak", "digital_input"]),
         });
@@ -1500,7 +1502,7 @@ export function registerRoutes(app: any) {
         environment: {
           temperature, humidity, co2, tvoc, pm2_5, pm10,
           barometric_pressure, illuminance, pir,
-          sound_level_leq, sound_level_lmin, sound_level_lmax, sound_level_lcpeak, water_leak,
+          sound_level_leq, sound_level_lmin, sound_level_lmax, sound_level_inst, sound_level_lcpeak, water_leak,
         },
         zones,
         sensorList,
@@ -1521,6 +1523,7 @@ export function registerRoutes(app: any) {
           sound_level_leq: p.sound_level_leq,
           sound_level_lmin: p.sound_level_lmin,
           sound_level_lmax: p.sound_level_lmax,
+          sound_level_inst: p.sound_level_inst,
           sound_level_lcpeak: p.sound_level_lcpeak,
           water_leak: p.water_leak,
         })),
@@ -1864,7 +1867,7 @@ export function registerRoutes(app: any) {
   });
 
   app.get("/make-server-4916a0b9/export", async (c: any) => {
-    const auth = await requireAuth(c);
+    const auth = await requireAdmin(c);
     if (auth instanceof Response) return auth;
     const userId = resolveTargetUser(auth, c);
     try {
@@ -2560,7 +2563,7 @@ export function registerRoutes(app: any) {
   // ─── WEBHOOK CONFIG ────────────────────────────────────
 
   app.get("/make-server-4916a0b9/webhook-config", async (c: any) => {
-    const auth = await requireAuth(c);
+    const auth = await requireAdmin(c);
     if (auth instanceof Response) return auth;
     const { userId } = auth;
     try {
@@ -2587,7 +2590,7 @@ export function registerRoutes(app: any) {
   });
 
   app.post("/make-server-4916a0b9/webhook-config", async (c: any) => {
-    const auth = await requireAuth(c);
+    const auth = await requireAdmin(c);
     if (auth instanceof Response) return auth;
     const { userId } = auth;
     try {
@@ -2613,7 +2616,7 @@ export function registerRoutes(app: any) {
 
   // ─── WEBHOOK HMAC SECRET (optional payload signing) ─────
   app.put("/make-server-4916a0b9/webhook-config", async (c: any) => {
-    const auth = await requireAuth(c);
+    const auth = await requireAdmin(c);
     if (auth instanceof Response) return auth;
     const { userId } = auth;
     try {
@@ -2635,7 +2638,7 @@ export function registerRoutes(app: any) {
   // ─── WEBHOOK TEST ──────────────────────────────────────
 
   app.post("/make-server-4916a0b9/webhook-test", async (c: any) => {
-    const auth = await requireAuth(c);
+    const auth = await requireAdmin(c);
     if (auth instanceof Response) return auth;
     const { userId } = auth;
     try {
@@ -2727,9 +2730,8 @@ export function registerRoutes(app: any) {
 
   // GET debug log — requires admin auth
   app.get("/make-server-4916a0b9/webhook-debug", async (c: any) => {
-    const auth = await requireAuth(c);
+    const auth = await requireAdmin(c);
     if (auth instanceof Response) return auth;
-    if (!MASTER_EMAILS.has(((auth as any).email || "").toLowerCase()) || auth.userId !== MASTER_USER_ID) return c.json({ error: "Admin only." }, 403);
     // Also check persisted debug log from KV
     let persistedLog: any[] = [];
     try { const stored = await kvGetWithRetry("webhook_debug_log"); if (Array.isArray(stored)) persistedLog = stored; } catch {}
@@ -2930,6 +2932,12 @@ export function registerRoutes(app: any) {
           devices[devIdx].lastUpdate = new Date().toISOString();
           devices[devIdx].status = "online";
           if (rssi > -999) devices[devIdx].signal = Math.max(0, Math.min(100, 2 * (rssi + 100)));
+          // Store latest decoded data on device record for live readings
+          // (sensor_data may be throttled, but device record always has the freshest data)
+          if (decodedData && typeof decodedData === "object") {
+            devices[devIdx].decoded = decodedData;
+            devices[devIdx].decodedAt = new Date().toISOString();
+          }
           // Enrich with manufacturer/model if not set
           if (!devices[devIdx].manufacturer && devEUI.toUpperCase().startsWith("24E124")) {
             devices[devIdx].manufacturer = "Milesight";
@@ -3532,6 +3540,11 @@ export function registerRoutes(app: any) {
     try {
       const devEui = sanitizeString(c.req.param("devEui"), 50).toLowerCase();
       if (!devEui) return c.json({ error: "devEui is required." }, 400);
+
+      // Verify the device belongs to this user before returning history
+      const userDevices = await getUserCollection(userId, "devices");
+      const deviceExists = userDevices.some((d: any) => (d.devEUI || d.devEui || "").toLowerCase() === devEui);
+      if (!deviceExists) return c.json({ error: "Device not found." }, 404);
 
       // Support period query param: 24h (default) or 3d (max stored)
       const periodParam = (c.req.query("period") || "24h").toLowerCase();

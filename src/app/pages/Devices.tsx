@@ -42,6 +42,9 @@ interface Device {
   battery: number | null;
   status: string;
   gateway?: string;
+  devEui?: string;
+  decoded?: Record<string, number>;
+  decodedAt?: string;
 }
 
 interface Property {
@@ -611,7 +614,7 @@ export function Devices() {
                               ))}
                             </div>
                           </div>
-                          <DeviceHistoryChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} period={historyPeriod} />
+                          <DeviceHistoryChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} period={historyPeriod} liveDecoded={device.decoded} />
                         </div>
                       </td>
                     </tr>

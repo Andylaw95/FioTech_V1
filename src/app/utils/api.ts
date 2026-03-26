@@ -627,6 +627,8 @@ export interface Device {
   capabilities?: string[];
   lastSeen?: string;
   signal?: number;
+  decoded?: Record<string, number>;
+  decodedAt?: string;
 }
 
 export interface AppSettings {
@@ -937,6 +939,8 @@ export interface PropertyTelemetry {
     sound_level_leq: number | null;
     sound_level_lmin: number | null;
     sound_level_lmax: number | null;
+    sound_level_inst: number | null;
+    sound_level_lcpeak: number | null;
     water_leak: number | null;
   };
   zones: {
@@ -975,6 +979,8 @@ export interface PropertyTelemetry {
     sound_level_leq: number | null;
     sound_level_lmin: number | null;
     sound_level_lmax: number | null;
+    sound_level_inst: number | null;
+    sound_level_lcpeak: number | null;
     water_leak: number | null;
   }[];
 }
@@ -997,6 +1003,8 @@ export interface DeviceHistoryPoint {
   sound_level_leq: number | null;
   sound_level_lmin: number | null;
   sound_level_lmax: number | null;
+  sound_level_inst: number | null;
+  sound_level_lcpeak: number | null;
   water_leak: number | null;
 }
 

@@ -1097,7 +1097,8 @@ function GatewaysInner() {
         )}
       </motion.div>
 
-      {/* Webhook Integration */}
+      {/* Webhook Integration — admin only */}
+      {isAdmin && (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1105,6 +1106,7 @@ function GatewaysInner() {
       >
         <WebhookConfigPanel />
       </motion.div>
+      )}
 
       {/* Gateway List */}
       <motion.div

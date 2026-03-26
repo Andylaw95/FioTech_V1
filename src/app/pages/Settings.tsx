@@ -824,6 +824,9 @@ export function Settings() {
               {activeTab === 'data' && (
                 <>
                   <SettingsSection title="Export Data" description="Download a full snapshot of your properties, devices, and settings.">
+                    {!isAdmin ? (
+                      <p className="text-sm text-slate-500">Only administrators can export data. Contact your system administrator.</p>
+                    ) : (
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <div className="p-2 rounded-lg bg-blue-50 text-blue-600 shrink-0">
@@ -843,6 +846,7 @@ export function Settings() {
                         {exporting ? 'Exporting...' : 'Export JSON'}
                       </button>
                     </div>
+                    )}
                   </SettingsSection>
 
                   <SettingsSection title="Reset Data" description="Restore all data to factory defaults. This action cannot be undone.">
