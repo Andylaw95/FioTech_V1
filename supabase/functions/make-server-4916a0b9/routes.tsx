@@ -1008,12 +1008,44 @@ function decodeMilesightPayload(base64Data: string): Record<string, number> | nu
 
 function toSigned16LE(val: number): number { return val > 0x7FFF ? val - 0x10000 : val; }
 
+// ── AUDIT LOG (M2) — persist admin actions to KV for forensics ──
+const AUDIT_LOG_TTL = 90 * 24 * 3600; // 90 days
+async function auditLog(action: string, adminId: string, adminEmail: string, targetId: string, details?: Record<string, unknown>) {
+  const entry = {
+    ts: new Date().toISOString(),
+    action,
+    adminId,
+    adminEmail,
+    targetId,
+    details: details || {},
+  };
+  const key = `audit:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    await kvSetWithRetry(key, entry, AUDIT_LOG_TTL);
+    // Maintain an index of audit keys (newest first, cap at 500)
+    let index: string[] = [];
+    try { index = await kvGetWithRetry("audit_index") || []; } catch { /* empty */ }
+    index.unshift(key);
+    if (index.length > 500) index = index.slice(0, 500);
+    await kvSetWithRetry("audit_index", index, AUDIT_LOG_TTL);
+  } catch { /* best-effort */ }
+  console.log(`[AUDIT] ${action} by ${adminEmail} on ${targetId}`);
+}
+
 // ══════════════════════════════════════════════════════════
 // REGISTER ROUTES — called by index.tsx after Deno.serve()
 // ══════════════════════════════════════════════════════════
 
 export function registerRoutes(app: any) {
   const MAX_BODY_SIZE = 1 * 1024 * 1024;
+
+  // ── Request ID middleware (M3) — unique ID on every request for correlation ──
+  app.use("/make-server-4916a0b9/*", async (c: any, next: any) => {
+    const requestId = crypto.randomUUID();
+    c.set("requestId", requestId);
+    await next();
+    c.header("X-Request-ID", requestId);
+  });
 
   // Rate limiting middleware
   app.use("/make-server-4916a0b9/*", async (c: any, next: any) => {
@@ -1144,6 +1176,7 @@ export function registerRoutes(app: any) {
         kvSetWithRetry(uk(userId, "gateways"), defaults("gateways")),
         kvSetWithRetry(uk(userId, "alarms"), defaults("alarms")),
       ]);
+      await auditLog("user_create", admin.userId, admin.email, userId, { email, accountType });
       return c.json({ success: true, userId, accountType });
     } catch (e) {
       console.log("Signup error:", errorMessage(e));
@@ -1876,6 +1909,7 @@ export function registerRoutes(app: any) {
       await kvSetWithRetry(uk(userId, "settings"), { ...DEFAULT_SETTINGS, profile: profileDefaults });
       invalidateKvCache(uk(userId, "settings"));
       invalidateKvCache(uk(userId, "widget_layout"));
+      await auditLog("data_reset", auth.userId, auth.email, userId, { accountType });
       return c.json({ success: true, message: "All data reset to defaults." });
     } catch (e) {
       console.log("Error resetting data:", errorMessage(e));
@@ -2623,6 +2657,7 @@ export function registerRoutes(app: any) {
       const webhookUrl = `${webhookBaseUrl}?token=${newToken}`;
       const webhookUrlClean = webhookBaseUrl;
       console.log(`Webhook token generated for user ${userId}`);
+      await auditLog("webhook_generate", auth.userId, auth.email, userId, {});
       return c.json({ token: newToken, webhookUrl, webhookUrlClean, hasToken: true, lastReceived: null });
     } catch (e) {
       console.log("Error generating webhook token:", errorMessage(e));
@@ -2645,6 +2680,7 @@ export function registerRoutes(app: any) {
         // Clear HMAC secret
         try { await kv.del(`webhook_hmac_${userId}`); } catch { /* ignore */ }
       }
+      await auditLog("webhook_hmac_update", auth.userId, auth.email, userId, { set: !!hmacSecret });
       return c.json({ success: true, hasHmac: !!hmacSecret });
     } catch (e) {
       console.log("Error updating webhook HMAC:", errorMessage(e));
@@ -3845,6 +3881,10 @@ export function registerRoutes(app: any) {
         accountTypeCache.delete(targetId);
       }
 
+      await auditLog("user_update", admin.userId, admin.email, targetId, {
+        fields: Object.keys(body).filter(k => k !== "adminPassword"),
+        passwordChanged: !!body.password,
+      });
       return c.json({ success: true, message: "User updated." });
     } catch (e) {
       console.log("Admin updateUser error:", errorMessage(e));
@@ -3876,6 +3916,7 @@ export function registerRoutes(app: any) {
       try { await kv.del(`sensor_data_${targetId}`); } catch { /* ignore */ }
       try { await kv.del(`webhook_token_${targetId}`); } catch { /* ignore */ }
       accountTypeCache.delete(targetId);
+      await auditLog("user_delete", admin.userId, admin.email, targetId, {});
       return c.json({ success: true, message: "User deleted." });
     } catch (e) {
       console.log("Admin deleteUser error:", errorMessage(e));
@@ -4108,6 +4149,10 @@ export function registerRoutes(app: any) {
         await updatePropertySensorCounts(sourceUserId, srcProperty.name);
       }
 
+      await auditLog("property_assign", admin.userId, admin.email, targetUserId, {
+        propertyId, propertyName: srcProperty.name, mode: removeFromSource ? "transfer" : "copy",
+        devicesCopied, gatewaysCopied,
+      });
       return c.json({
         success: true,
         message: `Property "${srcProperty.name}" ${removeFromSource ? 'transferred' : 'assigned'} to ${targetUser.user.email}.`,
@@ -4120,6 +4165,34 @@ export function registerRoutes(app: any) {
     } catch (e) {
       console.log("Admin assign-property error:", errorMessage(e));
       return c.json({ error: "Failed to assign property." }, 500);
+    }
+  });
+
+  // ─── ADMIN: View audit log ──────────────────────────────
+
+  app.get("/make-server-4916a0b9/admin/audit-log", async (c: any) => {
+    const admin = await requireAdmin(c);
+    if (admin instanceof Response) return admin;
+    try {
+      // Scan KV for audit entries (prefix scan via kv_store)
+      const limit = Math.min(100, parseInt(c.req.query("limit") || "50"));
+      const entries: any[] = [];
+      // Retrieve recent audit entries by timestamp-based keys
+      const now = Date.now();
+      const scanWindow = 90 * 24 * 3600 * 1000; // 90 days
+      // Since KV doesn't have prefix scan, we store an audit index
+      let index: string[] = [];
+      try { index = await kvGetWithRetry("audit_index") || []; } catch { /* empty */ }
+      // Fetch the most recent entries
+      const recentKeys = index.slice(0, limit);
+      const results = await Promise.all(recentKeys.map((k: string) => kvGetWithRetry(k).catch(() => null)));
+      for (let i = 0; i < recentKeys.length; i++) {
+        if (results[i]) entries.push({ key: recentKeys[i], ...results[i] });
+      }
+      return c.json({ entries, total: index.length });
+    } catch (e) {
+      console.log("Audit log error:", errorMessage(e));
+      return c.json({ error: "Failed to fetch audit log." }, 500);
     }
   });
 
