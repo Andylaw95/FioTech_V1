@@ -24,3 +24,8 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Sensitive documentation (credentials, architecture details)
+AI_TEAM_HANDOFF.md
+FIOTECH_PROJECT_KNOWLEDGE.txt
+SECURITY_AUDIT_REPORT*.md

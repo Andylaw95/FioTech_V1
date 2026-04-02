@@ -72,14 +72,26 @@ function errorMessage(e: unknown): string {
   return String(e);
 }
 
+// ── CONSTANT-TIME COMPARISON (prevents timing attacks on tokens) ──
+function safeCompare(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const encoder = new TextEncoder();
+  const bufA = encoder.encode(a);
+  const bufB = encoder.encode(b);
+  if (bufA.length !== bufB.length) return false;
+  let result = 0;
+  for (let i = 0; i < bufA.length; i++) result |= bufA[i] ^ bufB[i];
+  return result === 0;
+}
+
 // ── AUTH ─────────────────────────────────────────────────
 
-// Admin identity from environment variables (fallback to defaults for backward compat)
+// Admin identity — FAIL CLOSED: no fallback values (server must have env vars configured)
 const MASTER_EMAILS = new Set(
-  (Deno.env.get("MASTER_EMAILS") || "andylaw@fsenv.com.hk")
+  (Deno.env.get("MASTER_EMAILS") || "")
     .split(",").map((e: string) => e.trim().toLowerCase()).filter(Boolean)
 );
-const MASTER_USER_ID = Deno.env.get("MASTER_USER_ID") || "5a386250-7710-4a83-8942-5dc45201303f";
+const MASTER_USER_ID = Deno.env.get("MASTER_USER_ID") || "";
 
 // ── Realtime Broadcast — push critical alarm alerts instantly to frontend ──
 async function broadcastAlarmPush(targetUserId: string, alarm: any) {
@@ -170,6 +182,11 @@ async function requireAuth(c: any): Promise<{ userId: string; email: string } | 
 async function requireAdmin(c: any): Promise<{ userId: string; email: string } | Response> {
   const auth = await requireAuth(c);
   if (auth instanceof Response) return auth;
+  // Fail closed: if admin env vars are not configured, deny all admin access
+  if (!MASTER_USER_ID || MASTER_EMAILS.size === 0) {
+    console.log("CRITICAL: MASTER_USER_ID or MASTER_EMAILS env vars not configured — denying admin access");
+    return c.json({ error: "Server configuration error." }, 500);
+  }
   // Double-gate: require BOTH matching email AND known master userId
   if (!MASTER_EMAILS.has(auth.email.toLowerCase()) || auth.userId !== MASTER_USER_ID) {
     return c.json({ error: "Forbidden. Admin access required." }, 403);
@@ -2668,7 +2685,7 @@ export function registerRoutes(app: any) {
       return c.json({ success: true, latencyMs, entryId: result.id || null });
     } catch (e) {
       console.log("Webhook test error:", errorMessage(e));
-      return c.json({ success: false, error: `Test failed: ${errorMessage(e)}` }, 500);
+      return c.json({ success: false, error: "Webhook test failed." }, 500);
     }
   });
 
@@ -2683,7 +2700,7 @@ export function registerRoutes(app: any) {
       const userId = await kvGetWithRetry(`webhook_lookup_${token}`);
       if (!userId) return c.json({ status: "error", message: "Invalid webhook token." }, 401);
       const storedToken = await kvGetWithRetry(`webhook_token_${userId}`);
-      if (storedToken !== token) return c.json({ status: "error", message: "Webhook token revoked." }, 401);
+      if (!safeCompare(storedToken, token)) return c.json({ status: "error", message: "Webhook token revoked." }, 401);
 
       // Token valid — record this ping as a gateway heartbeat
       const gateways = await getUserCollection(userId, "gateways");
@@ -2719,7 +2736,8 @@ export function registerRoutes(app: any) {
         hint: "POST sensor uplink data to this same URL to start receiving telemetry.",
       });
     } catch (e) {
-      return c.json({ status: "error", message: "Ping failed: " + errorMessage(e) }, 500);
+      console.log("Gateway ping error:", errorMessage(e));
+      return c.json({ status: "error", message: "Ping failed." }, 500);
     }
   });
 
@@ -2780,7 +2798,7 @@ export function registerRoutes(app: any) {
       const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
       if (!tokenOwner) return c.json({ error: "Invalid webhook token." }, 401);
       const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
-      if (storedToken !== token) return c.json({ error: "Webhook token revoked." }, 401);
+      if (!safeCompare(storedToken, token)) return c.json({ error: "Webhook token revoked." }, 401);
 
       // ── Optional HMAC payload verification (ChirpStack / Milesight gateways can sign payloads) ──
       const hmacHeader = c.req.header("X-Signature-SHA256") || c.req.header("X-Signature") || "";
@@ -2793,7 +2811,7 @@ export function registerRoutes(app: any) {
           const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(JSON.stringify(body)));
           const expected = Array.from(new Uint8Array(sig), b => b.toString(16).padStart(2, "0")).join("");
           const provided = hmacHeader.replace(/^sha256=/, "").toLowerCase();
-          if (expected !== provided) {
+          if (!safeCompare(expected, provided)) {
             console.log(`[HMAC] Signature mismatch for user ${tokenOwner}`);
             return c.json({ error: "HMAC signature verification failed." }, 401);
           }
@@ -3235,7 +3253,7 @@ export function registerRoutes(app: any) {
       const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
       if (!tokenOwner) return c.json({ error: "Invalid webhook token." }, 401);
       const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
-      if (storedToken !== token) return c.json({ error: "Webhook token revoked." }, 401);
+      if (!safeCompare(storedToken, token)) return c.json({ error: "Webhook token revoked." }, 401);
 
       const userId = tokenOwner;
 
