@@ -285,6 +285,70 @@ function rateLimit(ip: string, maxRequests: number, windowMs: number): boolean {
   return true;
 }
 
+// ── WEBHOOK BRUTE-FORCE PROTECTION ──────────────────────
+// Tracks failed webhook auth attempts per IP with progressive lockout.
+// After MAX_FAILURES within the window, the IP is blocked for an escalating duration.
+const webhookFailStore = new Map<string, { failures: number; resetAt: number; lockedUntil: number }>();
+
+function webhookAuthGate(ip: string): { allowed: boolean; retryAfterSec?: number } {
+  const now = Date.now();
+  const MAX_FAILURES = 5;
+  const WINDOW_MS = 5 * 60 * 1000; // 5-minute failure window
+  const entry = webhookFailStore.get(ip);
+  if (!entry || now > entry.resetAt) return { allowed: true };
+  if (entry.lockedUntil > now) {
+    return { allowed: false, retryAfterSec: Math.ceil((entry.lockedUntil - now) / 1000) };
+  }
+  if (entry.failures >= MAX_FAILURES) {
+    // Progressive lockout: 1 min, 5 min, 15 min (based on how far over the limit)
+    const lockMs = Math.min(15 * 60 * 1000, 60 * 1000 * Math.pow(3, Math.floor((entry.failures - MAX_FAILURES) / 3)));
+    entry.lockedUntil = now + lockMs;
+    return { allowed: false, retryAfterSec: Math.ceil(lockMs / 1000) };
+  }
+  return { allowed: true };
+}
+
+function recordWebhookAuthFailure(ip: string): void {
+  const now = Date.now();
+  const WINDOW_MS = 5 * 60 * 1000;
+  const entry = webhookFailStore.get(ip);
+  if (!entry || now > entry.resetAt) {
+    webhookFailStore.set(ip, { failures: 1, resetAt: now + WINDOW_MS, lockedUntil: 0 });
+  } else {
+    entry.failures++;
+  }
+}
+
+function clearWebhookAuthFailures(ip: string): void {
+  webhookFailStore.delete(ip);
+}
+
+// ── FILE MAGIC BYTES VALIDATION ─────────────────────────
+// Validates actual file content against declared MIME type to prevent
+// attackers from uploading executables/scripts with spoofed Content-Type.
+function validateMagicBytes(buffer: Uint8Array, declaredType: string): boolean {
+  if (buffer.length < 12) return false;
+  switch (declaredType) {
+    case "image/png":
+      // PNG: 89 50 4E 47 0D 0A 1A 0A
+      return buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47
+          && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A;
+    case "image/jpeg":
+      // JPEG: FF D8 FF
+      return buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+    case "image/webp":
+      // WebP: RIFF....WEBP
+      return buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+          && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+    case "image/gif":
+      // GIF: GIF87a or GIF89a
+      return buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38
+          && (buffer[4] === 0x37 || buffer[4] === 0x39) && buffer[5] === 0x61;
+    default:
+      return false;
+  }
+}
+
 function getClientIp(c: any): string {
   const xff = c.req.header("x-forwarded-for");
   if (xff) {
@@ -1876,6 +1940,11 @@ export function registerRoutes(app: any) {
       const extMap: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
       const fileName = `property-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${extMap[file.type] || "jpg"}`;
       const arrayBuffer = await file.arrayBuffer();
+      // Validate magic bytes — prevents uploading executables/scripts with spoofed Content-Type
+      if (!validateMagicBytes(new Uint8Array(arrayBuffer), file.type)) {
+        console.log(`Upload rejected: magic bytes mismatch for declared type ${file.type}`);
+        return c.json({ error: "File content does not match declared type." }, 400);
+      }
       const { data: uploadData, error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(fileName, arrayBuffer, { contentType: file.type, upsert: false });
       if (uploadError) { console.log("Upload error:", uploadError.message); return c.json({ error: "Upload failed." }, 500); }
       // Signed URL valid for 7 days (not 365 days) — reduces leak exposure window
@@ -2730,13 +2799,16 @@ export function registerRoutes(app: any) {
   app.get("/make-server-4916a0b9/telemetry-webhook", async (c: any) => {
     const ip = getClientIp(c);
     if (!rateLimit(ip + ":webhook-ping", 30, 60000)) return c.json({ error: "Rate limited." }, 429);
+    const gate = webhookAuthGate(ip);
+    if (!gate.allowed) return c.json({ error: `Too many failed attempts. Retry after ${gate.retryAfterSec}s.` }, 429);
     try {
       const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
-      if (!token || token.length < 10) return c.json({ status: "error", message: "Missing or invalid webhook token." }, 401);
+      if (!token || token.length < 10) { recordWebhookAuthFailure(ip); return c.json({ status: "error", message: "Missing or invalid webhook token." }, 401); }
       const userId = await kvGetWithRetry(`webhook_lookup_${token}`);
-      if (!userId) return c.json({ status: "error", message: "Invalid webhook token." }, 401);
+      if (!userId) { recordWebhookAuthFailure(ip); return c.json({ status: "error", message: "Invalid webhook token." }, 401); }
       const storedToken = await kvGetWithRetry(`webhook_token_${userId}`);
-      if (!safeCompare(storedToken, token)) return c.json({ status: "error", message: "Webhook token revoked." }, 401);
+      if (!safeCompare(storedToken, token)) { recordWebhookAuthFailure(ip); return c.json({ status: "error", message: "Webhook token revoked." }, 401); }
+      clearWebhookAuthFailures(ip);
 
       // Token valid — record this ping as a gateway heartbeat
       const gateways = await getUserCollection(userId, "gateways");
@@ -2797,6 +2869,8 @@ export function registerRoutes(app: any) {
   app.post("/make-server-4916a0b9/telemetry-webhook", async (c: any) => {
     const ip = getClientIp(c);
     if (!rateLimit(ip + ":webhook", 60, 60000)) return c.json({ error: "Rate limited." }, 429);
+    const gate = webhookAuthGate(ip);
+    if (!gate.allowed) return c.json({ error: `Too many failed attempts. Retry after ${gate.retryAfterSec}s.` }, 429);
 
     // Debug: capture raw request info
     let rawBody: any = null;
@@ -2830,11 +2904,12 @@ export function registerRoutes(app: any) {
     try {
       // Prefer X-Webhook-Token header; fall back to query param for backward compat
       const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
-      if (!token || token.length < 10) return c.json({ error: "Missing or invalid webhook token." }, 401);
+      if (!token || token.length < 10) { recordWebhookAuthFailure(ip); return c.json({ error: "Missing or invalid webhook token." }, 401); }
       const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
-      if (!tokenOwner) return c.json({ error: "Invalid webhook token." }, 401);
+      if (!tokenOwner) { recordWebhookAuthFailure(ip); return c.json({ error: "Invalid webhook token." }, 401); }
       const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
-      if (!safeCompare(storedToken, token)) return c.json({ error: "Webhook token revoked." }, 401);
+      if (!safeCompare(storedToken, token)) { recordWebhookAuthFailure(ip); return c.json({ error: "Webhook token revoked." }, 401); }
+      clearWebhookAuthFailures(ip);
 
       // ── Optional HMAC payload verification (ChirpStack / Milesight gateways can sign payloads) ──
       const hmacHeader = c.req.header("X-Signature-SHA256") || c.req.header("X-Signature") || "";
@@ -3277,6 +3352,8 @@ export function registerRoutes(app: any) {
   app.post("/make-server-4916a0b9/telemetry-4g", async (c: any) => {
     const ip = getClientIp(c);
     if (!rateLimit(ip + ":telem4g", 120, 60000)) return c.json({ error: "Rate limited." }, 429);
+    const gate = webhookAuthGate(ip);
+    if (!gate.allowed) return c.json({ error: `Too many failed attempts. Retry after ${gate.retryAfterSec}s.` }, 429);
 
     let body: any = null;
     try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body." }, 400); }
@@ -3285,11 +3362,12 @@ export function registerRoutes(app: any) {
     try {
       // Auth: same token-based auth as the LoRaWAN webhook
       const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
-      if (!token || token.length < 10) return c.json({ error: "Missing or invalid webhook token." }, 401);
+      if (!token || token.length < 10) { recordWebhookAuthFailure(ip); return c.json({ error: "Missing or invalid webhook token." }, 401); }
       const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
-      if (!tokenOwner) return c.json({ error: "Invalid webhook token." }, 401);
+      if (!tokenOwner) { recordWebhookAuthFailure(ip); return c.json({ error: "Invalid webhook token." }, 401); }
       const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
-      if (!safeCompare(storedToken, token)) return c.json({ error: "Webhook token revoked." }, 401);
+      if (!safeCompare(storedToken, token)) { recordWebhookAuthFailure(ip); return c.json({ error: "Webhook token revoked." }, 401); }
+      clearWebhookAuthFailures(ip);
 
       const userId = tokenOwner;
 
