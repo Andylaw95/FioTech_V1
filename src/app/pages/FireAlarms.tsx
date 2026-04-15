@@ -8,7 +8,7 @@ const fireConfig: AlarmTypeConfig = {
   subtitle: 'Track fire detection systems, sprinkler status, and emergency response readiness',
   icon: <Flame className="h-7 w-7" />,
   filterFn: (alarm) => {
-    const t = alarm.type.toLowerCase();
+    const t = (alarm.type ?? '').toLowerCase();
     return t.includes('fire') || t.includes('heat') || t.includes('sprinkler');
   },
   theme: {

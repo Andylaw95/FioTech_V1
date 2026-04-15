@@ -8,7 +8,7 @@ const smokeConfig: AlarmTypeConfig = {
   subtitle: 'Monitor smoke detection sensors, air quality alerts, and ventilation system warnings',
   icon: <Wind className="h-7 w-7" />,
   filterFn: (alarm) => {
-    const t = alarm.type.toLowerCase();
+    const t = (alarm.type ?? '').toLowerCase();
     return t.includes('smoke') || t.includes('air quality') || t.includes('ventilation');
   },
   theme: {

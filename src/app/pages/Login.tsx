@@ -24,7 +24,7 @@ export function Login() {
       const result = await signIn(email, password);
       if (result.error) {
         // Friendlier error for unconfirmed email
-        const msg = result.error.toLowerCase();
+        const msg = (result.error ?? '').toLowerCase();
         if (msg.includes('email not confirmed') || msg.includes('not confirmed')) {
           setError('Email not confirmed. Please check your inbox and click the confirmation link.');
         } else {

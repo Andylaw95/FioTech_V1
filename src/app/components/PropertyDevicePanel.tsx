@@ -389,9 +389,9 @@ export function PropertyDevicePanel({ devices, propertyName, onDeviceChange, sea
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(d =>
-        d.name.toLowerCase().includes(q) ||
-        d.type.toLowerCase().includes(q) ||
-        d.location.toLowerCase().includes(q)
+        (d.name ?? '').toLowerCase().includes(q) ||
+        (d.type ?? '').toLowerCase().includes(q) ||
+        (d.location ?? '').toLowerCase().includes(q)
       );
     }
     return result;

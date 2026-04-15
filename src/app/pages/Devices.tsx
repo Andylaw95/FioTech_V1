@@ -163,11 +163,12 @@ export function Devices() {
   const filteredDevices = useMemo(() => {
     return devices.filter(device => {
       // Search Filter
+      const q = searchQuery.toLowerCase();
       const matchesSearch = 
-        device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        device.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        device.building.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        device.type.toLowerCase().includes(searchQuery.toLowerCase());
+        (device.name ?? '').toLowerCase().includes(q) ||
+        (device.location ?? '').toLowerCase().includes(q) ||
+        (device.building ?? '').toLowerCase().includes(q) ||
+        (device.type ?? '').toLowerCase().includes(q);
 
       // Status Filter
       const matchesStatus = statusFilter === 'all' || device.status === statusFilter;

@@ -8,7 +8,7 @@ const waterConfig: AlarmTypeConfig = {
   subtitle: 'Monitor water leak detection sensors and pipeline pressure across all properties',
   icon: <Droplets className="h-7 w-7" />,
   filterFn: (alarm) => {
-    const t = alarm.type.toLowerCase();
+    const t = (alarm.type ?? '').toLowerCase();
     return t.includes('water') || t.includes('leak') || t.includes('flood') || t.includes('moisture');
   },
   theme: {

@@ -920,11 +920,11 @@ function GatewaysInner() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(g =>
-        g.name.toLowerCase().includes(q) ||
-        g.property.toLowerCase().includes(q) ||
-        g.protocol.toLowerCase().includes(q) ||
-        g.ipAddress.includes(q) ||
-        g.model.toLowerCase().includes(q)
+        (g.name ?? '').toLowerCase().includes(q) ||
+        (g.property ?? '').toLowerCase().includes(q) ||
+        (g.protocol ?? '').toLowerCase().includes(q) ||
+        (g.ipAddress ?? '').includes(q) ||
+        (g.model ?? '').toLowerCase().includes(q)
       );
     }
     return result.sort((a, b) => {

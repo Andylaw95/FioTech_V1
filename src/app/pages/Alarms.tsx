@@ -150,15 +150,15 @@ export function Alarms() {
   // Compute type-specific counts for the nav cards
   const typeCounts = useMemo(() => {
     const water = alarms.filter(a => {
-      const t = a.type.toLowerCase();
+      const t = (a.type ?? '').toLowerCase();
       return t.includes('water') || t.includes('leak') || t.includes('flood') || t.includes('moisture');
     });
     const fire = alarms.filter(a => {
-      const t = a.type.toLowerCase();
+      const t = (a.type ?? '').toLowerCase();
       return t.includes('fire') || t.includes('heat') || t.includes('sprinkler');
     });
     const smoke = alarms.filter(a => {
-      const t = a.type.toLowerCase();
+      const t = (a.type ?? '').toLowerCase();
       return t.includes('smoke') || t.includes('air quality') || t.includes('ventilation');
     });
     return {

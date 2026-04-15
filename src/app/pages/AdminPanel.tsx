@@ -1423,9 +1423,9 @@ export function AdminPanel() {
   const filteredUsers = users.filter(u => {
     const matchesSearch =
       !search ||
-      u.email.toLowerCase().includes(search.toLowerCase()) ||
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.company?.toLowerCase().includes(search.toLowerCase());
+      (u.email ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (u.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (u.company ?? '').toLowerCase().includes(search.toLowerCase());
     const matchesType = filterType === 'all' || u.accountType === filterType;
     return matchesSearch && matchesType;
   });

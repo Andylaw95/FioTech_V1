@@ -112,11 +112,12 @@ export function Buildings() {
     fetchProperties();
   };
 
-  const filteredProperties = properties.filter(b =>
-    b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    b.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    b.type.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredProperties = properties.filter(b => {
+    const q = searchQuery.toLowerCase();
+    return (b.name ?? '').toLowerCase().includes(q) ||
+      (b.address ?? '').toLowerCase().includes(q) ||
+      (b.type ?? '').toLowerCase().includes(q);
+  });
 
   return (
     <div className="space-y-4 sm:space-y-6">

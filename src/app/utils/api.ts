@@ -48,6 +48,8 @@ let _warmupPromise: Promise<'success' | 'exhausted'> | null = null;
 // causing the exact timeout storms seen in production.
 let _keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
+let _keepAliveVisibilityHandler: (() => void) | null = null;
+
 function startKeepAlive() {
   if (_keepAliveTimer) return;
   const url = `${BASE_URL}/health`;
@@ -56,31 +58,29 @@ function startKeepAlive() {
     apikey: publicAnonKey,
   };
 
-  // Ping every 15s for the ENTIRE session — keeps the Edge Function worker
-  // alive and avoids cold starts when navigating between pages or idling.
-  // Only fires when the tab is visible to avoid wasting resources.
-  // 15s is well under the ~30s idle timeout for Supabase Free Tier workers.
   _keepAliveTimer = setInterval(() => {
     if (!document.hidden) {
       fetch(url, { headers }).catch(() => {});
     }
   }, 15000);
 
-  // Pause/resume on visibility change — no pings when tab is hidden
-  document.addEventListener('visibilitychange', () => {
+  // Store handler reference so it can be removed in stopKeepAlive
+  _keepAliveVisibilityHandler = () => {
     if (!document.hidden && _keepAliveTimer) {
-      // Immediately ping when tab becomes visible again (may have been idle)
       fetch(url, { headers }).catch(() => {});
     }
-  });
-
-  console.log('[FioTec] Keep-alive pings started (every 15s, session-long, visibility-aware)');
+  };
+  document.addEventListener('visibilitychange', _keepAliveVisibilityHandler);
 }
 
 export function stopKeepAlive() {
   if (_keepAliveTimer) {
     clearInterval(_keepAliveTimer);
     _keepAliveTimer = null;
+  }
+  if (_keepAliveVisibilityHandler) {
+    document.removeEventListener('visibilitychange', _keepAliveVisibilityHandler);
+    _keepAliveVisibilityHandler = null;
   }
 }
 

@@ -1062,7 +1062,7 @@ export function BuildingDetails() {
                   const searchFiltered = sensorSearch.trim()
                     ? devices.filter(d => {
                         const q = sensorSearch.toLowerCase();
-                        return d.name.toLowerCase().includes(q) || d.type.toLowerCase().includes(q) || d.location.toLowerCase().includes(q);
+                        return (d.name ?? '').toLowerCase().includes(q) || (d.type ?? '').toLowerCase().includes(q) || (d.location ?? '').toLowerCase().includes(q);
                       })
                     : devices;
                   if (sensorSearch.trim() && searchFiltered.length === 0) return null;

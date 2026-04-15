@@ -351,9 +351,9 @@ function BatchPairForm({
     const q = searchTerm.toLowerCase();
     return unassignedDevices.filter(
       (d) =>
-        d.name.toLowerCase().includes(q) ||
-        d.type.toLowerCase().includes(q) ||
-        d.building.toLowerCase().includes(q),
+        (d.name ?? '').toLowerCase().includes(q) ||
+        (d.type ?? '').toLowerCase().includes(q) ||
+        (d.building ?? '').toLowerCase().includes(q),
     );
   }, [unassignedDevices, searchTerm]);
 

@@ -240,7 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Sign in exception:', err);
       return { error: err.message || 'Sign in failed' };
     }
-  }, []);
+  }, [checkAdminStatus]);
 
   const signUp = useCallback(
     async (email: string, password: string, name: string, accountType?: string) => {

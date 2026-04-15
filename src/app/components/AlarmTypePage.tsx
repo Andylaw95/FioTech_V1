@@ -169,10 +169,10 @@ export function AlarmTypePage({ config }: { config: AlarmTypeConfig }) {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(a =>
-        a.type.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q) ||
-        a.location.toLowerCase().includes(q) ||
-        a.property.toLowerCase().includes(q)
+        (a.type ?? '').toLowerCase().includes(q) ||
+        (a.description ?? '').toLowerCase().includes(q) ||
+        (a.location ?? '').toLowerCase().includes(q) ||
+        (a.property ?? '').toLowerCase().includes(q)
       );
     }
     return result.sort((a, b) => {
