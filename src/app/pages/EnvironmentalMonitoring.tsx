@@ -8,10 +8,11 @@ import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF, CircleF, TrafficLayer 
 import { SafeChartContainer } from '@/app/components/SafeChartContainer';
 import { StatCard } from '@/app/components/StatCard';
 import { useTheme } from '@/app/utils/ThemeContext';
+import { api } from '@/app/utils/api';
 import {
   Volume2, CloudFog, Wind, AlertTriangle, Thermometer, Droplets, Download,
   ChevronDown, Shield, Radio, CheckCircle2, XCircle, Eye, Map as MapIcon,
-  BarChart3, Activity, Filter, Layers, Maximize2, Navigation, MapPin,
+  BarChart3, Activity, Filter, Layers, Maximize2, Navigation, MapPin, Loader2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -151,7 +152,7 @@ interface SensorDevice {
 
 // Coordinates around a construction site in Tseung Kwan O, Hong Kong
 // HY108-1 sensor via HaaS506-LD1 RTU — 5s upload interval, IEC 61672 metrics, range 20–140 dBA
-const ALL_DEVICES: SensorDevice[] = [
+const DEMO_DEVICES: SensorDevice[] = [
   { id: 'HY108-001', name: 'Site North Gate', type: 'noise', location: 'Construction Site A - North', lat: 22.3120, lng: 114.2615, status: 'online', sound_level_leq: 62.3, sound_level_lmax: 78.5, sound_level_lmin: 48.2, sound_level_inst: 64.1, sound_level_lcpeak: 92.7 },
   { id: 'HY108-002', name: 'Residential Boundary', type: 'noise', location: 'Construction Site A - East Boundary', lat: 22.3105, lng: 114.2640, status: 'online', sound_level_leq: 54.8, sound_level_lmax: 67.2, sound_level_lmin: 42.1, sound_level_inst: 56.3, sound_level_lcpeak: 81.4 },
   { id: 'HY108-003', name: 'Site Office', type: 'noise', location: 'Construction Site A - Office Block', lat: 22.3095, lng: 114.2600, status: 'online', sound_level_leq: 71.2, sound_level_lmax: 88.9, sound_level_lmin: 55.3, sound_level_inst: 73.6, sound_level_lcpeak: 105.2 },
@@ -161,6 +162,38 @@ const ALL_DEVICES: SensorDevice[] = [
   { id: 'DUST-003', name: 'Residential Monitor', type: 'dust', location: 'Adjacent Residential - Rooftop', lat: 22.3110, lng: 114.2655, status: 'online', pm25: 18.5, pm10: 36.2, tsp: 88, temp: 28.5, humidity: 68, windSpeed: 3.5, windDir: 'SE' },
   { id: 'DUST-004', name: 'Site South - Stockpile', type: 'dust', location: 'Construction Site A - Material Yard', lat: 22.3083, lng: 114.2605, status: 'offline', pm25: 0, pm10: 0, tsp: 0, temp: 0, humidity: 0, windSpeed: 0, windDir: '—' },
 ];
+
+// ══════════════════════════════════════════════════════════
+//  Geocoding — auto-detect coordinates from property address
+// ══════════════════════════════════════════════════════════
+
+const GEOCODE_CACHE_PREFIX = 'fiotec_geocode_';
+
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  const cacheKey = GEOCODE_CACHE_PREFIX + address;
+  const cached = sessionStorage.getItem(cacheKey);
+  if (cached) return JSON.parse(cached);
+
+  try {
+    const geocoder = new google.maps.Geocoder();
+    const res = await geocoder.geocode({ address });
+    if (res.results.length > 0) {
+      const loc = res.results[0].geometry.location;
+      const coords = { lat: loc.lat(), lng: loc.lng() };
+      sessionStorage.setItem(cacheKey, JSON.stringify(coords));
+      return coords;
+    }
+  } catch (e) {
+    console.warn('[Geocode] Failed for', address, e);
+  }
+  return null;
+}
+
+function isDeviceRecent(lastSeen: string | undefined): boolean {
+  if (!lastSeen) return false;
+  const diff = Date.now() - new Date(lastSeen).getTime();
+  return diff < 10 * 60 * 1000; // 10 minutes
+}
 
 // HY108-1 uploads every 5s; values 20–140 dBA; LAFmax ≥ LAeq ≥ LAFmin always
 function generateNoiseData(hours: number, interval: number = 5) {
@@ -265,7 +298,13 @@ export function EnvironmentalMonitoring() {
   const [dustTimeRange, setDustTimeRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [dustMetric, setDustMetric] = useState<'pm25' | 'pm10' | 'tsp'>('pm25');
 
-  const device = selectedDevice ? ALL_DEVICES.find(d => d.id === selectedDevice) : null;
+  // Real data state
+  const [devices, setDevices] = useState<SensorDevice[]>(DEMO_DEVICES);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [usingDemoData, setUsingDemoData] = useState(true);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 22.3100, lng: 114.2625 });
+
+  const device = selectedDevice ? devices.find(d => d.id === selectedDevice) : null;
 
   // Google Maps
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_MAPS_KEY });
@@ -275,9 +314,112 @@ export function EnvironmentalMonitoring() {
   const [showCoverage, setShowCoverage] = useState(false);
   const [mapTypeId, setMapTypeId] = useState<'roadmap' | 'satellite' | 'hybrid'>('roadmap');
 
-  const filteredDevices = mapFilter === 'all' ? ALL_DEVICES : ALL_DEVICES.filter(d => d.type === mapFilter);
-  const noiseDevices = ALL_DEVICES.filter(d => d.type === 'noise');
-  const dustDevices = ALL_DEVICES.filter(d => d.type === 'dust');
+  // ── Fetch real data from Supabase + geocode property addresses ──
+  useEffect(() => {
+    if (!isLoaded) return;
+    let cancelled = false;
+
+    async function fetchRealData() {
+      try {
+        const properties = await api.getProperties();
+        if (!properties || properties.length === 0) throw new Error('No properties');
+
+        const realDevices: SensorDevice[] = [];
+
+        for (const prop of properties) {
+          const addr = prop.location || prop.name;
+          const coords = await geocodeAddress(addr);
+          if (!coords) continue;
+
+          try {
+            const telemetry = await api.getPropertyTelemetry(prop.id);
+            const readings = telemetry.deviceReadings || {};
+            let idx = 0;
+
+            for (const [devEUI, reading] of Object.entries(readings)) {
+              const dec = reading.decoded || {};
+              const hasNoise = dec.sound_level_leq !== undefined;
+              const hasDust = dec.pm2_5 !== undefined || dec.pm10 !== undefined;
+              const deviceType: DeviceType = hasNoise ? 'noise' : hasDust ? 'dust' : 'noise';
+
+              // Spread devices around property using golden-angle offset
+              const angle = (idx * 137.5) * Math.PI / 180;
+              const offset = 0.0003 + idx * 0.0002;
+
+              realDevices.push({
+                id: devEUI,
+                name: reading.deviceName || devEUI,
+                type: deviceType,
+                location: `${prop.name} — ${reading.deviceName || devEUI}`,
+                lat: coords.lat + Math.cos(angle) * offset,
+                lng: coords.lng + Math.sin(angle) * offset,
+                status: isDeviceRecent(reading.receivedAt) ? 'online' : 'offline',
+                sound_level_leq: dec.sound_level_leq ?? null,
+                sound_level_lmax: dec.sound_level_lmax ?? null,
+                sound_level_lmin: dec.sound_level_lmin ?? null,
+                sound_level_inst: dec.sound_level_inst ?? null,
+                sound_level_lcpeak: dec.sound_level_lcpeak ?? null,
+                pm25: dec.pm2_5 ?? dec.pm25,
+                pm10: dec.pm10,
+                tsp: dec.tsp,
+                temp: dec.temperature,
+                humidity: dec.humidity,
+                windSpeed: dec.wind_speed,
+                windDir: dec.wind_direction,
+              });
+              idx++;
+            }
+
+            // If property has no device readings yet, still show property as a marker
+            if (Object.keys(readings).length === 0) {
+              realDevices.push({
+                id: `prop-${prop.id}`,
+                name: prop.name,
+                type: 'noise',
+                location: prop.location || prop.name,
+                lat: coords.lat,
+                lng: coords.lng,
+                status: 'offline',
+              });
+            }
+          } catch {
+            // Telemetry fetch failed — still show property marker
+            realDevices.push({
+              id: `prop-${prop.id}`,
+              name: prop.name,
+              type: 'noise',
+              location: prop.location || prop.name,
+              lat: coords.lat,
+              lng: coords.lng,
+              status: 'offline',
+            });
+          }
+        }
+
+        if (cancelled) return;
+
+        if (realDevices.length > 0) {
+          setDevices(realDevices);
+          setUsingDemoData(false);
+          // Center map on average of all device positions
+          const avgLat = realDevices.reduce((s, d) => s + d.lat, 0) / realDevices.length;
+          const avgLng = realDevices.reduce((s, d) => s + d.lng, 0) / realDevices.length;
+          setMapCenter({ lat: avgLat, lng: avgLng });
+        }
+      } catch (e) {
+        console.info('[EnvMonitor] Using demo data —', (e as Error).message);
+      } finally {
+        if (!cancelled) setDataLoading(false);
+      }
+    }
+
+    fetchRealData();
+    return () => { cancelled = true; };
+  }, [isLoaded]);
+
+  const filteredDevices = mapFilter === 'all' ? devices : devices.filter(d => d.type === mapFilter);
+  const noiseDevices = devices.filter(d => d.type === 'noise');
+  const dustDevices = devices.filter(d => d.type === 'dust');
   const onlineNoise = noiseDevices.filter(d => d.status === 'online').length;
   const onlineDust = dustDevices.filter(d => d.status === 'online').length;
 
@@ -322,9 +464,6 @@ export function EnvironmentalMonitoring() {
     tsp: { label: 'TSP', unit: 'µg/m³', limit: 260, limitLabel: 'EPD (260µg/m³)', color: '#f59e0b', max: 600 },
   };
   const mc = dustMetricConfig[dustMetric];
-
-  // Map center
-  const mapCenter: [number, number] = [22.3100, 114.2625];
 
   function getMarkerColor(d: SensorDevice): string {
     if (d.status === 'offline') return '#94a3b8';
@@ -378,8 +517,15 @@ export function EnvironmentalMonitoring() {
           <h2 className={cn("text-xl lg:text-2xl font-bold", isDark ? "text-white" : "text-slate-900")}>
             Environmental Monitoring
           </h2>
-          <p className={cn("text-sm mt-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
+          <p className={cn("text-sm mt-0.5 flex items-center gap-2", isDark ? "text-slate-400" : "text-slate-500")}>
             Noise & Dust · Real-time sensor overview · IEC 61672 / HK AQO compliant
+            {dataLoading ? (
+              <span className="inline-flex items-center gap-1 text-xs text-blue-400"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</span>
+            ) : usingDemoData ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-400">DEMO</span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">LIVE</span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -534,7 +680,7 @@ export function EnvironmentalMonitoring() {
                 {isLoaded ? (
                   <GoogleMap
                     mapContainerStyle={{ width: '100%', height: '100%' }}
-                    center={{ lat: mapCenter[0], lng: mapCenter[1] }}
+                    center={mapCenter}
                     zoom={16}
                     onLoad={onMapLoad}
                     options={{
