@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
   PieChart, Pie, Cell,
 } from 'recharts';
-import AMapLoader from '@amap/amap-jsapi-loader';
+import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF } from '@react-google-maps/api';
 import { SafeChartContainer } from '@/app/components/SafeChartContainer';
 import { StatCard } from '@/app/components/StatCard';
 import { useTheme } from '@/app/utils/ThemeContext';
@@ -231,17 +231,24 @@ function generateHourlyData(days: number) {
 }
 
 // ══════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════
-//  AMap configuration
+//  Google Maps configuration
 // ══════════════════════════════════════════════════════════
 
-const AMAP_KEY = 'c3a105f2cad3f3b0b25f03650d41f7a7';
-const AMAP_SECURITY_CODE = 'a300ff0165a2b79110c87e6e22ccca41';
+const GOOGLE_MAPS_KEY = 'AIzaSyBWgKagtVMMD2yysqs0COrolsIRU3K1wVY';
+const GOOGLE_MAPS_ID = 'fiotech-env-map';
 
-// Set security config before AMap loads
-if (typeof window !== 'undefined') {
-  (window as any)._AMapSecurityConfig = { securityJsCode: AMAP_SECURITY_CODE };
-}
+const darkMapStyles: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#334155' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#64748b' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0c4a6e' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1e3a5f' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#64748b' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e3a5f' }] },
+  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#1a2332' }] },
+];
 
 // ══════════════════════════════════════════════════════════
 //  Main Component
@@ -260,12 +267,10 @@ export function EnvironmentalMonitoring() {
 
   const device = selectedDevice ? ALL_DEVICES.find(d => d.id === selectedDevice) : null;
 
-  // AMap refs
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const amapRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const infoWindowRef = useRef<any>(null);
-  const AMapRef = useRef<any>(null);
+  // Google Maps
+  const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_MAPS_KEY });
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const [infoOpen, setInfoOpen] = useState<string | null>(null);
 
   const filteredDevices = mapFilter === 'all' ? ALL_DEVICES : ALL_DEVICES.filter(d => d.type === mapFilter);
   const noiseDevices = ALL_DEVICES.filter(d => d.type === 'noise');
@@ -330,169 +335,16 @@ export function EnvironmentalMonitoring() {
     return `PM2.5: ${d.pm25?.toFixed(1)} µg/m³`;
   }
 
-  // Build info window HTML for a device
-  function buildInfoContent(d: SensorDevice): string {
-    const statusDot = d.status === 'online'
-      ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#10b981;margin-right:6px"></span>'
-      : '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#94a3b8;margin-right:6px"></span>';
-    let metrics = '';
-    if (d.status === 'online' && d.type === 'noise') {
-      const s = getNoiseStatus(d.sound_level_leq ?? 0);
-      metrics = `
-        <div style="border-top:1px solid #e2e8f0;margin-top:8px;padding-top:8px;font-size:12px;line-height:1.8">
-          <div><span style="color:#64748b">LAeq:</span> <b>${d.sound_level_leq?.toFixed(1)} dB(A)</b></div>
-          <div><span style="color:#64748b">LAFmax:</span> ${d.sound_level_lmax?.toFixed(1)} dB(A)</div>
-          <div><span style="color:#64748b">LAFmin:</span> ${d.sound_level_lmin?.toFixed(1)} dB(A)</div>
-          <div><span style="color:#64748b">LAF:</span> ${d.sound_level_inst?.toFixed(1)} dB(A)</div>
-          <div><span style="color:#64748b">LCPeak:</span> ${d.sound_level_lcpeak?.toFixed(1)} dB(C)</div>
-          <div style="margin-top:4px;font-weight:600;color:${s.hex}">${s.label}</div>
-        </div>`;
-    } else if (d.status === 'online' && d.type === 'dust') {
-      const s = getPM25Status(d.pm25 ?? 0);
-      metrics = `
-        <div style="border-top:1px solid #e2e8f0;margin-top:8px;padding-top:8px;font-size:12px;line-height:1.8">
-          <div><span style="color:#64748b">PM2.5:</span> <b>${d.pm25?.toFixed(1)} µg/m³</b></div>
-          <div><span style="color:#64748b">PM10:</span> ${d.pm10?.toFixed(1)} µg/m³</div>
-          <div><span style="color:#64748b">TSP:</span> ${d.tsp} µg/m³</div>
-          <div><span style="color:#64748b">Temp:</span> ${d.temp}°C · <span style="color:#64748b">Wind:</span> ${d.windSpeed}m/s ${d.windDir}</div>
-          <div style="margin-top:4px;font-weight:600;color:${s.hex}">${s.label}</div>
-        </div>`;
-    }
-    return `<div style="min-width:200px;font-family:system-ui;padding:4px">
-      <div style="font-weight:700;font-size:14px;margin-bottom:2px">${d.name}</div>
-      <div style="color:#64748b;font-size:11px;margin-bottom:6px">${d.id} · ${d.location}</div>
-      <div style="display:flex;align-items:center;font-size:12px">${statusDot}<span style="text-transform:capitalize">${d.status}</span></div>
-      ${metrics}
-    </div>`;
-  }
-
-  // Initialize AMap
-  useEffect(() => {
-    let map: any = null;
-    let destroyed = false;
-    AMapLoader.load({
-      key: AMAP_KEY,
-      version: '2.0',
-    }).then((AMap) => {
-      if (destroyed) return;
-      AMapRef.current = AMap;
-      map = new AMap.Map(mapContainerRef.current, {
-        zoom: 16,
-        center: [mapCenter[1], mapCenter[0]],
-        mapStyle: isDark ? 'amap://styles/dark' : 'amap://styles/normal',
-        viewMode: '3D',
-        pitch: 55,
-        rotation: -15,
-        buildingAnimation: true,
-        showBuildingBlock: true,
-      });
-      // Load plugins asynchronously
-      AMap.plugin(['AMap.Scale', 'AMap.ToolBar', 'AMap.ControlBar'], () => {
-        if (destroyed || !map) return;
-        map.addControl(new AMap.Scale());
-        map.addControl(new AMap.ToolBar({ position: { right: '10px', top: '10px' } }));
-        // 3D rotation/pitch control
-        map.addControl(new AMap.ControlBar({
-          position: { right: '10px', top: '80px' },
-          showZoomBar: false,
-          showControlButton: true,
-        }));
-      });
-      amapRef.current = map;
-
-      // Create shared InfoWindow
-      infoWindowRef.current = new AMap.InfoWindow({
-        offset: new AMap.Pixel(0, -12),
-        closeWhenClickMap: true,
-      });
-
-      // Add markers for all devices
-      const markers: any[] = [];
-      filteredDevices.forEach(d => {
-        const color = getMarkerColor(d);
-        const marker = new AMap.Marker({
-          position: new AMap.LngLat(d.lng, d.lat),
-          content: `<div style="
-            width:${d.id === selectedDevice ? '28px' : '20px'};
-            height:${d.id === selectedDevice ? '28px' : '20px'};
-            border-radius:50%;
-            background:${color};
-            opacity:${d.id === selectedDevice ? 0.95 : 0.75};
-            border:2px solid white;
-            box-shadow:0 2px 6px rgba(0,0,0,0.3);
-            cursor:pointer;
-            transition:all 0.2s;
-          "></div>`,
-          offset: new AMap.Pixel(d.id === selectedDevice ? -14 : -10, d.id === selectedDevice ? -14 : -10),
-          extData: d,
-        });
-        marker.on('click', () => {
-          setSelectedDevice(d.id);
-          infoWindowRef.current.setContent(buildInfoContent(d));
-          infoWindowRef.current.open(map, marker.getPosition());
-        });
-        markers.push(marker);
-      });
-      map.add(markers);
-      markersRef.current = markers;
-    }).catch((e) => {
-      console.error('[AMap] Load failed:', e);
-    });
-
-    return () => {
-      destroyed = true;
-      if (map) map.destroy();
-      amapRef.current = null;
-      markersRef.current = [];
-    };
-  }, [isDark]); // Re-init on theme change for map style
-
-  // Update markers when filter or selection changes
-  useEffect(() => {
-    const map = amapRef.current;
-    const AMap = AMapRef.current;
-    if (!map || !AMap) return;
-
-    // Remove old markers
-    if (markersRef.current.length) {
-      map.remove(markersRef.current);
-    }
-
-    const markers: any[] = [];
-    filteredDevices.forEach(d => {
-      const color = getMarkerColor(d);
-      const isSelected = d.id === selectedDevice;
-      const size = isSelected ? 28 : 20;
-      const marker = new AMap.Marker({
-        position: new AMap.LngLat(d.lng, d.lat),
-        content: `<div style="
-          width:${size}px;height:${size}px;border-radius:50%;
-          background:${color};opacity:${isSelected ? 0.95 : 0.75};
-          border:${isSelected ? '3px' : '2px'} solid white;
-          box-shadow:0 2px 6px rgba(0,0,0,0.3);cursor:pointer;
-          transition:all 0.2s;
-        "></div>`,
-        offset: new AMap.Pixel(-size / 2, -size / 2),
-        extData: d,
-      });
-      marker.on('click', () => {
-        setSelectedDevice(d.id);
-        if (infoWindowRef.current) {
-          infoWindowRef.current.setContent(buildInfoContent(d));
-          infoWindowRef.current.open(map, marker.getPosition());
-        }
-      });
-      markers.push(marker);
-    });
-    map.add(markers);
-    markersRef.current = markers;
-  }, [filteredDevices, selectedDevice]);
+  // Google Maps callbacks
+  const onMapLoad = useCallback((map: google.maps.Map) => {
+    mapRef.current = map;
+  }, []);
 
   // Fly to selected device
   useEffect(() => {
-    const map = amapRef.current;
-    if (!map || !device) return;
-    map.setZoomAndCenter(17, [device.lng, device.lat], false, 600);
+    if (!mapRef.current || !device) return;
+    mapRef.current.panTo({ lat: device.lat, lng: device.lng });
+    mapRef.current.setZoom(17);
   }, [selectedDevice]);
 
   const cardCls = cn("rounded-xl border p-4 lg:p-5", isDark ? "border-slate-800 bg-slate-800/50" : "border-slate-200 bg-white shadow-sm");
@@ -612,7 +464,90 @@ export function EnvironmentalMonitoring() {
                   ))}
                 </div>
               </div>
-              <div className="h-[500px] rounded-lg overflow-hidden" ref={mapContainerRef} />
+              <div className="h-[500px] rounded-lg overflow-hidden">
+                {isLoaded ? (
+                  <GoogleMap
+                    mapContainerStyle={{ width: '100%', height: '100%' }}
+                    center={{ lat: mapCenter[0], lng: mapCenter[1] }}
+                    zoom={16}
+                    onLoad={onMapLoad}
+                    options={{
+                      styles: isDark ? darkMapStyles : undefined,
+                      tilt: 45,
+                      heading: -15,
+                      mapTypeId: 'roadmap',
+                      gestureHandling: 'greedy',
+                      zoomControl: true,
+                      mapTypeControl: false,
+                      streetViewControl: false,
+                      fullscreenControl: true,
+                    }}
+                  >
+                    {filteredDevices.map(d => {
+                      const color = getMarkerColor(d);
+                      const isSelected = d.id === selectedDevice;
+                      return (
+                        <MarkerF
+                          key={d.id}
+                          position={{ lat: d.lat, lng: d.lng }}
+                          onClick={() => { setSelectedDevice(d.id); setInfoOpen(d.id); }}
+                          icon={{
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: isSelected ? 12 : 8,
+                            fillColor: color,
+                            fillOpacity: isSelected ? 0.95 : 0.75,
+                            strokeColor: '#ffffff',
+                            strokeWeight: isSelected ? 3 : 2,
+                          }}
+                        >
+                          {infoOpen === d.id && (
+                            <InfoWindowF
+                              position={{ lat: d.lat, lng: d.lng }}
+                              onCloseClick={() => setInfoOpen(null)}
+                            >
+                              <div className="min-w-[200px] font-sans p-1">
+                                <p className="font-bold text-sm mb-0.5">{d.name}</p>
+                                <p className="text-slate-500 text-[11px] mb-1.5">{d.id} · {d.location}</p>
+                                <div className="flex items-center gap-1.5 text-xs mb-1">
+                                  <span className={cn("h-2 w-2 rounded-full", d.status === 'online' ? "bg-emerald-500" : "bg-slate-400")} />
+                                  <span className="font-medium capitalize">{d.status}</span>
+                                </div>
+                                {d.status === 'online' && d.type === 'noise' && (
+                                  <div className="text-xs space-y-0.5 border-t pt-2 mt-2 leading-relaxed">
+                                    <p><span className="text-slate-500">LAeq:</span> <strong>{d.sound_level_leq?.toFixed(1)} dB(A)</strong></p>
+                                    <p><span className="text-slate-500">LAFmax:</span> {d.sound_level_lmax?.toFixed(1)} dB(A)</p>
+                                    <p><span className="text-slate-500">LAFmin:</span> {d.sound_level_lmin?.toFixed(1)} dB(A)</p>
+                                    <p><span className="text-slate-500">LAF:</span> {d.sound_level_inst?.toFixed(1)} dB(A)</p>
+                                    <p><span className="text-slate-500">LCPeak:</span> {d.sound_level_lcpeak?.toFixed(1)} dB(C)</p>
+                                    <p className="mt-1 font-semibold" style={{ color: getNoiseStatus(d.sound_level_leq ?? 0).hex }}>
+                                      {getNoiseStatus(d.sound_level_leq ?? 0).label}
+                                    </p>
+                                  </div>
+                                )}
+                                {d.status === 'online' && d.type === 'dust' && (
+                                  <div className="text-xs space-y-0.5 border-t pt-2 mt-2 leading-relaxed">
+                                    <p><span className="text-slate-500">PM2.5:</span> <strong>{d.pm25?.toFixed(1)} µg/m³</strong></p>
+                                    <p><span className="text-slate-500">PM10:</span> {d.pm10?.toFixed(1)} µg/m³</p>
+                                    <p><span className="text-slate-500">TSP:</span> {d.tsp} µg/m³</p>
+                                    <p><span className="text-slate-500">Temp:</span> {d.temp}°C · Wind: {d.windSpeed}m/s {d.windDir}</p>
+                                    <p className="mt-1 font-semibold" style={{ color: getPM25Status(d.pm25 ?? 0).hex }}>
+                                      {getPM25Status(d.pm25 ?? 0).label}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </InfoWindowF>
+                          )}
+                        </MarkerF>
+                      );
+                    })}
+                  </GoogleMap>
+                ) : (
+                  <div className="h-full flex items-center justify-center bg-slate-900/50">
+                    <p className="text-slate-400 text-sm">Loading Google Maps...</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Device List Panel */}
