@@ -14,8 +14,11 @@ import { WaterAlarms } from '@/app/pages/WaterAlarms';
 import { FireAlarms } from '@/app/pages/FireAlarms';
 import { SmokeAlarms } from '@/app/pages/SmokeAlarms';
 import { Gateways } from '@/app/pages/Gateways';
-import { DigitalTwinDashboard } from '@/app/pages/DigitalTwinDashboard';
+
 import { AdminPanel } from '@/app/pages/AdminPanel';
+import { NoiseDashboard } from '@/app/pages/NoiseDashboard';
+import { DustDashboard } from '@/app/pages/DustDashboard';
+import { EnvironmentalMonitoring } from '@/app/pages/EnvironmentalMonitoring';
 import { ProfileProvider } from '@/app/utils/ProfileContext';
 import { AuthProvider, useAuth } from '@/app/utils/AuthContext';
 import { ThemeProvider } from '@/app/utils/ThemeContext';
@@ -24,11 +27,23 @@ import { warmupServer, resetWarmup } from '@/app/utils/api';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const [devBypass, setDevBypass] = React.useState(() => {
+    return import.meta.env.DEV && sessionStorage.getItem('fiotec_dev_bypass') === '1';
+  });
+
+  const enableDevBypass = React.useCallback(() => {
+    sessionStorage.setItem('fiotec_dev_bypass', '1');
+    setDevBypass(true);
+  }, []);
 
   // PERF: Start server warmup in parallel with auth check.
   React.useEffect(() => {
     warmupServer().catch(() => { /* handled by warmupServer itself */ });
   }, []);
+
+  if (devBypass) {
+    return <>{children}</>;
+  }
 
   if (loading) {
     return (
@@ -45,7 +60,21 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return <Login />;
+    return (
+      <>
+        <Login />
+        {import.meta.env.DEV && (
+          <div className="fixed bottom-4 right-4 z-50">
+            <button
+              onClick={() => enableDevBypass()}
+              className="rounded-lg bg-amber-500 px-4 py-2 text-xs font-medium text-white shadow-lg hover:bg-amber-600 transition-colors"
+            >
+              🔧 Dev Mode — Skip Login
+            </button>
+          </div>
+        )}
+      </>
+    );
   }
 
   return <>{children}</>;
@@ -64,6 +93,9 @@ function ServerWarmupGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = React.useState<'loading' | 'success' | 'failed'>('loading');
   const [elapsed, setElapsed] = React.useState(0);
   const startRef = React.useRef(Date.now());
+
+  // Dev bypass skips warmup entirely
+  const isDevBypassed = import.meta.env.DEV && sessionStorage.getItem('fiotec_dev_bypass') === '1';
 
   const attemptWarmup = React.useCallback(() => {
     setStatus('loading');
@@ -84,6 +116,10 @@ function ServerWarmupGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
+    if (isDevBypassed) {
+      setStatus('success');
+      return;
+    }
     warmupServer().then((result) => {
       setStatus(result === 'success' ? 'success' : 'failed');
     });
@@ -174,7 +210,7 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<Layout />}>
                     <Route index element={<Dashboard />} />
-                    <Route path="twin-dashboard" element={<DigitalTwinDashboard />} />
+
                     <Route path="buildings" element={<Buildings />} />
                     <Route path="buildings/:id" element={<BuildingDetails />} />
                     <Route path="devices" element={<Devices />} />
@@ -183,6 +219,9 @@ export default function App() {
                     <Route path="alarms/water" element={<WaterAlarms />} />
                     <Route path="alarms/fire" element={<FireAlarms />} />
                     <Route path="alarms/smoke" element={<SmokeAlarms />} />
+                    <Route path="noise" element={<NoiseDashboard />} />
+                    <Route path="dust" element={<DustDashboard />} />
+                    <Route path="environment" element={<EnvironmentalMonitoring />} />
                     <Route path="bim" element={<BIMTwins />} />
                     <Route path="settings" element={<Settings />} />
                     <Route path="admin" element={<AdminPanel />} />

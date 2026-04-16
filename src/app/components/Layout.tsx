@@ -17,9 +17,11 @@ import {
   Flame,
   Wind,
   Router,
-  Layers,
   Sun,
   Moon,
+  Volume2,
+  CloudFog,
+  MapPin,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -68,11 +70,13 @@ export function Layout() {
   ];
 
   const monitoringItems = [
+    { icon: MapPin, label: 'Environmental Map', path: '/environment' },
+    { icon: Volume2, label: 'Noise Monitoring', path: '/noise' },
+    { icon: CloudFog, label: 'Dust Monitoring', path: '/dust' },
     { icon: Router, label: 'Gateways', path: '/gateways' },
   ];
 
   const visualizationItems = [
-    { icon: Layers, label: 'Twin Dashboard', path: '/twin-dashboard' },
     { icon: Box, label: 'Digital Twin', path: '/bim' },
   ];
 
@@ -82,8 +86,10 @@ export function Layout() {
   ];
 
   const getPageTitle = () => {
-    if (location.pathname === '/twin-dashboard') return 'Twin Dashboard';
     if (location.pathname === '/gateways') return 'Gateways';
+    if (location.pathname === '/environment') return 'Environmental Monitoring';
+    if (location.pathname === '/noise') return 'Noise Monitoring';
+    if (location.pathname === '/dust') return 'Dust Monitoring';
     if (location.pathname === '/alarms/water') return 'Water Alarms';
     if (location.pathname === '/alarms/fire') return 'Fire Alarms';
     if (location.pathname === '/alarms/smoke') return 'Smoke Alarms';

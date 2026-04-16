@@ -1118,7 +1118,7 @@ export function Settings() {
 
                         <div className="mt-2 p-3 rounded-lg bg-amber-50 border border-amber-100">
                           <p className="text-xs text-amber-800">
-                            <span className="font-semibold">Tip:</span> Ensure your gateway has internet access and DNS resolution. If behind a firewall, allow outbound HTTPS to <code className="font-mono bg-amber-100 px-1 rounded text-[11px]">*.supabase.co</code> on port 443. Verify connectivity by checking the Twin Dashboard's "Webhook Sensor Devices" section after saving.
+                            <span className="font-semibold">Tip:</span> Ensure your gateway has internet access and DNS resolution. If behind a firewall, allow outbound HTTPS to <code className="font-mono bg-amber-100 px-1 rounded text-[11px]">*.supabase.co</code> on port 443. Verify connectivity by checking the Digital Twin's "Webhook Sensor Devices" section after saving.
                           </p>
                         </div>
                       </div>
