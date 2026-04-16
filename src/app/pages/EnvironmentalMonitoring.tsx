@@ -4,14 +4,14 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
   PieChart, Pie, Cell,
 } from 'recharts';
-import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF, CircleF, TrafficLayer } from '@react-google-maps/api';
 import { SafeChartContainer } from '@/app/components/SafeChartContainer';
 import { StatCard } from '@/app/components/StatCard';
 import { useTheme } from '@/app/utils/ThemeContext';
 import {
   Volume2, CloudFog, Wind, AlertTriangle, Thermometer, Droplets, Download,
   ChevronDown, Shield, Radio, CheckCircle2, XCircle, Eye, Map as MapIcon,
-  BarChart3, Activity, Filter, Layers,
+  BarChart3, Activity, Filter, Layers, Maximize2, Navigation, MapPin,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -271,6 +271,9 @@ export function EnvironmentalMonitoring() {
   const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_MAPS_KEY });
   const mapRef = useRef<google.maps.Map | null>(null);
   const [infoOpen, setInfoOpen] = useState<string | null>(null);
+  const [showTraffic, setShowTraffic] = useState(false);
+  const [showCoverage, setShowCoverage] = useState(false);
+  const [mapTypeId, setMapTypeId] = useState<'roadmap' | 'satellite' | 'hybrid'>('roadmap');
 
   const filteredDevices = mapFilter === 'all' ? ALL_DEVICES : ALL_DEVICES.filter(d => d.type === mapFilter);
   const noiseDevices = ALL_DEVICES.filter(d => d.type === 'noise');
@@ -339,6 +342,14 @@ export function EnvironmentalMonitoring() {
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
   }, []);
+
+  // Fit map to show all sensors
+  const fitAllSensors = useCallback(() => {
+    if (!mapRef.current || filteredDevices.length === 0) return;
+    const bounds = new google.maps.LatLngBounds();
+    filteredDevices.forEach(d => bounds.extend({ lat: d.lat, lng: d.lng }));
+    mapRef.current.fitBounds(bounds, 60);
+  }, [filteredDevices]);
 
   // Fly to selected device
   useEffect(() => {
@@ -441,27 +452,82 @@ export function EnvironmentalMonitoring() {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-5">
             {/* Map */}
             <div className={cn("xl:col-span-2 rounded-xl border overflow-hidden", isDark ? "border-slate-800" : "border-slate-200 shadow-sm")}>
-              {/* Map filter bar */}
-              <div className={cn("flex items-center justify-between px-4 py-2.5 border-b", isDark ? "border-slate-700 bg-slate-800/80" : "border-slate-100 bg-white")}>
+              {/* Map toolbar */}
+              <div className={cn("flex items-center justify-between px-4 py-2.5 border-b flex-wrap gap-2", isDark ? "border-slate-700 bg-slate-800/80" : "border-slate-100 bg-white")}>
                 <div className="flex items-center gap-2">
                   <Layers className={cn("h-4 w-4", isDark ? "text-slate-400" : "text-slate-500")} />
                   <span className={cn("text-sm font-medium", isDark ? "text-white" : "text-slate-700")}>Sensor Map</span>
                 </div>
-                <div className={cn("flex rounded-md border p-0.5", isDark ? "border-slate-700" : "border-slate-200")}>
-                  {(['all', 'noise', 'dust'] as const).map(f => (
-                    <button
-                      key={f}
-                      onClick={() => setMapFilter(f)}
-                      className={cn(
-                        "px-3 py-1 text-xs font-medium rounded transition-colors capitalize",
-                        mapFilter === f
-                          ? "bg-blue-600 text-white"
-                          : isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-700"
-                      )}
-                    >
-                      {f === 'all' ? 'All' : f === 'noise' ? '🔊 Noise' : '💨 Dust'}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Sensor type filter */}
+                  <div className={cn("flex rounded-md border p-0.5", isDark ? "border-slate-700" : "border-slate-200")}>
+                    {(['all', 'noise', 'dust'] as const).map(f => (
+                      <button
+                        key={f}
+                        onClick={() => setMapFilter(f)}
+                        className={cn(
+                          "px-3 py-1 text-xs font-medium rounded transition-colors capitalize",
+                          mapFilter === f
+                            ? "bg-blue-600 text-white"
+                            : isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-700"
+                        )}
+                      >
+                        {f === 'all' ? 'All' : f === 'noise' ? '🔊 Noise' : '💨 Dust'}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Map type selector */}
+                  <div className={cn("flex rounded-md border p-0.5", isDark ? "border-slate-700" : "border-slate-200")}>
+                    {(['roadmap', 'satellite', 'hybrid'] as const).map(t => (
+                      <button
+                        key={t}
+                        onClick={() => setMapTypeId(t)}
+                        className={cn(
+                          "px-2.5 py-1 text-xs font-medium rounded transition-colors capitalize",
+                          mapTypeId === t
+                            ? "bg-indigo-600 text-white"
+                            : isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-700"
+                        )}
+                      >
+                        {t === 'roadmap' ? 'Map' : t === 'satellite' ? 'Sat' : 'Hybrid'}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Toggle buttons */}
+                  <button
+                    onClick={() => setShowTraffic(v => !v)}
+                    className={cn(
+                      "px-2.5 py-1 text-xs font-medium rounded border transition-colors",
+                      showTraffic
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : isDark ? "text-slate-400 border-slate-700 hover:text-white" : "text-slate-500 border-slate-200 hover:text-slate-700"
+                    )}
+                    title="Toggle traffic layer"
+                  >
+                    <Navigation className="h-3 w-3 inline mr-1" />Traffic
+                  </button>
+                  <button
+                    onClick={() => setShowCoverage(v => !v)}
+                    className={cn(
+                      "px-2.5 py-1 text-xs font-medium rounded border transition-colors",
+                      showCoverage
+                        ? "bg-violet-600 text-white border-violet-600"
+                        : isDark ? "text-slate-400 border-slate-700 hover:text-white" : "text-slate-500 border-slate-200 hover:text-slate-700"
+                    )}
+                    title="Toggle sensor coverage radius"
+                  >
+                    <MapPin className="h-3 w-3 inline mr-1" />Coverage
+                  </button>
+                  <button
+                    onClick={fitAllSensors}
+                    className={cn(
+                      "px-2.5 py-1 text-xs font-medium rounded border transition-colors",
+                      isDark ? "text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700" : "text-slate-500 border-slate-200 hover:text-slate-700 hover:bg-slate-50"
+                    )}
+                    title="Fit all sensors in view"
+                  >
+                    <Maximize2 className="h-3 w-3 inline mr-1" />Fit All
+                  </button>
                 </div>
               </div>
               <div className="h-[500px] rounded-lg overflow-hidden">
@@ -475,12 +541,13 @@ export function EnvironmentalMonitoring() {
                       styles: isDark ? darkMapStyles : undefined,
                       tilt: 45,
                       heading: -15,
-                      mapTypeId: 'roadmap',
+                      mapTypeId,
                       gestureHandling: 'greedy',
                       zoomControl: true,
                       mapTypeControl: false,
-                      streetViewControl: false,
+                      streetViewControl: true,
                       fullscreenControl: true,
+                      scaleControl: true,
                     }}
                   >
                     {filteredDevices.map(d => {
@@ -541,6 +608,23 @@ export function EnvironmentalMonitoring() {
                         </MarkerF>
                       );
                     })}
+                    {/* Traffic Layer */}
+                    {showTraffic && <TrafficLayer />}
+                    {/* Coverage radius circles */}
+                    {showCoverage && filteredDevices.filter(d => d.status === 'online').map(d => (
+                      <CircleF
+                        key={`circle-${d.id}`}
+                        center={{ lat: d.lat, lng: d.lng }}
+                        radius={d.type === 'noise' ? 200 : 300}
+                        options={{
+                          fillColor: getMarkerColor(d),
+                          fillOpacity: 0.1,
+                          strokeColor: getMarkerColor(d),
+                          strokeOpacity: 0.4,
+                          strokeWeight: 1,
+                        }}
+                      />
+                    ))}
                   </GoogleMap>
                 ) : (
                   <div className="h-full flex items-center justify-center bg-slate-900/50">
