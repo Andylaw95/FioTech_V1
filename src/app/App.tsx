@@ -24,6 +24,7 @@ import { AuthProvider, useAuth } from '@/app/utils/AuthContext';
 import { ThemeProvider } from '@/app/utils/ThemeContext';
 import { Loader2 } from 'lucide-react';
 import { warmupServer, resetWarmup } from '@/app/utils/api';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -229,6 +230,7 @@ export default function App() {
                   </Route>
                 </Routes>
               </BrowserRouter>
+              <SpeedInsights />
             </ProfileProvider>
           </ThemeProvider>
         </ServerWarmupGate>
