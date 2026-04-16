@@ -150,18 +150,12 @@ interface SensorDevice {
   windDir?: string;
 }
 
-// Coordinates around a construction site in Tseung Kwan O, Hong Kong
-// HY108-1 sensor via HaaS506-LD1 RTU — 5s upload interval, IEC 61672 metrics, range 20–140 dBA
-const DEMO_DEVICES: SensorDevice[] = [
-  { id: 'HY108-001', name: 'Site North Gate', type: 'noise', location: 'Construction Site A - North', lat: 22.3120, lng: 114.2615, status: 'online', sound_level_leq: 62.3, sound_level_lmax: 78.5, sound_level_lmin: 48.2, sound_level_inst: 64.1, sound_level_lcpeak: 92.7 },
-  { id: 'HY108-002', name: 'Residential Boundary', type: 'noise', location: 'Construction Site A - East Boundary', lat: 22.3105, lng: 114.2640, status: 'online', sound_level_leq: 54.8, sound_level_lmax: 67.2, sound_level_lmin: 42.1, sound_level_inst: 56.3, sound_level_lcpeak: 81.4 },
-  { id: 'HY108-003', name: 'Site Office', type: 'noise', location: 'Construction Site A - Office Block', lat: 22.3095, lng: 114.2600, status: 'online', sound_level_leq: 71.2, sound_level_lmax: 88.9, sound_level_lmin: 55.3, sound_level_inst: 73.6, sound_level_lcpeak: 105.2 },
-  { id: 'HY108-004', name: 'Community Boundary', type: 'noise', location: 'Construction Site A - South', lat: 22.3080, lng: 114.2620, status: 'offline', sound_level_leq: null, sound_level_lmax: null, sound_level_lmin: null, sound_level_inst: null, sound_level_lcpeak: null },
-  { id: 'DUST-001', name: 'Site North - Crusher', type: 'dust', location: 'Construction Site A - Crushing Plant', lat: 22.3115, lng: 114.2608, status: 'online', pm25: 42.3, pm10: 78.6, tsp: 195, temp: 29.2, humidity: 62, windSpeed: 3.2, windDir: 'NE' },
-  { id: 'DUST-002', name: 'Site East - Boundary', type: 'dust', location: 'Construction Site A - East Fence', lat: 22.3100, lng: 114.2645, status: 'online', pm25: 28.1, pm10: 52.4, tsp: 125, temp: 28.8, humidity: 65, windSpeed: 2.8, windDir: 'E' },
-  { id: 'DUST-003', name: 'Residential Monitor', type: 'dust', location: 'Adjacent Residential - Rooftop', lat: 22.3110, lng: 114.2655, status: 'online', pm25: 18.5, pm10: 36.2, tsp: 88, temp: 28.5, humidity: 68, windSpeed: 3.5, windDir: 'SE' },
-  { id: 'DUST-004', name: 'Site South - Stockpile', type: 'dust', location: 'Construction Site A - Material Yard', lat: 22.3083, lng: 114.2605, status: 'offline', pm25: 0, pm10: 0, tsp: 0, temp: 0, humidity: 0, windSpeed: 0, windDir: '—' },
-];
+// Downsample data arrays for chart rendering performance
+function downsample<T>(data: T[], maxPoints: number): T[] {
+  if (data.length <= maxPoints) return data;
+  const step = Math.ceil(data.length / maxPoints);
+  return data.filter((_, i) => i % step === 0);
+}
 
 // ══════════════════════════════════════════════════════════
 //  Geocoding — auto-detect coordinates from property address
@@ -195,93 +189,13 @@ function isDeviceRecent(lastSeen: string | undefined): boolean {
   return diff < 10 * 60 * 1000; // 10 minutes
 }
 
-// HY108-1 uploads every 5s; values 20–140 dBA; LAFmax ≥ LAeq ≥ LAFmin always
-function generateNoiseData(hours: number, interval: number = 5) {
-  const points: any[] = [];
-  const now = Date.now();
-  const count = (hours * 3600) / interval;
-  for (let i = 0; i < count; i++) {
-    const t = now - (count - i) * interval * 1000;
-    const hour = new Date(t).getHours();
-    const base = hour >= 7 && hour < 19 ? 62 : 48;
-    const noise = base + Math.random() * 15 - 5 + Math.sin(i / 100) * 8;
-    const leq = Math.max(20, Math.min(140, Math.round(noise * 10) / 10));
-    const lmax = Math.max(20, Math.min(140, Math.round((leq + 3 + Math.random() * 8) * 10) / 10));
-    const lmin = Math.max(20, Math.min(140, Math.round((leq - 3 - Math.random() * 5) * 10) / 10));
-    const inst = Math.max(20, Math.min(140, Math.round((leq + Math.random() * 4 - 2) * 10) / 10));
-    const lcpeak = Math.max(20, Math.min(140, Math.round((lmax + 10 + Math.random() * 15) * 10) / 10));
-    points.push({
-      time: new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
-      sound_level_leq: leq,
-      sound_level_lmax: lmax,
-      sound_level_lmin: lmin,
-      sound_level_inst: inst,
-      sound_level_lcpeak: lcpeak,
-    });
-  }
-  return points;
-}
-
-function generateDustData(hours: number) {
-  const points: any[] = [];
-  const now = Date.now();
-  const count = hours * 12;
-  for (let i = 0; i < count; i++) {
-    const t = now - (count - i) * 300000;
-    const hour = new Date(t).getHours();
-    const isWork = hour >= 8 && hour < 18;
-    points.push({
-      time: new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
-      pm25: Math.round((( isWork ? 38 : 22) + Math.random() * 25 - 8 + Math.sin(i / 30) * 12) * 10) / 10,
-      pm10: Math.round(((isWork ? 65 : 35) + Math.random() * 40 - 12 + Math.sin(i / 25) * 20) * 10) / 10,
-      tsp: Math.round((isWork ? 180 : 80) + Math.random() * 100 - 30 + Math.sin(i / 20) * 50),
-    });
-  }
-  return points;
-}
-
-function generateHourlyData(days: number) {
-  const points: any[] = [];
-  const now = new Date();
-  for (let d = days - 1; d >= 0; d--) {
-    for (let h = 0; h < 24; h++) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - d);
-      date.setHours(h, 0, 0, 0);
-      const isDaytime = h >= 7 && h < 19;
-      const base = isDaytime ? 63 : 47;
-      const leq = Math.max(20, Math.min(140, Math.round((base + Math.random() * 12 - 4) * 10) / 10));
-      const limit = isDaytime ? 75 : 55;
-      points.push({
-        label: `${date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ${String(h).padStart(2, '0')}:00`,
-        sound_level_leq: leq,
-        limit,
-        exceedance: leq > limit,
-      });
-    }
-  }
-  return points;
-}
-
 // ══════════════════════════════════════════════════════════
 //  Google Maps configuration
 // ══════════════════════════════════════════════════════════
 
 const GOOGLE_MAPS_KEY = 'AIzaSyBWgKagtVMMD2yysqs0COrolsIRU3K1wVY';
-const GOOGLE_MAPS_ID = 'fiotech-env-map';
-
-const darkMapStyles: google.maps.MapTypeStyle[] = [
-  { elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#334155' }] },
-  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#64748b' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0c4a6e' }] },
-  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1e3a5f' }] },
-  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#64748b' }] },
-  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e3a5f' }] },
-  { featureType: 'landscape.man_made', elementType: 'geometry', stylers: [{ color: '#1a2332' }] },
-];
+// Note: custom styles array is NOT used — it disables vector rendering and 3D buildings.
+// For dark mode + 3D, use cloud-based map styling with a mapId in Google Cloud Console.
 
 // ══════════════════════════════════════════════════════════
 //  Main Component
@@ -298,11 +212,16 @@ export function EnvironmentalMonitoring() {
   const [dustTimeRange, setDustTimeRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [dustMetric, setDustMetric] = useState<'pm25' | 'pm10' | 'tsp'>('pm25');
 
-  // Real data state
-  const [devices, setDevices] = useState<SensorDevice[]>(DEMO_DEVICES);
+  // Real data state — start empty, no demo data flash
+  const [devices, setDevices] = useState<SensorDevice[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
-  const [usingDemoData, setUsingDemoData] = useState(true);
+  const [usingDemoData, setUsingDemoData] = useState(false);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 22.3100, lng: 114.2625 });
+
+  // History data for charts — fetched from real API
+  const [noiseHistory, setNoiseHistory] = useState<any[]>([]);
+  const [dustHistory, setDustHistory] = useState<any[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const device = selectedDevice ? devices.find(d => d.id === selectedDevice) : null;
 
@@ -342,17 +261,16 @@ export function EnvironmentalMonitoring() {
               const hasDust = dec.pm2_5 !== undefined || dec.pm10 !== undefined;
               const deviceType: DeviceType = hasNoise ? 'noise' : hasDust ? 'dust' : 'noise';
 
-              // Spread devices around property using golden-angle offset
-              const angle = (idx * 137.5) * Math.PI / 180;
-              const offset = 0.0003 + idx * 0.0002;
+              // Micro-offset so overlapping markers stay clickable (~2m apart)
+              const microOffset = idx * 0.00002;
 
               realDevices.push({
                 id: devEUI,
                 name: reading.deviceName || devEUI,
                 type: deviceType,
                 location: `${prop.name} — ${reading.deviceName || devEUI}`,
-                lat: coords.lat + Math.cos(angle) * offset,
-                lng: coords.lng + Math.sin(angle) * offset,
+                lat: coords.lat + microOffset,
+                lng: coords.lng + microOffset * 0.7,
                 status: isDeviceRecent(reading.receivedAt) ? 'online' : 'offline',
                 sound_level_leq: dec.sound_level_leq ?? null,
                 sound_level_lmax: dec.sound_level_lmax ?? null,
@@ -407,7 +325,7 @@ export function EnvironmentalMonitoring() {
           setMapCenter({ lat: avgLat, lng: avgLng });
         }
       } catch (e) {
-        console.info('[EnvMonitor] Using demo data —', (e as Error).message);
+        console.warn('[EnvMonitor] Failed to load sensor data —', (e as Error).message);
       } finally {
         if (!cancelled) setDataLoading(false);
       }
@@ -423,37 +341,92 @@ export function EnvironmentalMonitoring() {
   const onlineNoise = noiseDevices.filter(d => d.status === 'online').length;
   const onlineDust = dustDevices.filter(d => d.status === 'online').length;
 
-  // Chart data
-  const noiseChartData = useMemo(() => {
-    if (noiseTimeRange === '1h') return generateNoiseData(1, 5).filter((_, i) => i % 6 === 0);
-    if (noiseTimeRange === '24h') return generateNoiseData(24, 60);
-    return generateHourlyData(7).map(d => ({ time: d.label, sound_level_leq: d.sound_level_leq, sound_level_lmax: d.sound_level_leq + 5, sound_level_lmin: d.sound_level_leq - 8, sound_level_inst: d.sound_level_leq + 1, sound_level_lcpeak: d.sound_level_leq + 18 }));
-  }, [noiseTimeRange]);
+  // ── Active device for history fetching ──
+  const activeNoiseDevEui = useMemo(() => {
+    const nd = devices.filter(d => d.type === 'noise');
+    if (selectedDevice) {
+      const sel = nd.find(d => d.id === selectedDevice);
+      if (sel?.status === 'online') return sel.id;
+    }
+    return nd.find(d => d.status === 'online')?.id ?? nd[0]?.id ?? null;
+  }, [devices, selectedDevice]);
 
-  const dustChartData = useMemo(() => {
-    const hours = dustTimeRange === '1h' ? 1 : dustTimeRange === '24h' ? 24 : 168;
-    const data = generateDustData(hours);
-    if (dustTimeRange === '1h') return data;
-    if (dustTimeRange === '24h') return data.filter((_, i) => i % 3 === 0);
-    return data.filter((_, i) => i % 12 === 0);
-  }, [dustTimeRange]);
+  const activeDustDevEui = useMemo(() => {
+    const dd = devices.filter(d => d.type === 'dust');
+    if (selectedDevice) {
+      const sel = dd.find(d => d.id === selectedDevice);
+      if (sel?.status === 'online') return sel.id;
+    }
+    return dd.find(d => d.status === 'online')?.id ?? dd[0]?.id ?? null;
+  }, [devices, selectedDevice]);
 
-  // Noise compliance
-  const hourlyData = useMemo(() => generateHourlyData(7), []);
+  // ── Fetch noise history from real API ──
+  useEffect(() => {
+    if (!activeNoiseDevEui) { setNoiseHistory([]); return; }
+    let cancelled = false;
+    setHistoryLoading(true);
+    api.getDeviceHistory(activeNoiseDevEui, noiseTimeRange)
+      .then(res => {
+        if (cancelled) return;
+        const mapped = (res.points || []).map((p: any) => ({
+          time: p.timeLabel || p.time,
+          sound_level_leq: p.sound_level_leq,
+          sound_level_lmax: p.sound_level_lmax,
+          sound_level_lmin: p.sound_level_lmin,
+          sound_level_inst: p.sound_level_inst,
+          sound_level_lcpeak: p.sound_level_lcpeak,
+          _hour: new Date(p.time).getHours(),
+        }));
+        setNoiseHistory(downsample(mapped, 300));
+      })
+      .catch(() => { if (!cancelled) setNoiseHistory([]); })
+      .finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeNoiseDevEui, noiseTimeRange]);
+
+  // ── Fetch dust history from real API ──
+  useEffect(() => {
+    if (!activeDustDevEui) { setDustHistory([]); return; }
+    let cancelled = false;
+    api.getDeviceHistory(activeDustDevEui, dustTimeRange)
+      .then(res => {
+        if (cancelled) return;
+        const mapped = (res.points || []).map((p: any) => ({
+          time: p.timeLabel || p.time,
+          pm25: p.pm2_5,
+          pm10: p.pm10,
+          tsp: p.tsp ?? null,
+        }));
+        setDustHistory(downsample(mapped, 300));
+      })
+      .catch(() => { if (!cancelled) setDustHistory([]); });
+    return () => { cancelled = true; };
+  }, [activeDustDevEui, dustTimeRange]);
+
+  // Chart data — from real history
+  const noiseChartData = noiseHistory;
+  const dustChartData = dustHistory;
+
+  // Noise compliance — derived from real history data
   const noiseCompliance = useMemo(() => {
-    const total = hourlyData.length;
-    const exceeded = hourlyData.filter((d: any) => d.exceedance).length;
-    return { total, exceeded, compliant: total - exceeded, pct: total > 0 ? Math.round(((total - exceeded) / total) * 100) : 100 };
-  }, [hourlyData]);
+    const total = noiseHistory.length;
+    if (total === 0) return { total: 0, exceeded: 0, compliant: 0, pct: 100 };
+    const exceeded = noiseHistory.filter((d: any) => {
+      const limit = (d._hour >= 7 && d._hour < 19) ? 75 : 55;
+      return d.sound_level_leq != null && d.sound_level_leq > limit;
+    }).length;
+    return { total, exceeded, compliant: total - exceeded, pct: Math.round(((total - exceeded) / total) * 100) };
+  }, [noiseHistory]);
 
-  // Dust compliance
+  // Dust compliance — derived from real history data
   const dustCompliance = useMemo(() => {
     const total = dustChartData.length;
+    if (total === 0) return { total: 0, exceeded: 0, pct: 100 };
     let exceeded = 0;
     dustChartData.forEach((d: any) => {
-      if (dustMetric === 'pm25' && d.pm25 > 75) exceeded++;
-      if (dustMetric === 'pm10' && d.pm10 > 100) exceeded++;
-      if (dustMetric === 'tsp' && d.tsp > 260) exceeded++;
+      if (dustMetric === 'pm25' && d.pm25 != null && d.pm25 > 75) exceeded++;
+      if (dustMetric === 'pm10' && d.pm10 != null && d.pm10 > 100) exceeded++;
+      if (dustMetric === 'tsp' && d.tsp != null && d.tsp > 260) exceeded++;
     });
     return { total, exceeded, pct: total > 0 ? Math.round(((total - exceeded) / total) * 100) : 100 };
   }, [dustChartData, dustMetric]);
@@ -521,8 +494,8 @@ export function EnvironmentalMonitoring() {
             Noise & Dust · Real-time sensor overview · IEC 61672 / HK AQO compliant
             {dataLoading ? (
               <span className="inline-flex items-center gap-1 text-xs text-blue-400"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</span>
-            ) : usingDemoData ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-400">DEMO</span>
+            ) : devices.length === 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold text-slate-400">NO DATA</span>
             ) : (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">LIVE</span>
             )}
@@ -684,9 +657,9 @@ export function EnvironmentalMonitoring() {
                     zoom={16}
                     onLoad={onMapLoad}
                     options={{
-                      styles: isDark ? darkMapStyles : undefined,
-                      tilt: 45,
-                      heading: -15,
+                      // No custom styles — enables vector rendering + 3D buildings
+                      tilt: 60,
+                      heading: 320,
                       mapTypeId,
                       gestureHandling: 'greedy',
                       zoomControl: true,
@@ -840,7 +813,7 @@ export function EnvironmentalMonitoring() {
               </div>
               <div className="h-[200px] w-full min-w-0">
                 <SafeChartContainer>
-                  <AreaChart data={generateNoiseData(24, 60)} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
+                  <AreaChart data={noiseChartData} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
                     <defs>
                       <linearGradient id="noiseGradMap" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.25} />
@@ -872,7 +845,7 @@ export function EnvironmentalMonitoring() {
               </div>
               <div className="h-[200px] w-full min-w-0">
                 <SafeChartContainer>
-                  <AreaChart data={generateDustData(24).filter((_, i) => i % 3 === 0)} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
+                  <AreaChart data={dustChartData} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
                     <defs>
                       <linearGradient id="dustGradMap" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.25} />
@@ -904,6 +877,7 @@ export function EnvironmentalMonitoring() {
               {/* Noise gauge for selected or first online */}
               {(() => {
                 const nd = (device?.type === 'noise' && device.status === 'online') ? device : noiseDevices.find(d => d.status === 'online') ?? noiseDevices[0];
+                if (!nd) return <div className={cardCls}><p className={cn("text-sm text-center py-8", isDark ? "text-slate-500" : "text-slate-400")}>No noise sensors available</p></div>;
                 const ns = getNoiseStatus(nd.sound_level_leq ?? 0);
                 return (
                   <>
@@ -1097,6 +1071,7 @@ export function EnvironmentalMonitoring() {
             <div className="space-y-4">
               {(() => {
                 const dd = (device?.type === 'dust' && device.status === 'online') ? device : dustDevices.find(d => d.status === 'online') ?? dustDevices[0];
+                if (!dd) return <div className={cardCls}><p className={cn("text-sm text-center py-8", isDark ? "text-slate-500" : "text-slate-400")}>No dust sensors available</p></div>;
                 return (
                   <>
                     {/* Device selector */}

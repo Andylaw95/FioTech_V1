@@ -69,10 +69,20 @@ export function Layout() {
     { icon: Wind, label: 'Smoke', path: '/alarms/smoke', color: 'text-slate-500' },
   ];
 
+  const [isEnvironmentExpanded, setIsEnvironmentExpanded] = React.useState(false);
+
+  const environmentSubItems = [
+    { icon: Volume2, label: 'Noise Monitoring', path: '/environment/noise', color: 'text-blue-500' },
+    { icon: CloudFog, label: 'Dust Monitoring', path: '/environment/dust', color: 'text-amber-500' },
+  ];
+
+  // Auto-expand environment sub-nav when on an environment sub-page
+  const isOnEnvironmentPage = location.pathname.startsWith('/environment');
+  React.useEffect(() => {
+    if (isOnEnvironmentPage) setIsEnvironmentExpanded(true);
+  }, [isOnEnvironmentPage]);
+
   const monitoringItems = [
-    { icon: MapPin, label: 'Environmental Map', path: '/environment' },
-    { icon: Volume2, label: 'Noise Monitoring', path: '/noise' },
-    { icon: CloudFog, label: 'Dust Monitoring', path: '/dust' },
     { icon: Router, label: 'Gateways', path: '/gateways' },
   ];
 
@@ -86,10 +96,10 @@ export function Layout() {
   ];
 
   const getPageTitle = () => {
-    if (location.pathname === '/gateways') return 'Gateways';
     if (location.pathname === '/environment') return 'Environmental Monitoring';
-    if (location.pathname === '/noise') return 'Noise Monitoring';
-    if (location.pathname === '/dust') return 'Dust Monitoring';
+    if (location.pathname === '/environment/noise') return 'Noise Monitoring';
+    if (location.pathname === '/environment/dust') return 'Dust Monitoring';
+    if (location.pathname === '/gateways') return 'Gateways';
     if (location.pathname === '/alarms/water') return 'Water Alarms';
     if (location.pathname === '/alarms/fire') return 'Fire Alarms';
     if (location.pathname === '/alarms/smoke') return 'Smoke Alarms';
@@ -175,6 +185,63 @@ export function Layout() {
               isDark ? "border-slate-700" : "border-slate-100"
             )}>
               {alarmSubItems.map((sub) => (
+                <NavLink
+                  key={sub.path}
+                  to={sub.path}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      isActive
+                        ? isDark ? "bg-blue-950/30 text-blue-400" : "bg-blue-50/70 text-blue-600"
+                        : isDark ? "text-slate-500 hover:bg-slate-800 hover:text-slate-300" : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                    )
+                  }
+                >
+                  <sub.icon className={cn("h-3.5 w-3.5 shrink-0", sub.color)} />
+                  <span>{sub.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Environmental Map with expandable sub-nav */}
+        <div>
+          <button
+            onClick={() => {
+              if (isSidebarOpen || isMobileSidebarOpen) {
+                setIsEnvironmentExpanded(!isEnvironmentExpanded);
+              }
+            }}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              isOnEnvironmentPage
+                ? isDark ? "bg-blue-950/40 text-blue-400" : "bg-blue-50 text-blue-600"
+                : isDark ? "text-slate-400 hover:bg-slate-800 hover:text-white" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
+              !isSidebarOpen && !isMobileSidebarOpen && "justify-center px-2"
+            )}
+          >
+            <MapPin className="h-5 w-5 shrink-0" />
+            {(isSidebarOpen || isMobileSidebarOpen) && (
+              <>
+                <NavLink to="/environment" className="flex-1 text-left" onClick={(e) => e.stopPropagation()}>
+                  Environmental Map
+                </NavLink>
+                <ChevronDown className={cn(
+                  "h-4 w-4 shrink-0 transition-transform duration-200",
+                  isEnvironmentExpanded && "rotate-180"
+                )} />
+              </>
+            )}
+          </button>
+
+          {/* Sub-items */}
+          {(isSidebarOpen || isMobileSidebarOpen) && isEnvironmentExpanded && (
+            <div className={cn(
+              "ml-4 mt-0.5 space-y-0.5 border-l-2 pl-4",
+              isDark ? "border-slate-700" : "border-slate-100"
+            )}>
+              {environmentSubItems.map((sub) => (
                 <NavLink
                   key={sub.path}
                   to={sub.path}

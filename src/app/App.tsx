@@ -223,6 +223,8 @@ export default function App() {
                     <Route path="noise" element={<NoiseDashboard />} />
                     <Route path="dust" element={<DustDashboard />} />
                     <Route path="environment" element={<EnvironmentalMonitoring />} />
+                    <Route path="environment/noise" element={<NoiseDashboard />} />
+                    <Route path="environment/dust" element={<DustDashboard />} />
                     <Route path="bim" element={<BIMTwins />} />
                     <Route path="settings" element={<Settings />} />
                     <Route path="admin" element={<AdminPanel />} />
