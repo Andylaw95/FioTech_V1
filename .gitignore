@@ -29,3 +29,6 @@ npm-debug.log*
 AI_TEAM_HANDOFF.md
 FIOTECH_PROJECT_KNOWLEDGE.txt
 SECURITY_AUDIT_REPORT*.md
+
+# Vercel build artifacts and config (must not be committed)
+.vercel/
