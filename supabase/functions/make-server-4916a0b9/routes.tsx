@@ -2100,6 +2100,277 @@ export function registerRoutes(app: any) {
     }
   });
 
+  // ─── MX8000 ALARM RECEIVER ──────────────────────────────────────────
+  // Receives parsed Contact ID alarm events from HaaS506 RTU-LD1 bridge.
+  // The LD1 reads MX8000 serial output, parses Contact ID, and POSTs here.
+  // Auth: same webhook token system as the LoRaWAN webhook.
+  //
+  // Payload: { account, eventCode, qualifier, partition, zone, description? }
+  //   qualifier: "E" = new event, "R" = restore/closing
+  //   eventCode: 3-digit Contact ID code (e.g. "110" = Fire, "130" = Burglary)
+
+  const CONTACT_ID_SEVERITY: Record<string, { type: string; severity: string }> = {
+    // Medical
+    "100": { type: "Medical Emergency", severity: "critical" },
+    "101": { type: "Medical Pendant", severity: "critical" },
+    "102": { type: "Medical Fail to Report", severity: "high" },
+    // Fire
+    "110": { type: "Fire Alarm", severity: "critical" },
+    "111": { type: "Smoke Alarm", severity: "critical" },
+    "112": { type: "Combustion Alarm", severity: "critical" },
+    "113": { type: "Water Flow Alarm", severity: "high" },
+    "114": { type: "Heat Alarm", severity: "critical" },
+    "115": { type: "Pull Station", severity: "critical" },
+    "116": { type: "Duct Alarm", severity: "high" },
+    "117": { type: "Flame Alarm", severity: "critical" },
+    "118": { type: "Near Alarm (Fire)", severity: "high" },
+    // Panic
+    "120": { type: "Panic Alarm", severity: "critical" },
+    "121": { type: "Duress Alarm", severity: "critical" },
+    "122": { type: "Silent Panic", severity: "critical" },
+    "123": { type: "Audible Panic", severity: "critical" },
+    // Burglary
+    "130": { type: "Burglary Alarm", severity: "high" },
+    "131": { type: "Perimeter Alarm", severity: "high" },
+    "132": { type: "Interior Alarm", severity: "high" },
+    "133": { type: "24hr Burglary", severity: "high" },
+    "134": { type: "Entry/Exit Alarm", severity: "high" },
+    "135": { type: "Day/Night Alarm", severity: "high" },
+    "136": { type: "Outdoor Alarm", severity: "high" },
+    "137": { type: "Tamper Alarm", severity: "high" },
+    "138": { type: "Near Alarm (Burg)", severity: "medium" },
+    "139": { type: "Intrusion Verifier", severity: "high" },
+    // General Alarm
+    "140": { type: "General Alarm", severity: "high" },
+    "141": { type: "Polling Loop Open", severity: "medium" },
+    "142": { type: "Polling Loop Short", severity: "medium" },
+    "143": { type: "Expansion Tamper", severity: "medium" },
+    "144": { type: "Sensor Tamper", severity: "medium" },
+    "145": { type: "Shake Alarm", severity: "medium" },
+    "146": { type: "Tilt Alarm", severity: "medium" },
+    // 24-Hour Non-Burglary
+    "150": { type: "24hr Non-Burglary", severity: "high" },
+    "151": { type: "Gas Detected", severity: "critical" },
+    "152": { type: "Refrigeration", severity: "medium" },
+    "153": { type: "Loss of Heat", severity: "medium" },
+    "154": { type: "Water Leak", severity: "high" },
+    "155": { type: "Foil Break", severity: "medium" },
+    "156": { type: "Day Trouble", severity: "medium" },
+    "157": { type: "Low Gas Level", severity: "medium" },
+    "158": { type: "High Temperature", severity: "high" },
+    "159": { type: "Low Temperature", severity: "medium" },
+    "161": { type: "Loss of Air Flow", severity: "medium" },
+    "162": { type: "Carbon Monoxide", severity: "critical" },
+    "163": { type: "Tank Level", severity: "medium" },
+    // Supervisory
+    "200": { type: "Fire Supervisory", severity: "medium" },
+    "201": { type: "Low Water Pressure", severity: "medium" },
+    "202": { type: "Low CO2", severity: "medium" },
+    "203": { type: "Gate Valve Sensor", severity: "medium" },
+    "204": { type: "Low Water Level", severity: "medium" },
+    "205": { type: "Pump Activated", severity: "low" },
+    "206": { type: "Pump Failure", severity: "high" },
+    // Troubles
+    "300": { type: "System Trouble", severity: "medium" },
+    "301": { type: "AC Power Loss", severity: "high" },
+    "302": { type: "Low Battery", severity: "medium" },
+    "303": { type: "RAM Checksum Bad", severity: "medium" },
+    "304": { type: "ROM Checksum Bad", severity: "medium" },
+    "305": { type: "System Reset", severity: "low" },
+    "306": { type: "Panel Programming Changed", severity: "low" },
+    "307": { type: "Self-test Failure", severity: "medium" },
+    "308": { type: "System Shutdown", severity: "high" },
+    "309": { type: "Battery Test Failure", severity: "medium" },
+    "310": { type: "Ground Fault", severity: "medium" },
+    "311": { type: "Battery Missing", severity: "high" },
+    "320": { type: "Sounder Trouble", severity: "medium" },
+    "321": { type: "Bell 1 Trouble", severity: "medium" },
+    "330": { type: "Peripheral Trouble", severity: "medium" },
+    "333": { type: "Expansion Trouble", severity: "medium" },
+    "341": { type: "Trouble ECP Cover", severity: "medium" },
+    "344": { type: "RF Receiver Jam", severity: "high" },
+    "350": { type: "Communication Trouble", severity: "high" },
+    "351": { type: "Telco Line 1 Fault", severity: "high" },
+    "352": { type: "Telco Line 2 Fault", severity: "high" },
+    "353": { type: "Long Range Trouble", severity: "medium" },
+    "354": { type: "Comm Path Failure", severity: "high" },
+    "370": { type: "Protection Loop Trouble", severity: "medium" },
+    "371": { type: "Protection Loop Open", severity: "medium" },
+    "372": { type: "Protection Loop Short", severity: "medium" },
+    "373": { type: "Fire Loop Trouble", severity: "high" },
+    "380": { type: "Sensor Trouble", severity: "medium" },
+    "381": { type: "Loss of Supervision (RF)", severity: "medium" },
+    "382": { type: "Loss of Supervision (RPM)", severity: "medium" },
+    "383": { type: "Sensor Tamper", severity: "medium" },
+    "384": { type: "RF Low Battery", severity: "medium" },
+    "393": { type: "Clean Me (Smoke)", severity: "low" },
+    // Open/Close
+    "400": { type: "Arm/Disarm", severity: "low" },
+    "401": { type: "Armed by User", severity: "low" },
+    "402": { type: "Group Arm/Disarm", severity: "low" },
+    "403": { type: "Auto Arm/Disarm", severity: "low" },
+    "404": { type: "Late to Arm", severity: "low" },
+    "405": { type: "Deferred Arm", severity: "low" },
+    "406": { type: "Cancel by User", severity: "low" },
+    "407": { type: "Remote Arm/Disarm", severity: "low" },
+    "408": { type: "Quick Arm", severity: "low" },
+    "409": { type: "Keyswitch Arm", severity: "low" },
+    // Access Control
+    "421": { type: "Access Denied", severity: "medium" },
+    "422": { type: "Access Report", severity: "low" },
+    "423": { type: "Forced Access", severity: "high" },
+    "424": { type: "Egress Denied", severity: "medium" },
+    "425": { type: "Egress Granted", severity: "low" },
+    "426": { type: "Door Propped Open", severity: "medium" },
+    "427": { type: "Access Point DSM", severity: "medium" },
+    "428": { type: "Access Point Strike", severity: "low" },
+    "429": { type: "Door Open (AC)", severity: "low" },
+    "430": { type: "Door Closed (AC)", severity: "low" },
+    "431": { type: "Forced Door", severity: "high" },
+    "432": { type: "Door Inactivity", severity: "low" },
+    "434": { type: "Area Armed", severity: "low" },
+    "435": { type: "Area Disarmed", severity: "low" },
+    "436": { type: "Door Tamper", severity: "high" },
+    // Bypasses
+    "570": { type: "Zone Bypass", severity: "low" },
+    "571": { type: "Fire Bypass", severity: "medium" },
+    "572": { type: "24hr Bypass", severity: "medium" },
+    "573": { type: "Burg Bypass", severity: "medium" },
+    "574": { type: "Group Bypass", severity: "medium" },
+    // Test / Misc
+    "601": { type: "Manual Test", severity: "low" },
+    "602": { type: "Periodic Test", severity: "low" },
+    "606": { type: "AAV to Follow", severity: "low" },
+    "607": { type: "Walk Test Mode", severity: "low" },
+    "623": { type: "Event Log Reset", severity: "low" },
+    "625": { type: "Date/Time Reset", severity: "low" },
+    "627": { type: "Program Mode Entry", severity: "low" },
+    "628": { type: "Program Mode Exit", severity: "low" },
+    "631": { type: "Exception Schedule", severity: "low" },
+    "632": { type: "Access Schedule", severity: "low" },
+    "654": { type: "System Inactivity", severity: "medium" },
+  };
+
+  app.post("/make-server-4916a0b9/alarm-receiver", async (c: any) => {
+    const ip = getClientIp(c);
+    if (!rateLimit(ip + ":alarm-rx", 60, 60000)) return c.json({ error: "Rate limited." }, 429);
+    const gate = webhookAuthGate(ip);
+    if (!gate.allowed) return c.json({ error: `Too many failed attempts. Retry after ${gate.retryAfterSec}s.` }, 429);
+
+    let body: any = null;
+    try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body." }, 400); }
+    if (!body || typeof body !== "object") return c.json({ error: "Invalid JSON body." }, 400);
+
+    try {
+      // Auth: same token system as LoRaWAN webhook — LD1 bridge sends the user's webhook token
+      const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
+      if (!token || token.length < 10) { recordWebhookAuthFailure(ip); return c.json({ error: "Missing or invalid webhook token." }, 401); }
+      const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
+      if (!tokenOwner) { recordWebhookAuthFailure(ip); return c.json({ error: "Invalid webhook token." }, 401); }
+      const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
+      if (!safeCompare(storedToken, token)) { recordWebhookAuthFailure(ip); return c.json({ error: "Webhook token revoked." }, 401); }
+      clearWebhookAuthFailures(ip);
+      const userId = tokenOwner as string;
+
+      // Validate required fields
+      const account = sanitizeString(body.account || "", 20);
+      const eventCode = sanitizeString(body.eventCode || "", 4);
+      const qualifier = sanitizeString(body.qualifier || "E", 1); // E=Event, R=Restore
+      const partition = sanitizeString(body.partition || "00", 4);
+      const zone = sanitizeString(body.zone || "000", 6);
+      const description = sanitizeString(body.description || "", 500);
+      const locationName = sanitizeString(body.location || "", 200);
+      const propertyName = sanitizeString(body.property || "", 200);
+      const receivedAt = body.time || new Date().toISOString();
+
+      if (!eventCode) return c.json({ error: "Missing eventCode." }, 400);
+
+      // Look up event type and severity from Contact ID code table
+      const eventInfo = CONTACT_ID_SEVERITY[eventCode] || { type: `Unknown Event (${eventCode})`, severity: "medium" };
+
+      const alarmKey = uk(userId, "alarms");
+      let alarms = await kvGetWithRetry(alarmKey);
+      if (!Array.isArray(alarms)) alarms = [];
+
+      // If restore event (qualifier=R), resolve the matching pending alarm
+      if (qualifier === "R") {
+        const matchIdx = alarms.findIndex((a: any) =>
+          a.source === "MX8000" &&
+          a.eventCode === eventCode &&
+          a.account === account &&
+          a.zone === zone &&
+          a.status === "pending"
+        );
+        if (matchIdx >= 0) {
+          alarms[matchIdx].status = "resolved";
+          alarms[matchIdx].resolvedAt = new Date().toISOString();
+          alarms[matchIdx].resolvedBy = "auto-restore";
+          await kvSetWithRetry(alarmKey, alarms);
+          invalidateKvCache(alarmKey);
+          console.log(`[MX8000] Restored alarm: ${eventInfo.type} acct=${account} zone=${zone}`);
+          return c.json({ success: true, action: "restored", alarmId: alarms[matchIdx].id });
+        }
+        // No matching pending alarm found — still log the restore as info
+        console.log(`[MX8000] Restore received but no matching pending alarm: ${eventCode} acct=${account} zone=${zone}`);
+        return c.json({ success: true, action: "restore-no-match" });
+      }
+
+      // New event — create alarm
+      // Dedup: skip if an identical alarm was created within last 60 seconds
+      const recentDupe = alarms.find((a: any) =>
+        a.source === "MX8000" &&
+        a.eventCode === eventCode &&
+        a.account === account &&
+        a.zone === zone &&
+        a.status === "pending" &&
+        (Date.now() - new Date(a.time).getTime()) < 60000
+      );
+      if (recentDupe) {
+        console.log(`[MX8000] Dedup skipped: ${eventInfo.type} acct=${account} zone=${zone}`);
+        return c.json({ success: true, action: "dedup-skipped", alarmId: recentDupe.id });
+      }
+
+      const newAlarm = {
+        id: `MX-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type: eventInfo.type,
+        severity: eventInfo.severity,
+        status: "pending",
+        source: "MX8000",
+        location: locationName || `Zone ${zone}`,
+        property: propertyName || `Panel ${account}`,
+        description: description || `${qualifier === "E" ? "New" : ""} ${eventInfo.type} — Account: ${account}, Zone: ${zone}, Partition: ${partition}`,
+        time: receivedAt,
+        eventCode,
+        account,
+        zone,
+        partition,
+      };
+
+      alarms.unshift(newAlarm);
+      if (alarms.length > 1000) {
+        // Prune: keep all pending, trim oldest resolved
+        const pending = alarms.filter((a: any) => a.status !== "resolved");
+        const resolved = alarms.filter((a: any) => a.status === "resolved");
+        alarms = pending.concat(resolved.slice(0, Math.max(0, 800 - pending.length)));
+      }
+
+      await kvSetWithRetry(alarmKey, alarms);
+      invalidateKvCache(alarmKey);
+
+      console.log(`[MX8000] New alarm: ${eventInfo.type} (${eventInfo.severity}) acct=${account} zone=${zone}`);
+
+      // Broadcast critical/high alarms via Realtime for instant frontend notification
+      if (eventInfo.severity === "critical" || eventInfo.severity === "high") {
+        broadcastAlarmPush(userId, newAlarm).catch(() => {});
+      }
+
+      return c.json({ success: true, action: "created", alarmId: newAlarm.id });
+    } catch (e) {
+      console.log("[MX8000] Alarm receiver error:", errorMessage(e));
+      return c.json({ error: "Failed to process alarm." }, 500);
+    }
+  });
+
   // ─── DASHBOARD BUNDLE (single request for all Dashboard data) ──────
 
   app.get("/make-server-4916a0b9/dashboard-bundle", async (c: any) => {

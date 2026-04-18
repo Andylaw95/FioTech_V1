@@ -118,6 +118,16 @@ const METRICS: MetricDef[] = [
   },
   {
     key: 'sound_level_lcpeak', label: 'LCPeak', unit: 'dB(C)', icon: Volume2, color: '#dc2626',
+  },
+  {
+    key: 'water_leak', label: 'Leak Status', unit: '', icon: Droplets, color: '#0ea5e9',
+    description: '0 = Dry, 1 = Leak detected',
+    domain: [0, 1],
+    chartType: 'bar',
+    referenceAreas: [
+      { y1: 0, y2: 0.5, color: '#dcfce7', opacity: 0.3 },
+      { y1: 0.5, y2: 1, color: '#fee2e2', opacity: 0.4 },
+    ],
     description: 'C-weighted peak sound level',
   },
 ];
@@ -161,8 +171,8 @@ const TYPE_METRIC_PRIORITY: Record<string, string[]> = {
   'Sound Level Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
   '4G Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
   '4G Sound Level Meter': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
-  Leakage:     ['temperature', 'humidity', 'battery'],
-  'Water Leakage Sensor': ['temperature', 'humidity', 'battery'],
+  Leakage:     ['water_leak', 'temperature', 'humidity', 'battery'],
+  'Water Leakage Sensor': ['water_leak', 'temperature', 'humidity', 'battery'],
   'Environment Sensor': ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],
   Smoke:       ['pm2_5', 'pm10', 'co2', 'temperature', 'battery'],
   Fire:        ['temperature', 'humidity', 'co2', 'battery'],
@@ -432,8 +442,9 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
       {/* Clickable metric cards — show latest value + act as selector (hidden when parent provides its own) */}
       {!hideMetricCards && (
         <div className={clsx(
-          "grid gap-2 mb-4",
-          compact ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
+          compact
+            ? "flex gap-2 mb-3 overflow-x-auto pb-1"
+            : "grid gap-2 mb-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
         )}>
           {sortedMetrics.map((m) => {
             const MIcon = m.icon;
@@ -445,14 +456,14 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
                 onClick={() => setSelectedMetricKey(m.key as string)}
                 className={clsx(
                   "relative rounded-xl text-left transition-all border-2 cursor-pointer group",
-                  compact ? "p-2" : "p-3",
+                  compact ? "p-1.5 shrink-0 min-w-[80px]" : "p-3",
                   isActive
                     ? "border-blue-500 bg-blue-50/60 shadow-sm"
                     : "border-transparent bg-slate-50 hover:bg-slate-100 hover:border-slate-200"
                 )}
               >
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <MIcon className={clsx(compact ? "h-3 w-3" : "h-3.5 w-3.5")} style={{ color: m.color }} />
+                <div className="flex items-center gap-1 mb-0.5">
+                  <MIcon className={clsx(compact ? "h-2.5 w-2.5" : "h-3.5 w-3.5")} style={{ color: m.color }} />
                   <span className={clsx(
                     compact ? "text-[10px]" : "text-xs",
                     "font-medium truncate",
@@ -462,15 +473,15 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
                 <div className="flex items-baseline gap-1">
                   <span className={clsx(
                     "font-bold font-mono",
-                    compact ? "text-sm" : "text-lg",
+                    compact ? "text-xs" : "text-lg",
                     isActive ? "text-blue-900" : "text-slate-900"
                   )}>
                     {latest !== undefined ? (Number.isInteger(latest) ? latest : latest.toFixed(1)) : '—'}
                   </span>
-                  <span className={clsx(compact ? "text-[10px]" : "text-xs", "text-slate-400")}>{m.unit}</span>
+                  <span className={clsx(compact ? "text-[9px]" : "text-xs", "text-slate-400")}>{m.unit}</span>
                 </div>
                 {isActive && (
-                  <div className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-blue-500" />
+                  <div className="absolute bottom-0 left-1.5 right-1.5 h-0.5 rounded-full bg-blue-500" />
                 )}
               </button>
             );
@@ -488,13 +499,13 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
             {!compact && <span className="ml-auto text-xs text-slate-400 shrink-0">{data.length} pts · {timeRange}</span>}
           </div>
           {compact ? (
-            <p className="text-[10px] text-slate-400 mb-2 truncate">{data.length} data points · 3-day history</p>
+            <p className="text-[10px] text-slate-400 mb-1 truncate">{data.length} pts · {timeRange || period}</p>
           ) : (
             <p className="text-xs text-slate-400 mb-3">{selectedMetric.description}</p>
           )}
 
           {/* Chart */}
-          <div className={clsx(compact ? "h-[200px]" : "h-[280px]", "w-full min-w-0")}>
+          <div className={clsx(compact ? "h-[160px]" : "h-[280px]", "w-full min-w-0")}>
             <MetricChart data={data} metric={selectedMetric} period={period} />
           </div>
         </>

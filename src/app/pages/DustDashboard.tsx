@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   AreaChart, Area, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
@@ -9,10 +9,12 @@ import { StatCard } from '@/app/components/StatCard';
 import { useTheme } from '@/app/utils/ThemeContext';
 import {
   CloudFog, Wind, AlertTriangle, Thermometer, Droplets, Download,
-  ChevronDown, Shield, Radio, CheckCircle2, XCircle, Eye, Gauge,
+  ChevronDown, Shield, Radio, CheckCircle2, XCircle, Eye, Gauge, Loader2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { api } from '@/app/utils/api';
+import { exportDustReport, type DustExportPeriod } from '@/app/utils/dustExport';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -51,7 +53,7 @@ function getAQI(pm25: number): { value: number; label: string; color: string } {
 // ── Circular Gauge SVG ───────────────────────────────────
 function DustGauge({ value, max, unit, label, statusColor }: { value: number; max: number; unit: string; label: string; statusColor: string }) {
   const size = 160;
-  const r = 60;
+  const r = 56;
   const cx = size / 2;
   const cy = size / 2;
   const circumference = 2 * Math.PI * r;
@@ -59,8 +61,8 @@ function DustGauge({ value, max, unit, label, statusColor }: { value: number; ma
   const offset = circumference * (1 - pct * 0.75);
 
   return (
-    <div className="flex flex-col items-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <div className="flex flex-col items-center min-w-0">
+      <svg className="w-full h-auto max-w-[180px]" viewBox={`0 0 ${size} ${size}`}>
         {/* Background ring */}
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="#e2e8f0" strokeWidth="10"
           strokeDasharray={`${circumference * 0.75} ${circumference * 0.25}`}
@@ -77,10 +79,10 @@ function DustGauge({ value, max, unit, label, statusColor }: { value: number; ma
           style={{ transition: 'stroke-dashoffset 0.5s ease' }}
         />
         {/* Center text */}
-        <text x={cx} y={cy - 8} textAnchor="middle" fontSize="24" fontWeight="700" fill={statusColor}>{value.toFixed(0)}</text>
-        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="10" fontWeight="500" fill="#94a3b8">{unit}</text>
+        <text x={cx} y={cy - 6} textAnchor="middle" fontSize="36" fontWeight="700" fill={statusColor}>{value.toFixed(0)}</text>
+        <text x={cx} y={cy + 18} textAnchor="middle" fontSize="16" fontWeight="500" fill="#94a3b8">{unit}</text>
       </svg>
-      <p className="text-xs font-semibold mt-1" style={{ color: statusColor }}>{label}</p>
+      <p className="text-sm font-semibold mt-1" style={{ color: statusColor }}>{label}</p>
     </div>
   );
 }
@@ -115,74 +117,131 @@ function AQIRing({ pm25 }: { pm25: number }) {
   );
 }
 
-// ── Demo data ────────────────────────────────────────────
-function generateDustData(hours: number) {
-  const points: any[] = [];
-  const now = Date.now();
-  const count = hours * 12; // 5-min intervals
-  for (let i = 0; i < count; i++) {
-    const t = now - (count - i) * 300000;
-    const hour = new Date(t).getHours();
-    const isWorkHour = hour >= 8 && hour < 18;
-    const basePM25 = isWorkHour ? 38 : 22;
-    const basePM10 = isWorkHour ? 65 : 35;
-    const baseTSP = isWorkHour ? 180 : 80;
-    points.push({
-      time: new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
-      timestamp: t,
-      pm25: Math.round((basePM25 + Math.random() * 25 - 8 + Math.sin(i / 30) * 12) * 10) / 10,
-      pm10: Math.round((basePM10 + Math.random() * 40 - 12 + Math.sin(i / 25) * 20) * 10) / 10,
-      tsp: Math.round(baseTSP + Math.random() * 100 - 30 + Math.sin(i / 20) * 50),
-      temperature: Math.round((28 + Math.sin(i / 80) * 4 + Math.random() * 2) * 10) / 10,
-      humidity: Math.round(65 + Math.sin(i / 60) * 12 + Math.random() * 5),
-      windSpeed: Math.round((2.5 + Math.random() * 4) * 10) / 10,
-      windDir: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.floor(Math.random() * 8)],
-    });
-  }
-  return points;
+// ── Dust device type ─────────────────────────────────────
+interface DustDevice {
+  id: string;
+  name: string;
+  location: string;
+  status: 'online' | 'offline';
+  pm25: number;
+  pm10: number;
+  tsp: number;
+  temp: number;
+  humidity: number;
+  windSpeed: number;
+  windDir: string;
 }
-
-const DEMO_DUST_DEVICES = [
-  { id: 'DUST-001', name: 'Site North - Crusher', location: 'Construction Site A - Crushing Plant', status: 'online' as const, pm25: 42.3, pm10: 78.6, tsp: 195, temp: 29.2, humidity: 62, windSpeed: 3.2, windDir: 'NE' },
-  { id: 'DUST-002', name: 'Site East - Boundary', location: 'Construction Site A - East Fence', status: 'online' as const, pm25: 28.1, pm10: 52.4, tsp: 125, temp: 28.8, humidity: 65, windSpeed: 2.8, windDir: 'E' },
-  { id: 'DUST-003', name: 'Residential Monitor', location: 'Adjacent Residential - Rooftop', status: 'online' as const, pm25: 18.5, pm10: 36.2, tsp: 88, temp: 28.5, humidity: 68, windSpeed: 3.5, windDir: 'SE' },
-  { id: 'DUST-004', name: 'Site South - Stockpile', location: 'Construction Site A - Material Yard', status: 'offline' as const, pm25: 0, pm10: 0, tsp: 0, temp: 0, humidity: 0, windSpeed: 0, windDir: '—' },
-];
 
 export function DustDashboard() {
   const { isDark } = useTheme();
-  const [selectedDevice, setSelectedDevice] = useState(DEMO_DUST_DEVICES[0].id);
+  const [devices, setDevices] = useState<DustDevice[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState('');
   const [timeRange, setTimeRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [showDeviceDropdown, setShowDeviceDropdown] = useState(false);
   const [activeMetric, setActiveMetric] = useState<'pm25' | 'pm10' | 'tsp'>('pm25');
+  const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState('');
 
-  const device = DEMO_DUST_DEVICES.find(d => d.id === selectedDevice) ?? DEMO_DUST_DEVICES[0];
+  // Fetch real dust devices from Supabase
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const properties = await api.getProperties();
+        const dd: DustDevice[] = [];
+        for (const p of properties) {
+          try {
+            const tel = await api.getPropertyTelemetry(p.id);
+            for (const [devEUI, reading] of Object.entries((tel as any).deviceReadings || {})) {
+              const dec = (reading as any).decoded || {};
+              if (dec.pm2_5 === undefined && dec.pm10 === undefined) continue;
+              const recent = (reading as any).receivedAt && (Date.now() - new Date((reading as any).receivedAt).getTime()) < 600000;
+              dd.push({
+                id: devEUI,
+                name: (reading as any).deviceName || devEUI,
+                location: `${p.name}${p.location ? ' — ' + p.location : ''}`,
+                status: recent ? 'online' : 'offline',
+                pm25: dec.pm2_5 ?? 0,
+                pm10: dec.pm10 ?? 0,
+                tsp: dec.tsp ?? 0,
+                temp: dec.temperature ?? 0,
+                humidity: dec.humidity ?? 0,
+                windSpeed: dec.wind_speed ?? 0,
+                windDir: dec.wind_direction ?? '—',
+              });
+            }
+          } catch {}
+        }
+        if (!cancelled) {
+          setDevices(dd);
+          if (dd.length > 0) setSelectedDevice(dd[0].id);
+        }
+      } catch (e) { console.warn('[DustDashboard]', e); }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
-  const chartData = useMemo(() => {
-    const hours = timeRange === '1h' ? 1 : timeRange === '24h' ? 24 : 168;
-    const data = generateDustData(hours);
-    if (timeRange === '1h') return data;
-    if (timeRange === '24h') return data.filter((_, i) => i % 3 === 0);
-    return data.filter((_, i) => i % 12 === 0);
-  }, [timeRange]);
+  // Fetch chart history for selected device
+  useEffect(() => {
+    if (!selectedDevice) return;
+    let cancelled = false;
+    setChartLoading(true);
+    api.getDeviceHistory(selectedDevice, timeRange)
+      .then((res: any) => {
+        if (cancelled) return;
+        setChartData((res.points || []).map((p: any) => ({
+          time: p.timeLabel || new Date(p.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+          pm25: p.pm2_5 ?? p.pm25,
+          pm10: p.pm10,
+          tsp: p.tsp,
+          temperature: p.temperature,
+          humidity: p.humidity,
+          windSpeed: p.wind_speed,
+          windDir: p.wind_direction,
+        })));
+      })
+      .catch(() => { if (!cancelled) setChartData([]); })
+      .finally(() => { if (!cancelled) setChartLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedDevice, timeRange]);
 
-  const onlineDevices = DEMO_DUST_DEVICES.filter(d => d.status === 'online').length;
+  const device = devices.find(d => d.id === selectedDevice) ?? devices[0];
+
+  const onlineDevices = devices.filter(d => d.status === 'online').length;
 
   // Compliance calculation
   const compliance = useMemo(() => {
     const total = chartData.length;
+    if (total === 0) return { total: 0, exceeded: 0, pct: 100 };
     let exceeded = 0;
     chartData.forEach((d: any) => {
       if (activeMetric === 'pm25' && d.pm25 > 75) exceeded++;
       if (activeMetric === 'pm10' && d.pm10 > 100) exceeded++;
       if (activeMetric === 'tsp' && d.tsp > 260) exceeded++;
     });
-    return {
-      total,
-      exceeded,
-      pct: total > 0 ? Math.round(((total - exceeded) / total) * 100) : 100,
-    };
+    return { total, exceeded, pct: total > 0 ? Math.round(((total - exceeded) / total) * 100) : 100 };
   }, [chartData, activeMetric]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <span className={cn("ml-3 text-sm", isDark ? "text-slate-400" : "text-slate-500")}>Loading sensors...</span>
+      </div>
+    );
+  }
+  if (!device) {
+    return (
+      <div className={cn("text-center py-20 text-sm", isDark ? "text-slate-400" : "text-slate-500")}>
+        No dust sensors detected
+      </div>
+    );
+  }
 
   const metricConfig = {
     pm25: { label: 'PM2.5', unit: 'µg/m³', limit: 75, limitLabel: 'AQO Daily (75µg/m³)', color: '#3b82f6', max: 200 },
@@ -222,7 +281,7 @@ export function DustDashboard() {
                 "absolute right-0 top-full mt-1 w-72 rounded-lg border shadow-lg z-50 py-1",
                 isDark ? "border-slate-700 bg-slate-800" : "border-slate-200 bg-white"
               )}>
-                {DEMO_DUST_DEVICES.map(d => (
+                {devices.map(d => (
                   <button
                     key={d.id}
                     onClick={() => { setSelectedDevice(d.id); setShowDeviceDropdown(false); }}
@@ -248,19 +307,53 @@ export function DustDashboard() {
               </div>
             )}
           </div>
-          <button className={cn(
-            "flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
-            isDark ? "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-          )}>
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Export</span>
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(p => !p)}
+              disabled={exporting || devices.length === 0}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+                exporting ? "opacity-60 cursor-wait" : "",
+                isDark ? "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              )}
+            >
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">{exporting ? exportMsg : 'Export'}</span>
+              {!exporting && <ChevronDown className="h-3 w-3 opacity-50" />}
+            </button>
+            {showExportMenu && !exporting && (
+              <div className={cn(
+                "absolute right-0 top-full mt-1 z-50 w-48 rounded-lg border shadow-lg py-1",
+                isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+              )}>
+                {(['24h', '7d', '30d'] as DustExportPeriod[]).map(p => (
+                  <button
+                    key={p}
+                    onClick={async () => {
+                      setShowExportMenu(false);
+                      setExporting(true);
+                      try {
+                        await exportDustReport(devices, p, m => setExportMsg(m));
+                      } catch (e) { console.error('[Export]', e); }
+                      finally { setExporting(false); setExportMsg(''); }
+                    }}
+                    className={cn(
+                      "w-full text-left px-3 py-2 text-sm transition-colors",
+                      isDark ? "text-slate-300 hover:bg-slate-700" : "text-slate-700 hover:bg-slate-50"
+                    )}
+                  >
+                    {p === '24h' ? '📊 Last 24 Hours' : p === '7d' ? '📊 Last 7 Days' : '📊 Last 30 Days'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-        <StatCard title="Active Sensors" value={`${onlineDevices}/${DEMO_DUST_DEVICES.length}`} icon={Radio} status="normal">
+        <StatCard title="Active Sensors" value={`${onlineDevices}/${devices.length}`} icon={Radio} status="normal">
           <div className="flex items-center gap-1.5 mt-1">
             <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             <span className={cn("text-xs", isDark ? "text-slate-500" : "text-slate-400")}>{onlineDevices} online</span>
@@ -274,8 +367,8 @@ export function DustDashboard() {
             {compliance.exceeded} exceedance{compliance.exceeded !== 1 ? 's' : ''}
           </div>
         </StatCard>
-        <StatCard title="Alerts" value="1" icon={AlertTriangle} status="warning">
-          <div className={cn("text-xs mt-1", isDark ? "text-slate-500" : "text-slate-400")}>TSP action level</div>
+        <StatCard title="Alerts" value="0" icon={AlertTriangle} status="normal">
+          <div className={cn("text-xs mt-1", isDark ? "text-slate-500" : "text-slate-400")}>No active alerts</div>
         </StatCard>
       </div>
 
@@ -306,7 +399,7 @@ export function DustDashboard() {
             </div>
 
             {/* Three PM gauges */}
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-3 gap-2 min-w-0 overflow-hidden">
               <DustGauge value={device.pm25} max={200} unit="µg/m³" label="PM2.5" statusColor={getPM25Status(device.pm25).hex} />
               <DustGauge value={device.pm10} max={300} unit="µg/m³" label="PM10" statusColor={getPM10Status(device.pm10).hex} />
               <DustGauge value={device.tsp} max={600} unit="µg/m³" label="TSP" statusColor={getTSPStatus(device.tsp).hex} />
@@ -500,7 +593,7 @@ export function DustDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {DEMO_DUST_DEVICES.map(d => {
+                  {devices.map(d => {
                     const s = getPM25Status(d.pm25);
                     return (
                       <tr

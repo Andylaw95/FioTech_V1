@@ -38,32 +38,32 @@ export function StatCard({
   const trendColor = trend && trend > 0 ? 'text-green-600' : 'text-red-600';
 
   return (
-    <div className={cn("rounded-xl border border-slate-100 bg-white p-3 sm:p-4 shadow-sm transition-all hover:shadow-md", className)}>
-      <div className="flex items-start justify-between mb-2 sm:mb-3">
-        <div>
-          <p className="text-xs font-medium text-slate-500">{title}</p>
+    <div className={cn("rounded-xl border border-slate-100 bg-white p-2.5 sm:p-3 lg:p-4 shadow-sm transition-all hover:shadow-md", className)}>
+      <div className="flex items-start justify-between mb-1 sm:mb-2 lg:mb-3">
+        <div className="min-w-0">
+          <p className="text-[10px] sm:text-xs font-medium text-slate-500 truncate">{title}</p>
           <div className="mt-0.5 flex items-baseline gap-1">
-            <span className={cn("text-lg sm:text-xl font-semibold tracking-tight", statusColors[status])}>
+            <span className={cn("text-base sm:text-lg lg:text-xl font-semibold tracking-tight", statusColors[status])}>
               {value}
             </span>
-            {unit && <span className="text-xs font-medium text-slate-400">{unit}</span>}
+            {unit && <span className="text-[10px] sm:text-xs font-medium text-slate-400">{unit}</span>}
           </div>
         </div>
         {Icon && (
-          <div className={cn("rounded-full p-1.5 sm:p-2", 
+          <div className={cn("rounded-full p-1 sm:p-1.5 lg:p-2 flex-shrink-0", 
             status === 'critical' ? "bg-red-50 text-red-500" : 
             status === 'warning' ? "bg-amber-50 text-amber-500" : 
             "bg-blue-50 text-blue-500"
           )}>
-            <Icon className="h-4 w-4" />
+            <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </div>
         )}
       </div>
       
-      {children}
+      <div className="hidden sm:block">{children}</div>
 
       {trend !== undefined && (
-        <div className="mt-3 flex items-center text-xs">
+        <div className="mt-2 sm:mt-3 flex items-center text-xs">
           <span className={cn("font-medium", trendColor)}>
             {trend > 0 ? '+' : ''}{trend}%
           </span>

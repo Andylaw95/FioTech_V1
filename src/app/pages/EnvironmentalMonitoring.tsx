@@ -4,21 +4,36 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
   PieChart, Pie, Cell,
 } from 'recharts';
-import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF, CircleF, TrafficLayer } from '@react-google-maps/api';
+// AMap loaded dynamically via script tag — no npm package needed
 import { SafeChartContainer } from '@/app/components/SafeChartContainer';
 import { StatCard } from '@/app/components/StatCard';
 import { useTheme } from '@/app/utils/ThemeContext';
 import { api } from '@/app/utils/api';
+import { exportNoiseReport, type ExportPeriod } from '@/app/utils/noiseExport';
+import { exportDustReport, type DustExportPeriod } from '@/app/utils/dustExport';
 import {
   Volume2, CloudFog, Wind, AlertTriangle, Thermometer, Droplets, Download,
   ChevronDown, Shield, Radio, CheckCircle2, XCircle, Eye, Map as MapIcon,
-  BarChart3, Activity, Filter, Layers, Maximize2, Navigation, MapPin, Loader2,
+  BarChart3, Activity, Filter, Layers, Maximize2, MapPin, Loader2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
+}
+
+// ── Security: HTML escaping to prevent XSS in AMap InfoWindow ──
+const HTML_ESCAPE_MAP: Record<string, string> = {
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+};
+function esc(str: unknown): string {
+  return String(str ?? '').replace(/[&<>"']/g, c => HTML_ESCAPE_MAP[c] || c);
+}
+function safeNum(v: unknown, decimals = 1): string {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return n.toFixed(decimals);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -66,9 +81,11 @@ function getAQI(pm25: number) {
 
 function NoiseGauge({ value, min = 20, max = 140, size = 180 }: { value: number; min?: number; max?: number; size?: number }) {
   const status = getNoiseStatus(value);
-  const r = (size - 20) / 2;
-  const cx = size / 2;
-  const cy = size / 2 + 8;
+  const vbW = size;
+  const vbH = size;
+  const r = (size - 24) / 2;
+  const cx = vbW / 2;
+  const cy = vbH / 2 + 4;
   const startAngle = -210;
   const endAngle = 30;
   const totalAngle = endAngle - startAngle;
@@ -87,20 +104,27 @@ function NoiseGauge({ value, min = 20, max = 140, size = 180 }: { value: number;
     return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
   };
 
+  const startPt = polarToCartesian(startAngle);
+  const endPt = polarToCartesian(endAngle);
+
   return (
-    <svg width={size} height={size * 0.72} viewBox={`0 0 ${size} ${size * 0.72}`}>
+    <svg className="w-full h-auto max-w-[220px]" viewBox={`0 0 ${vbW} ${vbH}`}>
       <path d={arcPath(startAngle, endAngle)} fill="none" stroke="#334155" strokeWidth={10} strokeLinecap="round" />
       <path d={arcPath(startAngle, valueAngle)} fill="none" stroke={status.hex} strokeWidth={10} strokeLinecap="round" />
-      <text x={cx} y={cy - 8} textAnchor="middle" fill={status.hex} fontSize={size * 0.2} fontWeight="bold" fontFamily="system-ui">{value.toFixed(1)}</text>
-      <text x={cx} y={cy + 12} textAnchor="middle" fill="#94a3b8" fontSize={11} fontFamily="system-ui">dB(A)</text>
-      <text x={cx} y={cy + 26} textAnchor="middle" fill={status.hex} fontSize={10} fontWeight="600" fontFamily="system-ui">{status.label}</text>
+      {/* Min / Max labels at arc endpoints */}
+      <text x={startPt.x} y={startPt.y + 18} textAnchor="middle" fill="#64748b" fontSize={13} fontWeight="600" fontFamily="system-ui">{min}</text>
+      <text x={endPt.x} y={endPt.y + 18} textAnchor="middle" fill="#64748b" fontSize={13} fontWeight="600" fontFamily="system-ui">{max}</text>
+      {/* Center value */}
+      <text x={cx} y={cy - 10} textAnchor="middle" fill={status.hex} fontSize={42} fontWeight="bold" fontFamily="system-ui">{value.toFixed(1)}</text>
+      <text x={cx} y={cy + 12} textAnchor="middle" fill="#94a3b8" fontSize={14} fontFamily="system-ui">dB(A)</text>
+      <text x={cx} y={cy + 30} textAnchor="middle" fill={status.hex} fontSize={13} fontWeight="600" fontFamily="system-ui">{status.label}</text>
     </svg>
   );
 }
 
 function DustGauge({ value, max, unit, label, statusColor }: { value: number; max: number; unit: string; label: string; statusColor: string }) {
-  const size = 130;
-  const r = 48;
+  const size = 140;
+  const r = 50;
   const cx = size / 2;
   const cy = size / 2;
   const circumference = 2 * Math.PI * r;
@@ -108,14 +132,14 @@ function DustGauge({ value, max, unit, label, statusColor }: { value: number; ma
   const offset = circumference * (1 - pct * 0.75);
 
   return (
-    <div className="flex flex-col items-center">
-      <svg width={size} height={size * 0.75} viewBox={`0 0 ${size} ${size * 0.75}`}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#334155" strokeWidth={7} strokeDasharray={`${circumference * 0.75} ${circumference * 0.25}`} strokeLinecap="round" transform={`rotate(135, ${cx}, ${cy})`} />
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={statusColor} strokeWidth={7} strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" transform={`rotate(135, ${cx}, ${cy})`} />
-        <text x={cx} y={cy - 2} textAnchor="middle" fill="currentColor" fontSize={18} fontWeight="bold" fontFamily="system-ui" className="fill-current">{value.toFixed(0)}</text>
-        <text x={cx} y={cy + 14} textAnchor="middle" fill="#94a3b8" fontSize={9} fontFamily="system-ui">{unit}</text>
+    <div className="flex flex-col items-center min-w-0">
+      <svg className="w-full h-auto max-w-[160px]" viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#334155" strokeWidth={8} strokeDasharray={`${circumference * 0.75} ${circumference * 0.25}`} strokeLinecap="round" transform={`rotate(135, ${cx}, ${cy})`} />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={statusColor} strokeWidth={8} strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" transform={`rotate(135, ${cx}, ${cy})`} />
+        <text x={cx} y={cy - 2} textAnchor="middle" fill="currentColor" fontSize={34} fontWeight="bold" fontFamily="system-ui" className="fill-current">{value.toFixed(0)}</text>
+        <text x={cx} y={cy + 20} textAnchor="middle" fill="#94a3b8" fontSize={16} fontFamily="system-ui">{unit}</text>
       </svg>
-      <span className="text-[10px] font-semibold -mt-2" style={{ color: statusColor }}>{label}</span>
+      <span className="text-sm font-semibold -mt-1" style={{ color: statusColor }}>{label}</span>
     </div>
   );
 }
@@ -124,7 +148,7 @@ function DustGauge({ value, max, unit, label, statusColor }: { value: number; ma
 //  Demo data
 // ══════════════════════════════════════════════════════════
 
-type DeviceType = 'noise' | 'dust';
+type DeviceType = 'noise' | 'dust' | 'leakage';
 
 interface SensorDevice {
   id: string;
@@ -148,6 +172,9 @@ interface SensorDevice {
   humidity?: number;
   windSpeed?: number;
   windDir?: string;
+  // Leakage fields (EM300-SLD)
+  leakage_status?: string | null;  // "normal" or "leak"
+  battery?: number | null;
 }
 
 // Downsample data arrays for chart rendering performance
@@ -164,21 +191,23 @@ function downsample<T>(data: T[], maxPoints: number): T[] {
 const GEOCODE_CACHE_PREFIX = 'fiotec_geocode_';
 
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  const cacheKey = GEOCODE_CACHE_PREFIX + address;
+  const fullAddress = address.includes('香港') ? address : `香港${address}`;
+  const cacheKey = GEOCODE_CACHE_PREFIX + 'amap_' + fullAddress;
   const cached = sessionStorage.getItem(cacheKey);
   if (cached) return JSON.parse(cached);
 
   try {
-    const geocoder = new google.maps.Geocoder();
-    const res = await geocoder.geocode({ address });
-    if (res.results.length > 0) {
-      const loc = res.results[0].geometry.location;
-      const coords = { lat: loc.lat(), lng: loc.lng() };
+    const url = `https://restapi.amap.com/v3/geocode/geo?address=${encodeURIComponent(fullAddress)}&city=香港&key=${AMAP_WEB_KEY}&output=json`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.status === '1' && data.geocodes?.length > 0) {
+      const [lngStr, latStr] = data.geocodes[0].location.split(',');
+      const coords = { lat: parseFloat(latStr), lng: parseFloat(lngStr) };
       sessionStorage.setItem(cacheKey, JSON.stringify(coords));
       return coords;
     }
   } catch (e) {
-    console.warn('[Geocode] Failed for', address, e);
+    console.warn('[AMap Geocode] Failed for', fullAddress, e);
   }
   return null;
 }
@@ -190,12 +219,26 @@ function isDeviceRecent(lastSeen: string | undefined): boolean {
 }
 
 // ══════════════════════════════════════════════════════════
-//  Google Maps configuration
+//  AMap 3D configuration (高德地圖)
 // ══════════════════════════════════════════════════════════
 
-const GOOGLE_MAPS_KEY = 'AIzaSyBWgKagtVMMD2yysqs0COrolsIRU3K1wVY';
-// Note: custom styles array is NOT used — it disables vector rendering and 3D buildings.
-// For dark mode + 3D, use cloud-based map styling with a mapId in Google Cloud Console.
+const AMAP_KEY = 'c3a105f2cad3f3b0b25f03650d41f7a7';
+const AMAP_SECURITY = 'a300ff0165a2b79110c87e6e22ccca41';
+const AMAP_WEB_KEY = 'c637beb33b66148f154d2e3620632752';
+
+function useAMap() {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if ((window as any).AMap) { setLoaded(true); return; }
+    (window as any)._AMapSecurityConfig = { securityJsCode: AMAP_SECURITY };
+    const script = document.createElement('script');
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${AMAP_KEY}&plugin=AMap.Scale&lang=zh_en`;
+    script.onload = () => setLoaded(true);
+    script.onerror = () => console.warn('[AMap] Failed to load');
+    document.head.appendChild(script);
+  }, []);
+  return loaded;
+}
 
 // ══════════════════════════════════════════════════════════
 //  Main Component
@@ -207,10 +250,13 @@ export function EnvironmentalMonitoring() {
   const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<ViewTab>('map');
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
-  const [mapFilter, setMapFilter] = useState<'all' | 'noise' | 'dust'>('all');
+  const [mapFilter, setMapFilter] = useState<'all' | 'noise' | 'dust' | 'leakage'>('all');
   const [noiseTimeRange, setNoiseTimeRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [dustTimeRange, setDustTimeRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [dustMetric, setDustMetric] = useState<'pm25' | 'pm10' | 'tsp'>('pm25');
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState('');
 
   // Real data state — start empty, no demo data flash
   const [devices, setDevices] = useState<SensorDevice[]>([]);
@@ -225,17 +271,101 @@ export function EnvironmentalMonitoring() {
 
   const device = selectedDevice ? devices.find(d => d.id === selectedDevice) : null;
 
-  // Google Maps
-  const { isLoaded } = useJsApiLoader({ googleMapsApiKey: GOOGLE_MAPS_KEY });
-  const mapRef = useRef<google.maps.Map | null>(null);
+  // AMap 3D
+  const amapLoaded = useAMap();
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const markerMapRef = useRef<Map<string, any>>(new Map());
+  const infoWindowRef = useRef<any>(null);
+
   const [infoOpen, setInfoOpen] = useState<string | null>(null);
-  const [showTraffic, setShowTraffic] = useState(false);
-  const [showCoverage, setShowCoverage] = useState(false);
   const [mapTypeId, setMapTypeId] = useState<'roadmap' | 'satellite' | 'hybrid'>('roadmap');
+
+  // ── Build info window HTML for a device (all API data HTML-escaped) ──
+  const buildInfoContent = useCallback((d: SensorDevice) => {
+    const typeColor = d.type === 'noise' ? '#3b82f6' : d.type === 'dust' ? '#f59e0b' : '#06b6d4';
+    const typeIcon = d.type === 'noise' ? '🔊' : d.type === 'dust' ? '💨' : '💧';
+    const typeLabel = d.type === 'noise' ? 'Noise Sensor' : d.type === 'dust' ? 'Dust Sensor' : 'EM300-SLD Leak Sensor';
+    const lines: string[] = [
+      `<div style="padding:12px 14px;min-width:220px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif;font-size:13px;line-height:1.4;">`,
+      // Header
+      `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">`,
+      `<div style="width:36px;height:36px;border-radius:10px;background:${typeColor}12;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">${typeIcon}</div>`,
+      `<div style="min-width:0;">`,
+      `<p style="font-weight:600;font-size:14px;margin:0;letter-spacing:-0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(d.name)}</p>`,
+      `<p style="color:#8e8e93;font-size:11px;margin:1px 0 0;letter-spacing:0.01em;">${esc(typeLabel)}</p>`,
+      `</div></div>`,
+      // Status pill
+      `<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">`,
+      `<span style="width:6px;height:6px;border-radius:50%;background:${d.status === 'online' ? '#34c759' : '#8e8e93'};display:inline-block;"></span>`,
+      `<span style="font-size:12px;font-weight:500;color:${d.status === 'online' ? '#34c759' : '#8e8e93'};text-transform:capitalize;">${esc(d.status)}</span>`,
+      `<span style="font-size:11px;color:#8e8e93;margin-left:auto;">${esc(d.location)}</span>`,
+      `</div>`,
+    ];
+    if (d.status === 'online') {
+      lines.push(`<div style="background:#f5f5f7;border-radius:10px;padding:10px 12px;margin-top:2px;">`);
+      if (d.type === 'noise') {
+        const ns = getNoiseStatus(d.sound_level_leq ?? 0);
+        lines.push(`<div style="display:flex;align-items:end;justify-content:space-between;margin-bottom:8px;">`);
+        lines.push(`<div><p style="font-size:10px;color:#8e8e93;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;margin:0;">LAeq</p>`);
+        lines.push(`<p style="font-size:22px;font-weight:700;color:${ns.hex};margin:2px 0 0;letter-spacing:-0.02em;">${safeNum(d.sound_level_leq)} <span style="font-size:11px;font-weight:500;color:#8e8e93;">dB(A)</span></p></div>`);
+        lines.push(`<span style="font-size:11px;font-weight:600;color:${ns.hex};background:${ns.hex}18;padding:3px 8px;border-radius:20px;">${esc(ns.label)}</span></div>`);
+        lines.push(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:6px;">`);
+        lines.push(`<p style="margin:0;font-size:11px;color:#636366;">LAFmax <b style="color:#1d1d1f;">${safeNum(d.sound_level_lmax)}</b></p>`);
+        lines.push(`<p style="margin:0;font-size:11px;color:#636366;">LAFmin <b style="color:#1d1d1f;">${safeNum(d.sound_level_lmin)}</b></p>`);
+        lines.push(`<p style="margin:0;font-size:11px;color:#636366;">LAF <b style="color:#1d1d1f;">${safeNum(d.sound_level_inst)}</b></p>`);
+        lines.push(`<p style="margin:0;font-size:11px;color:#636366;">LCPeak <b style="color:#1d1d1f;">${safeNum(d.sound_level_lcpeak)}</b></p></div>`);
+      }
+      if (d.type === 'dust') {
+        const ps = getPM25Status(d.pm25 ?? 0);
+        lines.push(`<div style="display:flex;align-items:end;justify-content:space-between;margin-bottom:8px;">`);
+        lines.push(`<div><p style="font-size:10px;color:#8e8e93;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;margin:0;">PM2.5</p>`);
+        lines.push(`<p style="font-size:22px;font-weight:700;color:${ps.hex};margin:2px 0 0;letter-spacing:-0.02em;">${safeNum(d.pm25)} <span style="font-size:11px;font-weight:500;color:#8e8e93;">µg/m³</span></p></div>`);
+        lines.push(`<span style="font-size:11px;font-weight:600;color:${ps.hex};background:${ps.hex}18;padding:3px 8px;border-radius:20px;">${esc(ps.label)}</span></div>`);
+        lines.push(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:6px;">`);
+        lines.push(`<p style="margin:0;font-size:11px;color:#636366;">PM10 <b style="color:#1d1d1f;">${safeNum(d.pm10)}</b></p>`);
+        lines.push(`<p style="margin:0;font-size:11px;color:#636366;">TSP <b style="color:#1d1d1f;">${safeNum(d.tsp, 0)}</b></p>`);
+        lines.push(`<p style="margin:0;font-size:11px;color:#636366;">Temp <b style="color:#1d1d1f;">${safeNum(d.temp)}°C</b></p>`);
+        lines.push(`<p style="margin:0;font-size:11px;color:#636366;">Wind <b style="color:#1d1d1f;">${safeNum(d.windSpeed)}m/s</b></p></div>`);
+      }
+      if (d.type === 'leakage') {
+        const isLeak = d.leakage_status === 'leak';
+        const lkColor = isLeak ? '#ff3b30' : '#34c759';
+        lines.push(`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">`);
+        lines.push(`<p style="font-size:18px;font-weight:700;color:${lkColor};margin:0;">${isLeak ? '⚠️ Leak Detected' : '✅ Normal'}</p></div>`);
+        lines.push(`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px;">`);
+        if (d.temp != null) lines.push(`<p style="margin:0;font-size:11px;color:#636366;">Temp <b style="color:#1d1d1f;">${safeNum(d.temp)}°C</b></p>`);
+        if (d.humidity != null) lines.push(`<p style="margin:0;font-size:11px;color:#636366;">RH <b style="color:#1d1d1f;">${safeNum(d.humidity)}%</b></p>`);
+        if (d.battery != null) lines.push(`<p style="margin:0;font-size:11px;color:#636366;">Bat <b style="color:#1d1d1f;">${safeNum(d.battery, 0)}%</b></p>`);
+        lines.push(`</div>`);
+      }
+      lines.push(`</div>`);
+    }
+    lines.push(`</div>`);
+    return lines.join('');
+  }, []);
+
+  // ── Open info window for a device (shared by marker click and sidebar click) ──
+  const openInfoForDevice = useCallback((deviceId: string) => {
+    if (!mapRef.current || !amapLoaded) return;
+    // Validate deviceId: only allow alphanumeric, colons, hyphens, underscores (devEUI format)
+    if (!/^[\w:.-]{1,64}$/.test(deviceId)) return;
+    const AMap = (window as any).AMap;
+    const d = devices.find(dd => dd.id === deviceId);
+    if (!d || !Number.isFinite(d.lat) || !Number.isFinite(d.lng)) return;
+    if (infoWindowRef.current) infoWindowRef.current.close();
+    const sz = d.id === selectedDevice ? 24 : 16;
+    const iw = new AMap.InfoWindow({
+      content: buildInfoContent(d),
+      offset: new AMap.Pixel(0, -sz / 2 - 4),
+    });
+    iw.open(mapRef.current, [d.lng, d.lat]);
+    infoWindowRef.current = iw;
+  }, [devices, amapLoaded, selectedDevice, buildInfoContent]);
 
   // ── Fetch real data from Supabase + geocode property addresses ──
   useEffect(() => {
-    if (!isLoaded) return;
     let cancelled = false;
 
     async function fetchRealData() {
@@ -258,8 +388,10 @@ export function EnvironmentalMonitoring() {
             for (const [devEUI, reading] of Object.entries(readings)) {
               const dec = reading.decoded || {};
               const hasNoise = dec.sound_level_leq !== undefined;
-              const hasDust = dec.pm2_5 !== undefined || dec.pm10 !== undefined;
-              const deviceType: DeviceType = hasNoise ? 'noise' : hasDust ? 'dust' : 'noise';
+              const hasDust = dec.pm2_5 !== undefined || dec.pm10 !== undefined || dec.tsp !== undefined;
+              const hasLeakage = dec.leakage_status !== undefined;
+              const hasEnv = dec.temperature !== undefined || dec.humidity !== undefined;
+              const deviceType: DeviceType = hasNoise ? 'noise' : hasDust ? 'dust' : (hasLeakage || hasEnv) ? 'leakage' : 'leakage';
 
               // Micro-offset so overlapping markers stay clickable (~2m apart)
               const microOffset = idx * 0.00002;
@@ -284,6 +416,8 @@ export function EnvironmentalMonitoring() {
                 humidity: dec.humidity,
                 windSpeed: dec.wind_speed,
                 windDir: dec.wind_direction,
+                leakage_status: dec.leakage_status ?? null,
+                battery: dec.battery ?? null,
               });
               idx++;
             }
@@ -333,7 +467,7 @@ export function EnvironmentalMonitoring() {
 
     fetchRealData();
     return () => { cancelled = true; };
-  }, [isLoaded]);
+  }, []);
 
   const filteredDevices = mapFilter === 'all' ? devices : devices.filter(d => d.type === mapFilter);
   const noiseDevices = devices.filter(d => d.type === 'noise');
@@ -438,35 +572,128 @@ export function EnvironmentalMonitoring() {
   };
   const mc = dustMetricConfig[dustMetric];
 
+  // Distinct color palette for each sensor device
+  const SENSOR_PALETTE = [
+    '#3b82f6', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899',
+    '#10b981', '#f97316', '#6366f1', '#14b8a6', '#e11d48',
+    '#0ea5e9', '#84cc16', '#a855f7', '#d946ef', '#fb923c',
+  ];
+  function getSensorColor(deviceId: string): string {
+    const idx = devices.findIndex(d => d.id === deviceId);
+    if (idx < 0) return '#94a3b8';
+    return SENSOR_PALETTE[idx % SENSOR_PALETTE.length];
+  }
+
   function getMarkerColor(d: SensorDevice): string {
     if (d.status === 'offline') return '#94a3b8';
-    if (d.type === 'noise') return getNoiseStatus(d.sound_level_leq ?? 0).hex;
-    return getPM25Status(d.pm25 ?? 0).hex;
+    return getSensorColor(d.id);
   }
 
   function getMarkerReading(d: SensorDevice): string {
     if (d.status === 'offline') return 'Offline';
     if (d.type === 'noise') return `${d.sound_level_leq?.toFixed(1)} dB(A)`;
-    return `PM2.5: ${d.pm25?.toFixed(1)} µg/m³`;
+    if (d.type === 'dust') return `PM2.5: ${d.pm25?.toFixed(1)} µg/m³`;
+    // Leakage sensor
+    const status = d.leakage_status === 'leak' ? '⚠️ LEAK' : '✅ Normal';
+    const parts = [status];
+    if (d.temp != null) parts.push(`${d.temp}°C`);
+    if (d.humidity != null) parts.push(`${d.humidity}%`);
+    return parts.join(' · ');
   }
 
-  // Google Maps callbacks
-  const onMapLoad = useCallback((map: google.maps.Map) => {
-    mapRef.current = map;
-  }, []);
+  // ── AMap 3D init ──
+  useEffect(() => {
+    if (!amapLoaded || !mapContainerRef.current || mapRef.current) return;
+    const AMap = (window as any).AMap;
 
-  // Fit map to show all sensors
+    // Inject beacon animation CSS once
+    if (!document.getElementById('fiotech-beacon-css')) {
+      const style = document.createElement('style');
+      style.id = 'fiotech-beacon-css';
+      style.textContent = `
+        @keyframes fioBeacon {
+          0% { transform: scale(1); opacity: 0.6; }
+          100% { transform: scale(2.8); opacity: 0; }
+        }
+        .fio-beacon { animation: fioBeacon 1.8s ease-out infinite; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const map = new AMap.Map(mapContainerRef.current, {
+      viewMode: '3D',
+      zoom: 17,
+      pitch: 60,
+      rotation: -15,
+      center: [mapCenter.lng, mapCenter.lat],
+      mapStyle: isDark ? 'amap://styles/dark' : 'amap://styles/normal',
+      lang: 'zh_en',
+      features: ['bg', 'road', 'building', 'point'],
+      buildingAnimation: true,
+    });
+    map.addControl(new AMap.Scale());
+    mapRef.current = map;
+    return () => { map.destroy(); mapRef.current = null; };
+  }, [amapLoaded]);
+
+  // ── Theme / center / map-type sync ──
+  useEffect(() => { mapRef.current?.setMapStyle(isDark ? 'amap://styles/dark' : 'amap://styles/normal'); }, [isDark]);
+  useEffect(() => { mapRef.current?.setCenter([mapCenter.lng, mapCenter.lat]); }, [mapCenter]);
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const AMap = (window as any).AMap;
+    const layers: any[] = [];
+    if (mapTypeId === 'satellite' || mapTypeId === 'hybrid') {
+      layers.push(new AMap.TileLayer.Satellite());
+      if (mapTypeId === 'hybrid') layers.push(new AMap.TileLayer.RoadNet());
+    } else {
+      layers.push(new AMap.TileLayer());
+    }
+    mapRef.current.setLayers(layers);
+  }, [mapTypeId]);
+
+  // ── Markers and info windows ──
+  useEffect(() => {
+    if (!mapRef.current || !amapLoaded) return;
+    const AMap = (window as any).AMap;
+    const map = mapRef.current;
+    markersRef.current.forEach(m => map.remove(m));
+    markersRef.current = [];
+    markerMapRef.current.clear();
+
+    filteredDevices.forEach(d => {
+      const color = getMarkerColor(d);
+      const isSelected = d.id === selectedDevice;
+      const sz = isSelected ? 24 : 16;
+      const beaconSz = sz + 20;
+      const online = d.status === 'online';
+      const marker = new AMap.Marker({
+        position: [d.lng, d.lat],
+        content: `<div style="position:relative;width:${beaconSz}px;height:${beaconSz}px;display:flex;align-items:center;justify-content:center;">` +
+          (online ? `<div class="fio-beacon" style="position:absolute;width:${sz}px;height:${sz}px;border-radius:50%;background:${color};"></div>` : '') +
+          `<div style="position:relative;width:${sz}px;height:${sz}px;background:${color};border:${isSelected ? 3 : 2}px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.35);cursor:pointer;"></div>` +
+          `</div>`,
+        offset: new AMap.Pixel(-beaconSz / 2, -beaconSz / 2),
+      });
+      marker.on('click', () => {
+        setSelectedDevice(d.id);
+        setInfoOpen(d.id);
+        openInfoForDevice(d.id);
+      });
+      map.add(marker);
+      markersRef.current.push(marker);
+      markerMapRef.current.set(d.id, marker);
+    });
+  }, [filteredDevices, selectedDevice, amapLoaded, openInfoForDevice]);
+
   const fitAllSensors = useCallback(() => {
-    if (!mapRef.current || filteredDevices.length === 0) return;
-    const bounds = new google.maps.LatLngBounds();
-    filteredDevices.forEach(d => bounds.extend({ lat: d.lat, lng: d.lng }));
-    mapRef.current.fitBounds(bounds, 60);
+    if (!mapRef.current || markersRef.current.length === 0) return;
+    mapRef.current.setFitView(markersRef.current, false, [60, 60, 60, 60]);
   }, [filteredDevices]);
 
-  // Fly to selected device
   useEffect(() => {
     if (!mapRef.current || !device) return;
-    mapRef.current.panTo({ lat: device.lat, lng: device.lng });
+    mapRef.current.setCenter([device.lng, device.lat]);
     mapRef.current.setZoom(17);
   }, [selectedDevice]);
 
@@ -483,15 +710,16 @@ export function EnvironmentalMonitoring() {
   };
 
   return (
-    <div className="space-y-4 lg:space-y-5">
+    <div className="space-y-3 sm:space-y-4 lg:space-y-5">
       {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
         <div>
-          <h2 className={cn("text-xl lg:text-2xl font-bold", isDark ? "text-white" : "text-slate-900")}>
+          <h2 className={cn("text-lg sm:text-xl lg:text-2xl font-bold", isDark ? "text-white" : "text-slate-900")}>
             Environmental Monitoring
           </h2>
-          <p className={cn("text-sm mt-0.5 flex items-center gap-2", isDark ? "text-slate-400" : "text-slate-500")}>
-            Noise & Dust · Real-time sensor overview · IEC 61672 / HK AQO compliant
+          <p className={cn("text-xs sm:text-sm mt-0.5 flex items-center gap-2 flex-wrap", isDark ? "text-slate-400" : "text-slate-500")}>
+            <span className="hidden sm:inline">Noise & Dust · Real-time sensor overview · IEC 61672 / HK AQO compliant</span>
+            <span className="sm:hidden">Real-time sensors</span>
             {dataLoading ? (
               <span className="inline-flex items-center gap-1 text-xs text-blue-400"><Loader2 className="h-3 w-3 animate-spin" /> Loading…</span>
             ) : devices.length === 0 ? (
@@ -502,18 +730,67 @@ export function EnvironmentalMonitoring() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button className={cn(
-            "flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
-            isDark ? "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-          )}>
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Export</span>
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(p => !p)}
+              disabled={exporting || devices.length === 0}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+                exporting ? "opacity-60 cursor-wait" : "",
+                isDark ? "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              )}
+            >
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">{exporting ? exportMsg : 'Export'}</span>
+              {!exporting && <ChevronDown className="h-3 w-3 opacity-50" />}
+            </button>
+            {showExportMenu && !exporting && (
+              <div className={cn(
+                "absolute right-0 top-full mt-1 z-50 w-52 rounded-lg border shadow-lg py-1",
+                isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+              )}>
+                {(['24h', '7d', '30d'] as const).map(p => (
+                  <button
+                    key={p}
+                    onClick={async () => {
+                      setShowExportMenu(false);
+                      setExporting(true);
+                      try {
+                        if (activeTab === 'dust') {
+                          const dd = dustDevices.map(d => ({
+                            id: d.id, name: d.name, location: d.location, status: d.status as 'online' | 'offline',
+                            pm25: d.pm25 ?? 0, pm10: d.pm10 ?? 0, tsp: d.tsp ?? 0,
+                            temp: d.temp ?? 0, humidity: d.humidity ?? 0, windSpeed: d.windSpeed ?? 0, windDir: '—',
+                          }));
+                          await exportDustReport(dd, p, m => setExportMsg(m));
+                        } else {
+                          const nd = noiseDevices.map(d => ({
+                            id: d.id, name: d.name, location: d.location, status: d.status as 'online' | 'offline',
+                            leq: d.sound_level_leq ?? 0, lafmax: d.sound_level_lmax ?? 0,
+                            lafmin: d.sound_level_lmin ?? 0, laf: d.sound_level_inst ?? 0,
+                            lcpeak: d.sound_level_lcpeak ?? 0,
+                          }));
+                          await exportNoiseReport(nd, p, m => setExportMsg(m));
+                        }
+                      } catch (e) { console.error('[Export]', e); }
+                      finally { setExporting(false); setExportMsg(''); }
+                    }}
+                    className={cn(
+                      "w-full text-left px-3 py-2 text-sm transition-colors",
+                      isDark ? "text-slate-300 hover:bg-slate-700" : "text-slate-700 hover:bg-slate-50"
+                    )}
+                  >
+                    📊 {activeTab === 'dust' ? 'Dust' : 'Noise'} — {p === '24h' ? '24 Hours' : p === '7d' ? '7 Days' : '30 Days'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* ── KPI Row ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
         <StatCard title="Noise Sensors" value={`${onlineNoise}/${noiseDevices.length}`} icon={Volume2} status="normal">
           <div className="flex items-center gap-1.5 mt-1">
             <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -540,24 +817,25 @@ export function EnvironmentalMonitoring() {
       </div>
 
       {/* ── Tab Bar ── */}
-      <div className={cn("flex rounded-lg border p-1 w-fit", isDark ? "border-slate-700 bg-slate-800/50" : "border-slate-200 bg-slate-50")}>
+      <div className={cn("flex overflow-x-auto rounded-lg border p-1 w-full sm:w-fit no-scrollbar", isDark ? "border-slate-700 bg-slate-800/50" : "border-slate-200 bg-slate-50")}>
         {([
-          { key: 'map' as const, label: 'Map View', icon: MapIcon },
-          { key: 'noise' as const, label: 'Noise Detail', icon: Volume2 },
-          { key: 'dust' as const, label: 'Dust Detail', icon: CloudFog },
+          { key: 'map' as const, label: 'Map', labelLg: 'Map View', icon: MapIcon },
+          { key: 'noise' as const, label: 'Noise', labelLg: 'Noise Detail', icon: Volume2 },
+          { key: 'dust' as const, label: 'Dust', labelLg: 'Dust Detail', icon: CloudFog },
         ]).map(t => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
             className={cn(
-              "flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-md transition-colors",
+              "flex items-center gap-1.5 px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap flex-1 sm:flex-none justify-center",
               activeTab === t.key
                 ? "bg-blue-600 text-white shadow-sm"
                 : isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-700"
             )}
           >
             <t.icon className="h-3.5 w-3.5" />
-            {t.label}
+            <span className="hidden sm:inline">{t.labelLg}</span>
+            <span className="sm:hidden">{t.label}</span>
           </button>
         ))}
       </div>
@@ -566,81 +844,69 @@ export function EnvironmentalMonitoring() {
            TAB: MAP VIEW
          ══════════════════════════════════════════════════ */}
       <div style={{ display: activeTab === 'map' ? 'block' : 'none' }}>
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {/* Map + Device Info side by side */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-5">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 lg:gap-5">
             {/* Map */}
             <div className={cn("xl:col-span-2 rounded-xl border overflow-hidden", isDark ? "border-slate-800" : "border-slate-200 shadow-sm")}>
               {/* Map toolbar */}
-              <div className={cn("flex items-center justify-between px-4 py-2.5 border-b flex-wrap gap-2", isDark ? "border-slate-700 bg-slate-800/80" : "border-slate-100 bg-white")}>
-                <div className="flex items-center gap-2">
-                  <Layers className={cn("h-4 w-4", isDark ? "text-slate-400" : "text-slate-500")} />
-                  <span className={cn("text-sm font-medium", isDark ? "text-white" : "text-slate-700")}>Sensor Map</span>
+              <div className={cn("flex flex-col sm:flex-row sm:items-center sm:justify-between px-3 sm:px-4 py-2 sm:py-2.5 border-b gap-2", isDark ? "border-slate-700 bg-slate-800/80" : "border-slate-100 bg-white")}>
+                <div className="flex items-center justify-between sm:justify-start gap-2">
+                  <div className="flex items-center gap-2">
+                    <Layers className={cn("h-4 w-4", isDark ? "text-slate-400" : "text-slate-500")} />
+                    <span className={cn("text-sm font-medium", isDark ? "text-white" : "text-slate-700")}>Sensor Map</span>
+                  </div>
+                  <button
+                    onClick={fitAllSensors}
+                    className={cn(
+                      "sm:hidden px-2 py-1 text-xs font-medium rounded border transition-colors",
+                      isDark ? "text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700" : "text-slate-500 border-slate-200 hover:text-slate-700 hover:bg-slate-50"
+                    )}
+                    title="Fit all sensors in view"
+                  >
+                    <Maximize2 className="h-3 w-3 inline mr-1" />Fit
+                  </button>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
                   {/* Sensor type filter */}
-                  <div className={cn("flex rounded-md border p-0.5", isDark ? "border-slate-700" : "border-slate-200")}>
-                    {(['all', 'noise', 'dust'] as const).map(f => (
+                  <div className={cn("flex rounded-md border p-0.5 flex-shrink-0", isDark ? "border-slate-700" : "border-slate-200")}>
+                    {(['all', 'noise', 'dust', 'leakage'] as const).map(f => (
                       <button
                         key={f}
                         onClick={() => setMapFilter(f)}
                         className={cn(
-                          "px-3 py-1 text-xs font-medium rounded transition-colors capitalize",
+                          "px-2 sm:px-3 py-1 text-[11px] sm:text-xs font-medium rounded transition-colors capitalize whitespace-nowrap",
                           mapFilter === f
                             ? "bg-blue-600 text-white"
                             : isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-700"
                         )}
                       >
-                        {f === 'all' ? 'All' : f === 'noise' ? '🔊 Noise' : '💨 Dust'}
+                        {f === 'all' ? 'All' : f === 'noise' ? '🔊' : f === 'dust' ? '💨' : '💧'}
+                        <span className="hidden sm:inline"> {f === 'noise' ? 'Noise' : f === 'dust' ? 'Dust' : f === 'leakage' ? 'Leak' : ''}</span>
                       </button>
                     ))}
                   </div>
                   {/* Map type selector */}
-                  <div className={cn("flex rounded-md border p-0.5", isDark ? "border-slate-700" : "border-slate-200")}>
+                  <div className={cn("flex rounded-md border p-0.5 flex-shrink-0", isDark ? "border-slate-700" : "border-slate-200")}>
                     {(['roadmap', 'satellite', 'hybrid'] as const).map(t => (
                       <button
                         key={t}
                         onClick={() => setMapTypeId(t)}
                         className={cn(
-                          "px-2.5 py-1 text-xs font-medium rounded transition-colors capitalize",
+                          "px-2 sm:px-2.5 py-1 text-[11px] sm:text-xs font-medium rounded transition-colors capitalize whitespace-nowrap",
                           mapTypeId === t
                             ? "bg-indigo-600 text-white"
                             : isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-700"
                         )}
                       >
-                        {t === 'roadmap' ? 'Map' : t === 'satellite' ? 'Sat' : 'Hybrid'}
+                        {t === 'roadmap' ? 'Map' : t === 'satellite' ? 'Sat' : 'Hyb'}
                       </button>
                     ))}
                   </div>
-                  {/* Toggle buttons */}
-                  <button
-                    onClick={() => setShowTraffic(v => !v)}
-                    className={cn(
-                      "px-2.5 py-1 text-xs font-medium rounded border transition-colors",
-                      showTraffic
-                        ? "bg-emerald-600 text-white border-emerald-600"
-                        : isDark ? "text-slate-400 border-slate-700 hover:text-white" : "text-slate-500 border-slate-200 hover:text-slate-700"
-                    )}
-                    title="Toggle traffic layer"
-                  >
-                    <Navigation className="h-3 w-3 inline mr-1" />Traffic
-                  </button>
-                  <button
-                    onClick={() => setShowCoverage(v => !v)}
-                    className={cn(
-                      "px-2.5 py-1 text-xs font-medium rounded border transition-colors",
-                      showCoverage
-                        ? "bg-violet-600 text-white border-violet-600"
-                        : isDark ? "text-slate-400 border-slate-700 hover:text-white" : "text-slate-500 border-slate-200 hover:text-slate-700"
-                    )}
-                    title="Toggle sensor coverage radius"
-                  >
-                    <MapPin className="h-3 w-3 inline mr-1" />Coverage
-                  </button>
                   <button
                     onClick={fitAllSensors}
                     className={cn(
-                      "px-2.5 py-1 text-xs font-medium rounded border transition-colors",
+                      "hidden sm:inline-flex px-2.5 py-1 text-xs font-medium rounded border transition-colors flex-shrink-0",
                       isDark ? "text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700" : "text-slate-500 border-slate-200 hover:text-slate-700 hover:bg-slate-50"
                     )}
                     title="Fit all sensors in view"
@@ -649,157 +915,74 @@ export function EnvironmentalMonitoring() {
                   </button>
                 </div>
               </div>
-              <div className="h-[500px] rounded-lg overflow-hidden">
-                {isLoaded ? (
-                  <GoogleMap
-                    mapContainerStyle={{ width: '100%', height: '100%' }}
-                    center={mapCenter}
-                    zoom={16}
-                    onLoad={onMapLoad}
-                    options={{
-                      // No custom styles — enables vector rendering + 3D buildings
-                      tilt: 60,
-                      heading: 320,
-                      mapTypeId,
-                      gestureHandling: 'greedy',
-                      zoomControl: true,
-                      mapTypeControl: false,
-                      streetViewControl: true,
-                      fullscreenControl: true,
-                      scaleControl: true,
-                    }}
-                  >
-                    {filteredDevices.map(d => {
-                      const color = getMarkerColor(d);
-                      const isSelected = d.id === selectedDevice;
-                      return (
-                        <MarkerF
-                          key={d.id}
-                          position={{ lat: d.lat, lng: d.lng }}
-                          onClick={() => { setSelectedDevice(d.id); setInfoOpen(d.id); }}
-                          icon={{
-                            path: google.maps.SymbolPath.CIRCLE,
-                            scale: isSelected ? 12 : 8,
-                            fillColor: color,
-                            fillOpacity: isSelected ? 0.95 : 0.75,
-                            strokeColor: '#ffffff',
-                            strokeWeight: isSelected ? 3 : 2,
-                          }}
-                        >
-                          {infoOpen === d.id && (
-                            <InfoWindowF
-                              position={{ lat: d.lat, lng: d.lng }}
-                              onCloseClick={() => setInfoOpen(null)}
-                            >
-                              <div className="min-w-[200px] font-sans p-1">
-                                <p className="font-bold text-sm mb-0.5">{d.name}</p>
-                                <p className="text-slate-500 text-[11px] mb-1.5">{d.id} · {d.location}</p>
-                                <div className="flex items-center gap-1.5 text-xs mb-1">
-                                  <span className={cn("h-2 w-2 rounded-full", d.status === 'online' ? "bg-emerald-500" : "bg-slate-400")} />
-                                  <span className="font-medium capitalize">{d.status}</span>
-                                </div>
-                                {d.status === 'online' && d.type === 'noise' && (
-                                  <div className="text-xs space-y-0.5 border-t pt-2 mt-2 leading-relaxed">
-                                    <p><span className="text-slate-500">LAeq:</span> <strong>{d.sound_level_leq?.toFixed(1)} dB(A)</strong></p>
-                                    <p><span className="text-slate-500">LAFmax:</span> {d.sound_level_lmax?.toFixed(1)} dB(A)</p>
-                                    <p><span className="text-slate-500">LAFmin:</span> {d.sound_level_lmin?.toFixed(1)} dB(A)</p>
-                                    <p><span className="text-slate-500">LAF:</span> {d.sound_level_inst?.toFixed(1)} dB(A)</p>
-                                    <p><span className="text-slate-500">LCPeak:</span> {d.sound_level_lcpeak?.toFixed(1)} dB(C)</p>
-                                    <p className="mt-1 font-semibold" style={{ color: getNoiseStatus(d.sound_level_leq ?? 0).hex }}>
-                                      {getNoiseStatus(d.sound_level_leq ?? 0).label}
-                                    </p>
-                                  </div>
-                                )}
-                                {d.status === 'online' && d.type === 'dust' && (
-                                  <div className="text-xs space-y-0.5 border-t pt-2 mt-2 leading-relaxed">
-                                    <p><span className="text-slate-500">PM2.5:</span> <strong>{d.pm25?.toFixed(1)} µg/m³</strong></p>
-                                    <p><span className="text-slate-500">PM10:</span> {d.pm10?.toFixed(1)} µg/m³</p>
-                                    <p><span className="text-slate-500">TSP:</span> {d.tsp} µg/m³</p>
-                                    <p><span className="text-slate-500">Temp:</span> {d.temp}°C · Wind: {d.windSpeed}m/s {d.windDir}</p>
-                                    <p className="mt-1 font-semibold" style={{ color: getPM25Status(d.pm25 ?? 0).hex }}>
-                                      {getPM25Status(d.pm25 ?? 0).label}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </InfoWindowF>
-                          )}
-                        </MarkerF>
-                      );
-                    })}
-                    {/* Traffic Layer */}
-                    {showTraffic && <TrafficLayer />}
-                    {/* Coverage radius circles */}
-                    {showCoverage && filteredDevices.filter(d => d.status === 'online').map(d => (
-                      <CircleF
-                        key={`circle-${d.id}`}
-                        center={{ lat: d.lat, lng: d.lng }}
-                        radius={d.type === 'noise' ? 200 : 300}
-                        options={{
-                          fillColor: getMarkerColor(d),
-                          fillOpacity: 0.1,
-                          strokeColor: getMarkerColor(d),
-                          strokeOpacity: 0.4,
-                          strokeWeight: 1,
-                        }}
-                      />
-                    ))}
-                  </GoogleMap>
+              <div className="h-[280px] sm:h-[380px] lg:h-[500px] overflow-hidden">
+                {amapLoaded ? (
+                  <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
                 ) : (
                   <div className="h-full flex items-center justify-center bg-slate-900/50">
-                    <p className="text-slate-400 text-sm">Loading Google Maps...</p>
+                    <Loader2 className="h-5 w-5 animate-spin text-slate-400 mr-2" />
+                    <p className="text-slate-400 text-sm">載入地圖中...</p>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Device List Panel */}
-            <div className={cn("space-y-3 max-h-[490px] overflow-y-auto pr-1")}>
-              <h3 className={headingCls}>All Sensors ({filteredDevices.length})</h3>
-              {filteredDevices.map(d => (
-                <button
-                  key={d.id}
-                  onClick={() => setSelectedDevice(d.id)}
-                  className={cn(
-                    "w-full text-left rounded-xl border p-3.5 transition-all",
-                    d.id === selectedDevice
-                      ? isDark ? "border-blue-500/50 bg-blue-950/30 ring-1 ring-blue-500/30" : "border-blue-300 bg-blue-50 ring-1 ring-blue-200"
-                      : isDark ? "border-slate-800 bg-slate-800/50 hover:bg-slate-800" : "border-slate-200 bg-white hover:bg-slate-50 shadow-sm"
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={cn("mt-0.5 h-3 w-3 rounded-full flex-shrink-0", d.status === 'online' ? "bg-emerald-500" : "bg-slate-400")} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        {d.type === 'noise' ? <Volume2 className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" /> : <CloudFog className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />}
-                        <p className={cn("text-sm font-semibold truncate", isDark ? "text-white" : "text-slate-900")}>{d.name}</p>
-                      </div>
-                      <p className={cn("text-[11px] truncate mb-1.5", isDark ? "text-slate-500" : "text-slate-400")}>{d.id} · {d.location}</p>
-                      {d.status === 'online' ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold" style={{ color: getMarkerColor(d) }}>
-                            {getMarkerReading(d)}
-                          </span>
-                          <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium",
-                            d.type === 'noise'
-                              ? getNoiseStatus(d.sound_level_leq ?? 0).color === 'emerald' ? "bg-emerald-50 text-emerald-600" : getNoiseStatus(d.sound_level_leq ?? 0).color === 'amber' ? "bg-amber-50 text-amber-600" : "bg-red-50 text-red-600"
-                              : getPM25Status(d.pm25 ?? 0).color === 'emerald' ? "bg-emerald-50 text-emerald-600" : getPM25Status(d.pm25 ?? 0).color === 'amber' ? "bg-amber-50 text-amber-600" : "bg-red-50 text-red-600"
-                          )}>
-                            {d.type === 'noise' ? getNoiseStatus(d.sound_level_leq ?? 0).label : getPM25Status(d.pm25 ?? 0).label}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400">Offline</span>
+            {/* Device List Panel — horizontal scroll on mobile, vertical list on desktop */}
+            <div>
+              <h3 className={cn(headingCls, "mb-2 sm:mb-3")}>All Sensors ({filteredDevices.length})</h3>
+              <div className="flex xl:flex-col gap-2 sm:gap-3 overflow-x-auto xl:overflow-x-visible xl:overflow-y-auto xl:max-h-[460px] pb-2 xl:pb-0 xl:pr-1 no-scrollbar">
+                {filteredDevices.map(d => {
+                  const statusInfo = d.type === 'noise' ? getNoiseStatus(d.sound_level_leq ?? 0)
+                    : d.type === 'dust' ? getPM25Status(d.pm25 ?? 0)
+                    : { label: d.leakage_status === 'leak' ? 'Leak' : 'Normal', color: d.leakage_status === 'leak' ? 'red' : 'emerald', hex: d.leakage_status === 'leak' ? '#ef4444' : '#10b981' };
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={() => { setSelectedDevice(d.id); openInfoForDevice(d.id); }}
+                      className={cn(
+                        "text-left rounded-xl border p-3 sm:p-3.5 transition-all flex-shrink-0 w-[260px] sm:w-[280px] xl:w-full",
+                        d.id === selectedDevice
+                          ? isDark ? "border-blue-500/50 bg-blue-950/30 ring-1 ring-blue-500/30" : "border-blue-300 bg-blue-50 ring-1 ring-blue-200"
+                          : isDark ? "border-slate-800 bg-slate-800/50 hover:bg-slate-800" : "border-slate-200 bg-white hover:bg-slate-50 shadow-sm"
                       )}
-                    </div>
-                  </div>
-                </button>
-              ))}
+                    >
+                      <div className="flex items-start gap-2.5 sm:gap-3">
+                        <div className="mt-0.5 h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: d.status === 'online' ? getSensorColor(d.id) : '#94a3b8' }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            {d.type === 'noise' ? <Volume2 className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" /> : d.type === 'dust' ? <CloudFog className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" /> : <Droplets className="h-3.5 w-3.5 text-cyan-400 flex-shrink-0" />}
+                            <p className={cn("text-sm font-semibold truncate", isDark ? "text-white" : "text-slate-900")}>{d.name}</p>
+                          </div>
+                          <p className={cn("text-[11px] truncate mb-1.5", isDark ? "text-slate-500" : "text-slate-400")}>{d.location}</p>
+                          {d.status === 'online' ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold" style={{ color: getMarkerColor(d) }}>
+                                {d.type === 'leakage'
+                                  ? (d.leakage_status === 'leak' ? '⚠️ Leak' : '✅ Normal')
+                                  : getMarkerReading(d)}
+                              </span>
+                              <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium",
+                                statusInfo.color === 'emerald' ? "bg-emerald-50 text-emerald-600"
+                                  : statusInfo.color === 'amber' ? "bg-amber-50 text-amber-600"
+                                  : "bg-red-50 text-red-600"
+                              )}>
+                                {esc(statusInfo.label)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">Offline</span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
           {/* Quick Overview Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
             {/* Noise mini trend */}
             <div className={cardCls}>
               <div className="flex items-center justify-between mb-3">
@@ -811,7 +994,7 @@ export function EnvironmentalMonitoring() {
                   View Details →
                 </button>
               </div>
-              <div className="h-[200px] w-full min-w-0">
+              <div className="h-[160px] sm:h-[200px] w-full min-w-0">
                 <SafeChartContainer>
                   <AreaChart data={noiseChartData} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
                     <defs>
@@ -843,7 +1026,7 @@ export function EnvironmentalMonitoring() {
                   View Details →
                 </button>
               </div>
-              <div className="h-[200px] w-full min-w-0">
+              <div className="h-[160px] sm:h-[200px] w-full min-w-0">
                 <SafeChartContainer>
                   <AreaChart data={dustChartData} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
                     <defs>
@@ -1100,7 +1283,7 @@ export function EnvironmentalMonitoring() {
                     {/* PM Gauges */}
                     <div className={cardCls}>
                       <h3 className={cn(headingCls, "mb-3")}>Real-time Levels</h3>
-                      <div className="grid grid-cols-3 gap-1">
+                      <div className="grid grid-cols-3 gap-2 min-w-0 overflow-hidden">
                         <DustGauge value={dd.pm25 ?? 0} max={200} unit="µg/m³" label="PM2.5" statusColor={getPM25Status(dd.pm25 ?? 0).hex} />
                         <DustGauge value={dd.pm10 ?? 0} max={300} unit="µg/m³" label="PM10" statusColor={getPM10Status(dd.pm10 ?? 0).hex} />
                         <DustGauge value={dd.tsp ?? 0} max={600} unit="µg/m³" label="TSP" statusColor={getTSPStatus(dd.tsp ?? 0).hex} />

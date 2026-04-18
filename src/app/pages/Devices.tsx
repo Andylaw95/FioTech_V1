@@ -31,6 +31,7 @@ import { AddDeviceDialog } from '@/app/components/AddDeviceDialog';
 import { api } from '@/app/utils/api';
 import { useAuth } from '@/app/utils/AuthContext';
 import { toast } from 'sonner';
+import { exportDeviceReport, exportAllDevicesReport, type DeviceExportPeriod } from '@/app/utils/deviceExport';
 
 interface Device {
   id: string;
@@ -128,6 +129,11 @@ export function Devices() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [buildingFilter, setBuildingFilter] = useState<string>('all');
+  const [showBulkExport, setShowBulkExport] = useState(false);
+  const [bulkExporting, setBulkExporting] = useState(false);
+  const [bulkExportMsg, setBulkExportMsg] = useState('');
+  const [deviceExporting, setDeviceExporting] = useState<string | null>(null);
+  const [deviceExportMsg, setDeviceExportMsg] = useState('');
 
   const fetchData = useCallback(async (silent = false) => {
     try {
@@ -331,10 +337,40 @@ export function Devices() {
 
           {isAdmin && <AddDeviceDialog onSuccess={fetchData} properties={properties} />}
 
-          <button className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition-all">
-            <Download className="h-4 w-4" />
-            Export
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowBulkExport(p => !p)}
+              disabled={bulkExporting || devices.length === 0}
+              className={clsx(
+                "inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 shadow-sm transition-all",
+                bulkExporting && "opacity-60 cursor-wait"
+              )}
+            >
+              {bulkExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {bulkExporting ? bulkExportMsg : 'Export'}
+              {!bulkExporting && <ChevronDown className="h-3 w-3 opacity-50" />}
+            </button>
+            {showBulkExport && !bulkExporting && (
+              <div className="absolute right-0 top-full mt-1 z-50 w-48 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                {(['24h', '7d', '30d'] as DeviceExportPeriod[]).map(p => (
+                  <button
+                    key={p}
+                    onClick={async () => {
+                      setShowBulkExport(false);
+                      setBulkExporting(true);
+                      try {
+                        await exportAllDevicesReport(devices as any, p, m => setBulkExportMsg(m));
+                      } catch (e) { console.error('[Export]', e); toast.error('Export failed'); }
+                      finally { setBulkExporting(false); setBulkExportMsg(''); }
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    {p === '24h' ? '📊 Last 24 Hours' : p === '7d' ? '📊 Last 7 Days' : '📊 Last 30 Days'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -479,18 +515,18 @@ export function Devices() {
         </div>
 
         {/* Desktop: Table layout */}
-        <div className="overflow-x-auto hidden md:block">
-          <table className="w-full text-left text-sm" style={{ minWidth: '720px' }}>
+        <div className="hidden md:block">
+          <table className="w-full text-left text-sm table-fixed">
             <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
               <tr>
-                <th className="px-4 py-4 whitespace-nowrap">Device Name</th>
-                <th className="px-4 py-4 whitespace-nowrap">Type</th>
-                <th className="px-4 py-4 whitespace-nowrap">Building</th>
-                <th className="px-4 py-4 whitespace-nowrap">Location</th>
-                <th className="px-4 py-4 whitespace-nowrap">Status</th>
-                <th className="px-4 py-4 whitespace-nowrap">Battery</th>
-                <th className="px-4 py-4 whitespace-nowrap">Last Update</th>
-                {isAdmin && <th className="px-4 py-4 text-right whitespace-nowrap">Actions</th>}
+                <th className="px-3 py-4 whitespace-nowrap" style={{ width: '20%' }}>Device Name</th>
+                <th className="px-3 py-4 whitespace-nowrap" style={{ width: '14%' }}>Type</th>
+                <th className="px-3 py-4 whitespace-nowrap" style={{ width: '15%' }}>Building</th>
+                <th className="px-3 py-4 whitespace-nowrap" style={{ width: '13%' }}>Location</th>
+                <th className="px-3 py-4 whitespace-nowrap" style={{ width: '9%' }}>Status</th>
+                <th className="px-3 py-4 whitespace-nowrap" style={{ width: '9%' }}>Battery</th>
+                <th className="px-3 py-4 whitespace-nowrap" style={{ width: '12%' }}>Last Update</th>
+                {isAdmin && <th className="px-3 py-4 text-right whitespace-nowrap" style={{ width: '8%' }}>Actions</th>}
               </tr>
             </thead>
             {loading ? (
@@ -509,16 +545,16 @@ export function Devices() {
                       selectedDevice === device.id && "bg-slate-50"
                     )}
                   >
-                    <td className="px-4 py-4 font-medium text-slate-900 whitespace-nowrap">{device.name}</td>
-                    <td className="px-4 py-4">
-                      <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 whitespace-nowrap">
+                    <td className="px-3 py-4 font-medium text-slate-900 truncate">{device.name}</td>
+                    <td className="px-3 py-4">
+                      <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 truncate max-w-full">
                         {device.type}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-slate-600 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                       <div className="flex items-center gap-1.5 group/edit">
+                    <td className="px-3 py-4 text-slate-600 truncate" onClick={(e) => e.stopPropagation()}>
+                       <div className="flex items-center gap-1.5 group/edit min-w-0">
                          <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                         <span>{device.building}</span>
+                         <span className="truncate">{device.building}</span>
                          {isAdmin && (
                            <AssignDeviceDialog 
                               device={device} 
@@ -533,10 +569,10 @@ export function Devices() {
                          )}
                        </div>
                     </td>
-                    <td className="px-4 py-4 text-slate-600 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-3 py-4 text-slate-600 truncate" onClick={(e) => e.stopPropagation()}>
                       <EditableLocation device={device} onSave={fetchData} isAdmin={isAdmin} />
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
+                    <td className="px-3 py-4">
                       <div className="flex items-center gap-2">
                         {device.status === 'online' ? (
                           <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-50" />
@@ -548,7 +584,7 @@ export function Devices() {
                         <span className="capitalize text-slate-700">{device.status}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
+                    <td className="px-3 py-4">
                       <div className="flex items-center gap-2 text-slate-600">
                         {device.battery === null ? (
                           <><Plug className="h-4 w-4 text-blue-500" /><span>AC</span></>
@@ -561,9 +597,9 @@ export function Devices() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-4 text-slate-500 whitespace-nowrap">{device.lastUpdate}</td>
+                    <td className="px-3 py-4 text-slate-500 truncate">{device.lastUpdate}</td>
                     {isAdmin && (
-                      <td className="px-4 py-4 text-right">
+                      <td className="px-3 py-4 text-right">
                         <Popover>
                           <PopoverTrigger asChild>
                             <button className="rounded-lg p-2 text-slate-400 hover:bg-white hover:shadow-sm hover:text-slate-600" onClick={e => e.stopPropagation()}>
@@ -595,27 +631,50 @@ export function Devices() {
                   </tr>
                   {selectedDevice === device.id && (
                     <tr className="bg-slate-50/50">
-                      <td colSpan={8} className="px-6 py-4">
-                        <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6 shadow-sm sm:min-w-[600px] animate-in fade-in slide-in-from-top-2">
-                          <div className="mb-4 flex items-center justify-between">
-                            <h4 className="font-semibold text-slate-900">Historical Data - {device.name}</h4>
-                            <div className="flex rounded-lg bg-slate-100 p-1">
-                              {(['24h', '3d'] as const).map((p) => (
-                                <button
-                                  key={p}
-                                  onClick={() => setHistoryPeriod(p)}
-                                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                                    historyPeriod === p
-                                      ? 'bg-white text-slate-900 shadow-sm'
-                                      : 'text-slate-500 hover:text-slate-900'
-                                  }`}
-                                >
-                                  {p.toUpperCase()}
-                                </button>
-                              ))}
+                      <td colSpan={8} className="px-4 py-3">
+                        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm animate-in fade-in slide-in-from-top-2">
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <h4 className="font-semibold text-slate-900 text-sm">Historical Data — {device.name}</h4>
+                            <div className="flex items-center gap-2">
+                              {/* Per-device export */}
+                              <button
+                                disabled={deviceExporting === device.id}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setDeviceExporting(device.id);
+                                  try {
+                                    await exportDeviceReport(device as any, (historyPeriod === '3d' ? '7d' : historyPeriod) as DeviceExportPeriod, m => setDeviceExportMsg(m));
+                                    toast.success('Report downloaded');
+                                  } catch (err) { console.error(err); toast.error('Export failed'); }
+                                  finally { setDeviceExporting(null); setDeviceExportMsg(''); }
+                                }}
+                                className={clsx(
+                                  "flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border transition-all",
+                                  deviceExporting === device.id ? "opacity-60 cursor-wait" : "hover:bg-slate-50",
+                                  "border-slate-200 text-slate-600"
+                                )}
+                              >
+                                {deviceExporting === device.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                                {deviceExporting === device.id ? deviceExportMsg : 'Export'}
+                              </button>
+                              <div className="flex rounded-lg bg-slate-100 p-0.5">
+                                {(['24h', '3d'] as const).map((p) => (
+                                  <button
+                                    key={p}
+                                    onClick={() => setHistoryPeriod(p)}
+                                    className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                                      historyPeriod === p
+                                        ? 'bg-white text-slate-900 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-900'
+                                    }`}
+                                  >
+                                    {p.toUpperCase()}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                          <DeviceHistoryChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} period={historyPeriod} liveDecoded={device.decoded} />
+                          <DeviceHistoryChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} period={historyPeriod} liveDecoded={device.decoded} compact />
                         </div>
                       </td>
                     </tr>

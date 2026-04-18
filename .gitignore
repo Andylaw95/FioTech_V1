@@ -32,3 +32,4 @@ SECURITY_AUDIT_REPORT*.md
 
 # Vercel build artifacts and config (must not be committed)
 .vercel/
+supabase/.temp/

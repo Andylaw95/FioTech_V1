@@ -10,10 +10,12 @@ import { useTheme } from '@/app/utils/ThemeContext';
 import {
   Volume2, VolumeX, Activity, AlertTriangle, Clock, TrendingUp, TrendingDown,
   ChevronDown, BarChart3, Shield, MapPin, Download, Calendar, Filter,
-  Gauge, Radio, CheckCircle2, XCircle,
+  Gauge, Radio, CheckCircle2, XCircle, Loader2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { api } from '@/app/utils/api';
+import { exportNoiseReport, type ExportPeriod } from '@/app/utils/noiseExport';
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -66,7 +68,7 @@ function NoiseGauge({ value, max = 120, size = 220 }: { value: number; max?: num
   };
 
   return (
-    <svg width={size} height={size * 0.75} viewBox={`0 0 ${size} ${size * 0.75}`}>
+    <svg className="w-full h-auto max-w-[280px] mx-auto" viewBox={`0 0 ${size} ${size}`}>
       {/* Background arc */}
       <path d={arcPath(startAngle, endAngle)} fill="none" stroke="#e2e8f0" strokeWidth="12" strokeLinecap="round" />
       {/* Colored segments */}
@@ -84,110 +86,110 @@ function NoiseGauge({ value, max = 120, size = 220 }: { value: number; max?: num
         return (
           <g key={t}>
             <line x1={pos.x} y1={pos.y} x2={cx + (r - 8) * Math.cos((angle * Math.PI) / 180)} y2={cy + (r - 8) * Math.sin((angle * Math.PI) / 180)} stroke={getTickColor(t)} strokeWidth="2" />
-            <text x={outerPos.x} y={outerPos.y} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill="#94a3b8" fontWeight="500">{t}</text>
+            <text x={outerPos.x} y={outerPos.y} textAnchor="middle" dominantBaseline="middle" fontSize="12" fill="#94a3b8" fontWeight="600">{t}</text>
           </g>
         );
       })}
       {/* Center value */}
-      <text x={cx} y={cy - 12} textAnchor="middle" fontSize="36" fontWeight="700" fill={status.ring}>{value.toFixed(1)}</text>
-      <text x={cx} y={cy + 10} textAnchor="middle" fontSize="13" fontWeight="500" fill="#94a3b8">dB(A)</text>
-      <text x={cx} y={cy + 28} textAnchor="middle" fontSize="11" fontWeight="600" fill={status.ring}>{status.label}</text>
+      <text x={cx} y={cy - 12} textAnchor="middle" fontSize="44" fontWeight="700" fill={status.ring}>{value.toFixed(1)}</text>
+      <text x={cx} y={cy + 14} textAnchor="middle" fontSize="16" fontWeight="500" fill="#94a3b8">dB(A)</text>
+      <text x={cx} y={cy + 34} textAnchor="middle" fontSize="14" fontWeight="600" fill={status.ring}>{status.label}</text>
     </svg>
   );
 }
 
-// ── Demo data generation ─────────────────────────────────
-function generateNoiseData(hours: number, interval: number = 5) {
-  const points: any[] = [];
-  const now = Date.now();
-  const count = (hours * 3600) / interval;
-  for (let i = 0; i < count; i++) {
-    const t = now - (count - i) * interval * 1000;
-    const hour = new Date(t).getHours();
-    const base = hour >= 7 && hour < 19 ? 62 : 48;
-    const noise = base + Math.random() * 15 - 5 + Math.sin(i / 100) * 8;
-    const leq = Math.round(noise * 10) / 10;
-    points.push({
-      time: new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
-      timestamp: t,
-      leq,
-      lafmax: Math.round((leq + 3 + Math.random() * 8) * 10) / 10,
-      lafmin: Math.round((leq - 3 - Math.random() * 5) * 10) / 10,
-      laf: Math.round((leq + Math.random() * 4 - 2) * 10) / 10,
-    });
-  }
-  return points;
+// ── Noise device type ────────────────────────────────────
+interface NoiseDevice {
+  id: string;
+  name: string;
+  location: string;
+  status: 'online' | 'offline';
+  leq: number;
+  lafmax: number;
+  lafmin: number;
+  laf: number;
+  lcpeak: number;
 }
-
-function generateHourlyData(days: number) {
-  const points: any[] = [];
-  const now = new Date();
-  for (let d = days - 1; d >= 0; d--) {
-    for (let h = 0; h < 24; h++) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - d);
-      date.setHours(h, 0, 0, 0);
-      const isDaytime = h >= 7 && h < 19;
-      const base = isDaytime ? 63 : 47;
-      const leq = Math.round((base + Math.random() * 12 - 4) * 10) / 10;
-      const limit = isDaytime ? 75 : 55;
-      points.push({
-        label: `${date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ${String(h).padStart(2, '0')}:00`,
-        hour: h,
-        date: date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
-        leq,
-        limit,
-        isDaytime,
-        exceedance: leq > limit,
-      });
-    }
-  }
-  return points;
-}
-
-function generateDistributionData() {
-  const ranges = ['<40', '40-45', '45-50', '50-55', '55-60', '60-65', '65-70', '70-75', '75-80', '80-85', '>85'];
-  const values = [2, 5, 12, 22, 25, 18, 9, 4, 2, 0.8, 0.2];
-  return ranges.map((range, i) => ({
-    range,
-    percentage: values[i],
-    fill: values[i] > 0 ? (
-      i <= 3 ? '#10b981' : i <= 6 ? '#f59e0b' : i <= 8 ? '#f97316' : '#ef4444'
-    ) : '#e2e8f0',
-  }));
-}
-
-// ── Demo devices ─────────────────────────────────────────
-const DEMO_DEVICES = [
-  { id: 'HY108-001', name: 'Site North Gate', location: 'Construction Site A - North', status: 'online' as const, leq: 62.3, lafmax: 78.5, lafmin: 48.2, laf: 64.1 },
-  { id: 'HY108-002', name: 'Residential Boundary', location: 'Construction Site A - East Boundary', status: 'online' as const, leq: 54.8, lafmax: 67.2, lafmin: 42.1, laf: 56.3 },
-  { id: 'HY108-003', name: 'Site Office', location: 'Construction Site A - Office Block', status: 'online' as const, leq: 71.2, lafmax: 88.9, lafmin: 55.3, laf: 73.6 },
-  { id: 'HY108-004', name: 'Community Boundary', location: 'Construction Site A - South', status: 'offline' as const, leq: 0, lafmax: 0, lafmin: 0, laf: 0 },
-];
 
 export function NoiseDashboard() {
   const { isDark } = useTheme();
-  const [selectedDevice, setSelectedDevice] = useState(DEMO_DEVICES[0].id);
+  const [devices, setDevices] = useState<NoiseDevice[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState('');
   const [timeRange, setTimeRange] = useState<'1h' | '24h' | '7d'>('1h');
   const [showDeviceDropdown, setShowDeviceDropdown] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState('');
 
-  const device = DEMO_DEVICES.find(d => d.id === selectedDevice) ?? DEMO_DEVICES[0];
-  const status = getNoiseStatus(device.leq);
+  // Fetch real noise devices from Supabase
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const properties = await api.getProperties();
+        const nd: NoiseDevice[] = [];
+        for (const p of properties) {
+          try {
+            const tel = await api.getPropertyTelemetry(p.id);
+            for (const [devEUI, reading] of Object.entries((tel as any).deviceReadings || {})) {
+              const dec = (reading as any).decoded || {};
+              if (dec.sound_level_leq === undefined) continue;
+              const recent = (reading as any).receivedAt && (Date.now() - new Date((reading as any).receivedAt).getTime()) < 600000;
+              nd.push({
+                id: devEUI,
+                name: (reading as any).deviceName || devEUI,
+                location: `${p.name}${p.location ? ' — ' + p.location : ''}`,
+                status: recent ? 'online' : 'offline',
+                leq: dec.sound_level_leq ?? 0,
+                lafmax: dec.sound_level_lmax ?? 0,
+                lafmin: dec.sound_level_lmin ?? 0,
+                laf: dec.sound_level_inst ?? 0,
+                lcpeak: dec.sound_level_lcpeak ?? 0,
+              });
+            }
+          } catch {}
+        }
+        if (!cancelled) {
+          setDevices(nd);
+          if (nd.length > 0) setSelectedDevice(nd[0].id);
+        }
+      } catch (e) { console.warn('[NoiseDashboard]', e); }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
-  // Generate chart data based on time range
-  const realtimeData = useMemo(() => {
-    if (timeRange === '1h') return generateNoiseData(1, 5).filter((_, i) => i % 6 === 0);
-    if (timeRange === '24h') return generateNoiseData(24, 60);
-    return generateHourlyData(7);
-  }, [timeRange]);
+  // Fetch chart history for selected device
+  useEffect(() => {
+    if (!selectedDevice) return;
+    let cancelled = false;
+    setChartLoading(true);
+    api.getDeviceHistory(selectedDevice, timeRange)
+      .then((res: any) => {
+        if (cancelled) return;
+        setChartData((res.points || []).map((p: any) => ({
+          time: p.timeLabel || new Date(p.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+          leq: p.sound_level_leq,
+          lafmax: p.sound_level_lmax,
+          lafmin: p.sound_level_lmin,
+          laf: p.sound_level_inst,
+          _hour: new Date(p.time).getHours(),
+        })));
+      })
+      .catch(() => { if (!cancelled) setChartData([]); })
+      .finally(() => { if (!cancelled) setChartLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedDevice, timeRange]);
 
-  const hourlyData = useMemo(() => generateHourlyData(7), []);
-  const distributionData = useMemo(() => generateDistributionData(), []);
+  const device = devices.find(d => d.id === selectedDevice) ?? devices[0];
+  const status = device ? getNoiseStatus(device.leq) : getNoiseStatus(0);
 
-  // Statistics
   const stats = useMemo(() => {
-    const values = realtimeData.map((d: any) => d.leq).filter(Boolean).sort((a: number, b: number) => a - b);
-    if (values.length === 0) return { l10: 0, l50: 0, l90: 0, leq: 0, lmax: 0, lmin: 0 };
+    const values = chartData.map((d: any) => d.leq).filter((v: any) => v != null && v > 0).sort((a: number, b: number) => a - b);
+    if (values.length === 0) return { l10: '—', l50: '—', l90: '—', leq: '—', lmax: '—', lmin: '—' };
     return {
       l10: values[Math.floor(values.length * 0.9)]?.toFixed(1) ?? '—',
       l50: values[Math.floor(values.length * 0.5)]?.toFixed(1) ?? '—',
@@ -196,21 +198,54 @@ export function NoiseDashboard() {
       lmax: Math.max(...values).toFixed(1),
       lmin: Math.min(...values).toFixed(1),
     };
-  }, [realtimeData]);
+  }, [chartData]);
 
-  // Compliance
   const compliance = useMemo(() => {
-    const total = hourlyData.length;
-    const exceeded = hourlyData.filter((d: any) => d.exceedance).length;
-    return {
-      total,
-      exceeded,
-      compliant: total - exceeded,
-      pct: total > 0 ? Math.round(((total - exceeded) / total) * 100) : 100,
-    };
-  }, [hourlyData]);
+    if (chartData.length === 0) return { total: 0, exceeded: 0, compliant: 0, pct: 100 };
+    const total = chartData.length;
+    const exceeded = chartData.filter((d: any) => {
+      const h = d._hour ?? 12;
+      const limit = (h >= 7 && h < 19) ? 75 : 55;
+      return d.leq > limit;
+    }).length;
+    return { total, exceeded, compliant: total - exceeded, pct: Math.round(((total - exceeded) / total) * 100) };
+  }, [chartData]);
 
-  const onlineDevices = DEMO_DEVICES.filter(d => d.status === 'online').length;
+  const distributionData = useMemo(() => {
+    const ranges = ['<40', '40-45', '45-50', '50-55', '55-60', '60-65', '65-70', '70-75', '75-80', '80-85', '>85'];
+    const bins = new Array(11).fill(0);
+    const values = chartData.map((d: any) => d.leq).filter((v: any) => v != null && v > 0);
+    values.forEach((v: number) => {
+      if (v < 40) bins[0]++; else if (v < 45) bins[1]++; else if (v < 50) bins[2]++;
+      else if (v < 55) bins[3]++; else if (v < 60) bins[4]++; else if (v < 65) bins[5]++;
+      else if (v < 70) bins[6]++; else if (v < 75) bins[7]++; else if (v < 80) bins[8]++;
+      else if (v < 85) bins[9]++; else bins[10]++;
+    });
+    const total = values.length || 1;
+    return ranges.map((range, i) => ({
+      range,
+      percentage: Math.round(bins[i] / total * 1000) / 10,
+      fill: i <= 3 ? '#10b981' : i <= 6 ? '#f59e0b' : i <= 8 ? '#f97316' : '#ef4444',
+    }));
+  }, [chartData]);
+
+  const onlineDevices = devices.filter(d => d.status === 'online').length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <span className={cn("ml-3 text-sm", isDark ? "text-slate-400" : "text-slate-500")}>Loading sensors...</span>
+      </div>
+    );
+  }
+  if (!device) {
+    return (
+      <div className={cn("text-center py-20 text-sm", isDark ? "text-slate-400" : "text-slate-500")}>
+        No noise sensors detected
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 lg:space-y-6">
@@ -243,7 +278,7 @@ export function NoiseDashboard() {
                 "absolute right-0 top-full mt-1 w-72 rounded-lg border shadow-lg z-50 py-1",
                 isDark ? "border-slate-700 bg-slate-800" : "border-slate-200 bg-white"
               )}>
-                {DEMO_DEVICES.map(d => (
+                {devices.map(d => (
                   <button
                     key={d.id}
                     onClick={() => { setSelectedDevice(d.id); setShowDeviceDropdown(false); }}
@@ -269,19 +304,53 @@ export function NoiseDashboard() {
               </div>
             )}
           </div>
-          <button className={cn(
-            "flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
-            isDark ? "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-          )}>
-            <Download className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Export</span>
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(p => !p)}
+              disabled={exporting || devices.length === 0}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors",
+                exporting ? "opacity-60 cursor-wait" : "",
+                isDark ? "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              )}
+            >
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              <span className="hidden sm:inline">{exporting ? exportMsg : 'Export'}</span>
+              {!exporting && <ChevronDown className="h-3 w-3 opacity-50" />}
+            </button>
+            {showExportMenu && !exporting && (
+              <div className={cn(
+                "absolute right-0 top-full mt-1 z-50 w-48 rounded-lg border shadow-lg py-1",
+                isDark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"
+              )}>
+                {(['24h', '7d', '30d'] as ExportPeriod[]).map(p => (
+                  <button
+                    key={p}
+                    onClick={async () => {
+                      setShowExportMenu(false);
+                      setExporting(true);
+                      try {
+                        await exportNoiseReport(devices, p, m => setExportMsg(m));
+                      } catch (e) { console.error('[Export]', e); }
+                      finally { setExporting(false); setExportMsg(''); }
+                    }}
+                    className={cn(
+                      "w-full text-left px-3 py-2 text-sm transition-colors",
+                      isDark ? "text-slate-300 hover:bg-slate-700" : "text-slate-700 hover:bg-slate-50"
+                    )}
+                  >
+                    {p === '24h' ? '📊 Last 24 Hours' : p === '7d' ? '📊 Last 7 Days' : '📊 Last 30 Days'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
-        <StatCard title="Active Sensors" value={`${onlineDevices}/${DEMO_DEVICES.length}`} icon={Radio} status="normal">
+        <StatCard title="Active Sensors" value={`${onlineDevices}/${devices.length}`} icon={Radio} status="normal">
           <div className="flex items-center gap-1.5 mt-1">
             <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             <span className={cn("text-xs", isDark ? "text-slate-500" : "text-slate-400")}>{onlineDevices} online</span>
@@ -293,8 +362,8 @@ export function NoiseDashboard() {
             {compliance.exceeded} exceedance{compliance.exceeded !== 1 ? 's' : ''}
           </div>
         </StatCard>
-        <StatCard title="Pending Alerts" value="2" icon={AlertTriangle} status="warning">
-          <div className={cn("text-xs mt-1", isDark ? "text-slate-500" : "text-slate-400")}>1 high severity</div>
+        <StatCard title="Pending Alerts" value="0" icon={AlertTriangle} status="normal">
+          <div className={cn("text-xs mt-1", isDark ? "text-slate-500" : "text-slate-400")}>No active alerts</div>
         </StatCard>
       </div>
 
@@ -386,7 +455,7 @@ export function NoiseDashboard() {
             </div>
             <div className="h-[280px] w-full min-w-0">
               <SafeChartContainer>
-                <AreaChart data={realtimeData} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
+                <AreaChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -10 }}>
                   <defs>
                     <linearGradient id="leqGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.25} />
@@ -517,7 +586,7 @@ export function NoiseDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {DEMO_DEVICES.map(d => {
+                  {devices.map(d => {
                     const s = getNoiseStatus(d.leq);
                     return (
                       <tr
