@@ -21,6 +21,7 @@ const AdminPanel = React.lazy(() => import('@/app/pages/AdminPanel').then(m => (
 const NoiseDashboard = React.lazy(() => import('@/app/pages/NoiseDashboard').then(m => ({ default: m.NoiseDashboard })));
 const DustDashboard = React.lazy(() => import('@/app/pages/DustDashboard').then(m => ({ default: m.DustDashboard })));
 const EnvironmentalMonitoring = React.lazy(() => import('@/app/pages/EnvironmentalMonitoring').then(m => ({ default: m.EnvironmentalMonitoring })));
+const DigitalTwinPortfolio = React.lazy(() => import('@/app/pages/DigitalTwin/Portfolio').then(m => ({ default: m.Portfolio })));
 
 import { ProfileProvider } from '@/app/utils/ProfileContext';
 import { AuthProvider, useAuth } from '@/app/utils/AuthContext';
@@ -240,6 +241,8 @@ export default function App() {
                     <Route path="environment/noise" element={<NoiseDashboard />} />
                     <Route path="environment/dust" element={<DustDashboard />} />
                     <Route path="bim" element={<BIMTwins />} />
+                    <Route path="digital-twin-v2" element={<DigitalTwinPortfolio />} />
+                    <Route path="digital-twin-v2/:propertyId" element={<DigitalTwinPortfolio />} />
                     <Route path="settings" element={<Settings />} />
                     <Route path="admin" element={<AdminPanel />} />
                     <Route path="*" element={<Navigate to="/" replace />} />

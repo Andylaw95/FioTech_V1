@@ -1124,6 +1124,64 @@ function withForUser(path: string, forUser?: string): string {
   return `${path}${sep}forUser=${encodeURIComponent(forUser)}`;
 }
 
+// ── BIM IOC types ──────────────────────────────────────────────
+export interface PropertyGeo {
+  propertyId: string;
+  lat: number;
+  lng: number;
+  footprint?: unknown | null;
+  storeys?: number;
+  heightMeters?: number;
+  updatedAt?: string;
+}
+
+export interface BimModelRef {
+  propertyId: string;
+  name: string;
+  version: string;
+  fragUrl?: string | null;
+  ifcUrl?: string | null;
+  tilesetUrl?: string | null;
+  isDefault: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BimDeviceMapping {
+  propertyId: string;
+  expressId: string;
+  deviceId: string;
+  storey?: string;
+  x?: number; y?: number; z?: number;
+  updatedAt?: string;
+}
+
+export type SafetyAlarmType = 'water' | 'fire' | 'smoke';
+export type SafetyAlarmStatus =
+  | 'pending' | 'acknowledged' | 'in_progress' | 'resolved' | 'false_alarm';
+
+export interface SafetyAlarm {
+  id: number;
+  property_id: string;
+  property_name?: string | null;
+  device_id: string;
+  device_name?: string | null;
+  alarm_type: SafetyAlarmType;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  source_attr?: string | null;
+  spatial_id?: string | null;
+  storey?: string | null;
+  location_text?: string | null;
+  occurred_at: string;
+  status: SafetyAlarmStatus;
+  acknowledged_by?: string | null;
+  acknowledged_at?: string | null;
+  resolved_by?: string | null;
+  resolved_at?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ===============================================================
 // API methods
 // ===============================================================
@@ -1506,5 +1564,55 @@ export const api = {
         includeDevices: options?.includeDevices ?? true,
         removeFromSource: options?.removeFromSource ?? false,
       }),
+    }),
+
+  // ── BIM IOC — Phase 0 endpoints ──────────────────────
+  getPropertyGeos: (): Promise<{ geos: PropertyGeo[] }> =>
+    fetchWithAuth('/properties/geo'),
+  setPropertyGeo: (
+    propertyId: string,
+    geo: { lat: number; lng: number; footprint?: unknown; storeys?: number; heightMeters?: number },
+  ): Promise<{ ok: true }> =>
+    fetchWithAuth(`/properties/${encodeURIComponent(propertyId)}/geo`, {
+      method: 'PUT',
+      body: JSON.stringify(geo),
+    }),
+  getPropertyBim: (propertyId: string): Promise<{ model: BimModelRef | null; geo: PropertyGeo | null }> =>
+    fetchWithAuth(`/properties/${encodeURIComponent(propertyId)}/bim`),
+  getBimDeviceMap: (propertyId: string): Promise<{ mappings: BimDeviceMapping[] }> =>
+    fetchWithAuth(`/properties/${encodeURIComponent(propertyId)}/bim/map`),
+  listSafetyAlarms: (
+    opts: { propertyId?: string; status?: SafetyAlarmStatus; limit?: number } = {},
+  ): Promise<{ alarms: SafetyAlarm[] }> => {
+    const q = new URLSearchParams();
+    if (opts.propertyId) q.set('propertyId', opts.propertyId);
+    if (opts.status) q.set('status', opts.status);
+    if (opts.limit) q.set('limit', String(opts.limit));
+    const qs = q.toString();
+    return fetchWithAuth(`/safety-alarms${qs ? `?${qs}` : ''}`);
+  },
+  createSafetyAlarm: (body: {
+    alarm_type: 'water' | 'fire' | 'smoke';
+    property_id: string;
+    device_id: string;
+    property_name?: string;
+    device_name?: string;
+    severity?: 'critical' | 'high' | 'medium' | 'low';
+    source_attr?: string;
+    spatial_id?: string;
+    storey?: string;
+    location_text?: string;
+    occurred_at?: string;
+    raw_payload?: Record<string, unknown>;
+  }): Promise<{ alarm: SafetyAlarm }> =>
+    fetchWithAuth('/safety-alarms', { method: 'POST', body: JSON.stringify(body) }),
+  updateSafetyAlarmStatus: (
+    id: number,
+    status: SafetyAlarmStatus,
+    notes?: string,
+  ): Promise<{ alarm: SafetyAlarm }> =>
+    fetchWithAuth(`/safety-alarms/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, notes }),
     }),
 };

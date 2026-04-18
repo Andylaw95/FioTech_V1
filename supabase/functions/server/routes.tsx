@@ -18,6 +18,14 @@ import {
   toSigned16, toSigned32, toSigned16LE,
   BROKEN_SENSOR_FIELDS, stripBrokenFields,
 } from "./shared/payload_decoders.ts";
+import {
+  initBim,
+  getPropertyGeo, setPropertyGeo, listPropertyGeos,
+  setBimDeviceMapping, getBimDeviceMappingsForProperty, getBimDeviceMappingByExpressId,
+  getDefaultBimModel, upsertBimModel,
+  insertSafetyAlarm, listSafetyAlarms, updateSafetyAlarmStatus,
+  mirrorLegacyAlarmToSafety,
+} from "./shared/bim_helpers.ts";
 
 // ── SUPABASE CLIENT (service role — NEVER expose to frontend) ──
 // Minimal config: disable session persistence & auto-refresh to reduce memory footprint
@@ -34,6 +42,7 @@ const supabase = (() => {
     );
     // Share with kv_store — single client for entire function
     kv.init(c);
+    initBim(c);
     console.log("[FioTec Routes] Supabase client created & shared");
     return c;
   } catch (e) {
@@ -3857,6 +3866,201 @@ export function registerRoutes(app: any) {
     } catch (e) {
       console.log("Audit log error:", errorMessage(e));
       return c.json({ error: "Failed to fetch audit log." }, 500);
+    }
+  });
+
+  // ── BIM IOC ROUTES (Phase 0) ────────────────────────────
+  // /properties/geo         — list lat/lng/footprint for portfolio map
+  // /properties/:id/geo     — PUT seed/update one property's geo
+  // /properties/:id/bim     — GET default bim_models row for a property
+  // /properties/:id/bim     — PUT upsert a bim_models entry
+  // /properties/:id/bim/map — GET bim_device_map entries
+  // /properties/:id/bim/map — PUT upsert a single mapping
+  // /safety-alarms          — GET list (optional ?propertyId=&status=)
+  // /safety-alarms          — POST create (auth'd user or webhook)
+  // /safety-alarms/:id/status — PATCH update status/notes
+
+  app.get("/make-server-4916a0b9/properties/geo", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    try {
+      const geos = await listPropertyGeos();
+      return c.json({ geos });
+    } catch (e) {
+      return c.json({ error: "Failed to list property geo.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.put("/make-server-4916a0b9/properties/:id/geo", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const body = await c.req.json();
+      const lat = typeof body.lat === "number" ? body.lat : NaN;
+      const lng = typeof body.lng === "number" ? body.lng : NaN;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ error: "lat and lng are required numbers." }, 400);
+      await setPropertyGeo({
+        propertyId: id,
+        lat, lng,
+        footprint: body.footprint || null,
+        storeys: typeof body.storeys === "number" ? body.storeys : undefined,
+        heightMeters: typeof body.heightMeters === "number" ? body.heightMeters : undefined,
+      });
+      return c.json({ ok: true });
+    } catch (e) {
+      return c.json({ error: "Failed to set property geo.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.get("/make-server-4916a0b9/properties/:id/bim", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const [model, geo] = await Promise.all([getDefaultBimModel(id), getPropertyGeo(id)]);
+      return c.json({ model, geo });
+    } catch (e) {
+      return c.json({ error: "Failed to get BIM model.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.put("/make-server-4916a0b9/properties/:id/bim", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const body = await c.req.json();
+      const name = sanitizeString(body.name) || "default";
+      const version = sanitizeString(body.version) || "v1";
+      const saved = await upsertBimModel({
+        propertyId: id,
+        name,
+        version,
+        fragUrl: body.fragUrl ? sanitizeUrl(body.fragUrl) : null,
+        ifcUrl: body.ifcUrl ? sanitizeUrl(body.ifcUrl) : null,
+        tilesetUrl: body.tilesetUrl ? sanitizeUrl(body.tilesetUrl) : null,
+        isDefault: !!body.isDefault,
+        metadata: body.metadata || {},
+      });
+      return c.json({ model: saved });
+    } catch (e) {
+      return c.json({ error: "Failed to upsert BIM model.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.get("/make-server-4916a0b9/properties/:id/bim/map", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const mappings = await getBimDeviceMappingsForProperty(id);
+      return c.json({ mappings });
+    } catch (e) {
+      return c.json({ error: "Failed to list BIM device map.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.put("/make-server-4916a0b9/properties/:id/bim/map", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const body = await c.req.json();
+      const expressId = sanitizeString(body.expressId);
+      const deviceId = sanitizeString(body.deviceId);
+      if (!expressId || !deviceId) return c.json({ error: "expressId and deviceId required." }, 400);
+      await setBimDeviceMapping({
+        propertyId: id,
+        expressId,
+        deviceId,
+        storey: body.storey ? sanitizeString(body.storey) : undefined,
+        x: typeof body.x === "number" ? body.x : undefined,
+        y: typeof body.y === "number" ? body.y : undefined,
+        z: typeof body.z === "number" ? body.z : undefined,
+      });
+      return c.json({ ok: true });
+    } catch (e) {
+      return c.json({ error: "Failed to set BIM device mapping.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.get("/make-server-4916a0b9/safety-alarms", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    try {
+      const propertyId = sanitizeString(c.req.query("propertyId") || "") || undefined;
+      const statusQ = sanitizeString(c.req.query("status") || "") || undefined;
+      const limitRaw = parseInt(c.req.query("limit") || "100", 10);
+      const limitQ = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 100;
+      const rows = await listSafetyAlarms({
+        propertyId,
+        status: statusQ as any,
+        limit: limitQ,
+      });
+      return c.json({ alarms: rows });
+    } catch (e) {
+      return c.json({ error: "Failed to list safety alarms.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.post("/make-server-4916a0b9/safety-alarms", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    try {
+      const body = await c.req.json();
+      const alarm_type = sanitizeEnum(body.alarm_type, ["water", "fire", "smoke"], "");
+      const property_id = sanitizeString(body.property_id);
+      const device_id = sanitizeString(body.device_id);
+      if (!alarm_type || !property_id || !device_id) {
+        return c.json({ error: "alarm_type, property_id, device_id required." }, 400);
+      }
+      const row = await insertSafetyAlarm({
+        property_id,
+        property_name: body.property_name ? sanitizeString(body.property_name) : undefined,
+        device_id,
+        device_name: body.device_name ? sanitizeString(body.device_name) : undefined,
+        alarm_type: alarm_type as any,
+        severity: (sanitizeEnum(body.severity, ["critical", "high", "medium", "low"], "high")) as any,
+        source_attr: body.source_attr ? sanitizeString(body.source_attr) : undefined,
+        spatial_id: body.spatial_id ? sanitizeString(body.spatial_id) : undefined,
+        storey: body.storey ? sanitizeString(body.storey) : undefined,
+        location_text: body.location_text ? sanitizeString(body.location_text) : undefined,
+        occurred_at: body.occurred_at || undefined,
+        raw_payload: body.raw_payload || undefined,
+      });
+      return c.json({ alarm: row });
+    } catch (e) {
+      return c.json({ error: "Failed to insert safety alarm.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.patch("/make-server-4916a0b9/safety-alarms/:id/status", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const idRaw = sanitizeString(c.req.param("id"));
+    const id = idRaw ? parseInt(idRaw, 10) : NaN;
+    if (!Number.isFinite(id)) return c.json({ error: "Invalid alarm id." }, 400);
+    try {
+      const body = await c.req.json();
+      const status = sanitizeEnum(body.status, ["pending", "acknowledged", "in_progress", "resolved", "false_alarm"], "");
+      if (!status) return c.json({ error: "Invalid status." }, 400);
+      const notes = body.notes ? sanitizeString(body.notes) : undefined;
+      const updated = await updateSafetyAlarmStatus(
+        id,
+        status as any,
+        { id: (auth as any).userId, email: (auth as any).email },
+        notes,
+      );
+      await auditLog("safety_alarm_status", (auth as any).userId, (auth as any).email, String(id), { status });
+      return c.json({ alarm: updated });
+    } catch (e) {
+      return c.json({ error: "Failed to update safety alarm.", detail: errorMessage(e) }, 500);
     }
   });
 
