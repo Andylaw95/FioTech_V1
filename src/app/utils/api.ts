@@ -46,12 +46,28 @@ let _warmupPromise: Promise<'success' | 'exhausted'> | null = null;
 // initial data-load phase. Without this, the worker frequently
 // recycles between warmup success and the first data requests,
 // causing the exact timeout storms seen in production.
+//
+// OPT-OUT: when VITE_DISABLE_BROWSER_KEEPALIVE=true (Vercel env), we
+// rely on a server-side cron (.github/workflows/keepalive.yml) instead.
+// This drops ~80 redundant requests per signed-in browser per hour.
 let _keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
 let _keepAliveVisibilityHandler: (() => void) | null = null;
 
+function browserKeepAliveDisabled(): boolean {
+  try {
+    return (import.meta.env?.VITE_DISABLE_BROWSER_KEEPALIVE ?? '') === 'true';
+  } catch {
+    return false;
+  }
+}
+
 function startKeepAlive() {
   if (_keepAliveTimer) return;
+  if (browserKeepAliveDisabled()) {
+    console.debug('[FioTec] Browser keep-alive disabled (server cron is active)');
+    return;
+  }
   const url = `${BASE_URL}/health`;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${publicAnonKey}`,

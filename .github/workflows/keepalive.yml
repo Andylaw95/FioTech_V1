@@ -1,0 +1,56 @@
+name: Edge Function Keep-Alive
+
+# Pings the Supabase Edge Function /health endpoint every 5 minutes to keep the
+# worker warm. Replaces the per-browser 15s keep-alive ping in src/app/utils/api.ts.
+#
+# Effect: every signed-in browser previously sent ~4 pings/min. Centralising to one
+# cron job per 5 min reduces redundant traffic and keeps the worker warm even when
+# no user is online (so the first user of the day skips the cold start).
+#
+# To enable the matching client-side opt-out, set this env var on Vercel:
+#   VITE_DISABLE_BROWSER_KEEPALIVE=true
+#
+# Required GitHub secrets:
+#   SUPABASE_PROJECT_ID  — e.g. wjvbojulgpmpblmterfy
+#   SUPABASE_ANON_KEY    — public anon JWT (safe to store as secret)
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes
+  workflow_dispatch: {}      # allow manual trigger
+
+concurrency:
+  group: edge-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Edge Function /health
+        env:
+          PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -eu
+          if [ -z "${PROJECT_ID:-}" ] || [ -z "${ANON_KEY:-}" ]; then
+            echo "::error::Missing SUPABASE_PROJECT_ID or SUPABASE_ANON_KEY secret"
+            exit 1
+          fi
+          URL="https://${PROJECT_ID}.supabase.co/functions/v1/make-server-4916a0b9/health"
+          for i in 1 2 3; do
+            CODE=$(curl -s -o /tmp/body -w "%{http_code}" \
+              --max-time 5 \
+              -H "Authorization: Bearer ${ANON_KEY}" \
+              -H "apikey: ${ANON_KEY}" \
+              "$URL" || echo "000")
+            echo "Attempt $i → HTTP $CODE"
+            case "$CODE" in
+              2*) echo "✓ keep-alive ok"; cat /tmp/body; exit 0 ;;
+            esac
+            sleep 3
+          done
+          echo "::warning::Keep-alive failed after 3 attempts (last code: $CODE)"
+          # Don't fail the workflow — cold-start is recoverable from the client side
+          exit 0

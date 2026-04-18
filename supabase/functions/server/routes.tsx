@@ -4,6 +4,20 @@ import {
   DEMO_PROPERTIES, DEMO_DEVICES, makeDemoGateways, makeDemoAlarms,
   DEFAULT_SETTINGS,
 } from "./seed_data.tsx";
+import {
+  errorMessage,
+  sanitizeString, sanitizeUrl, sanitizeNumber, sanitizeEnum,
+  safeMerge, safeCompare,
+  SETTINGS_ALLOWED_KEYS, PROFILE_ALLOWED_KEYS, DANGEROUS_KEYS,
+  MAX_STRING_LENGTH, MAX_URL_LENGTH,
+} from "./shared/validation.ts";
+import { rateLimit, getClientIp } from "./shared/rate_limit.ts";
+import {
+  LPP_TYPES, MILESIGHT_TYPES,
+  decodeCayenneLPP, decodeMilesightPayload,
+  toSigned16, toSigned32, toSigned16LE,
+  BROKEN_SENSOR_FIELDS, stripBrokenFields,
+} from "./shared/payload_decoders.ts";
 
 // ── SUPABASE CLIENT (service role — NEVER expose to frontend) ──
 // Minimal config: disable session persistence & auto-refresh to reduce memory footprint
@@ -51,38 +65,11 @@ async function ensureBucket() {
 }
 
 // ── HELPERS ──────────────────────────────────────────────
-
-// Known broken sensor fields — strip these from decoded data everywhere
-// AM308L#2 (24e124707e012685): PM2.5 and PM10 sensors are malfunctioning
-const BROKEN_SENSOR_FIELDS: Record<string, string[]> = {
-  "24e124707e012685": ["pm2_5", "pm10", "pm25"],
-};
-function stripBrokenFields(eui: string, decoded: Record<string, any> | null): void {
-  if (!decoded) return;
-  const patterns = BROKEN_SENSOR_FIELDS[eui.toLowerCase()];
-  if (!patterns) return;
-  for (const k of Object.keys(decoded)) {
-    const kl = k.toLowerCase();
-    if (patterns.some(p => kl.includes(p))) delete decoded[k];
-  }
-}
-
-function errorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  return String(e);
-}
-
-// ── CONSTANT-TIME COMPARISON (prevents timing attacks on tokens) ──
-function safeCompare(a: string, b: string): boolean {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  const encoder = new TextEncoder();
-  const bufA = encoder.encode(a);
-  const bufB = encoder.encode(b);
-  if (bufA.length !== bufB.length) return false;
-  let result = 0;
-  for (let i = 0; i < bufA.length; i++) result |= bufA[i] ^ bufB[i];
-  return result === 0;
-}
+// (errorMessage, safeCompare, sanitize*, safeMerge, rateLimit, getClientIp,
+//  LPP_TYPES, decodeCayenneLPP, decodeMilesightPayload, stripBrokenFields,
+//  BROKEN_SENSOR_FIELDS, toSigned16/32/LE, SETTINGS_ALLOWED_KEYS,
+//  PROFILE_ALLOWED_KEYS, DANGEROUS_KEYS, MAX_STRING_LENGTH, MAX_URL_LENGTH)
+// are imported from ./shared/* — see top of file.
 
 // ── AUTH ─────────────────────────────────────────────────
 
@@ -207,94 +194,10 @@ function resolveTargetUser(auth: { userId: string; email: string }, c: any): str
 }
 
 // ── INPUT VALIDATION ─────────────────────────────────────
-
-const MAX_STRING_LENGTH = 500;
-const MAX_URL_LENGTH = 2048;
-const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-
-function sanitizeString(value: unknown, maxLength = MAX_STRING_LENGTH): string {
-  if (typeof value !== "string") return "";
-  return value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").trim().slice(0, maxLength);
-}
-
-function sanitizeUrl(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const cleaned = value.trim().slice(0, MAX_URL_LENGTH);
-  if (cleaned && !cleaned.startsWith("http://") && !cleaned.startsWith("https://")) return "";
-  return cleaned;
-}
-
-function sanitizeNumber(value: unknown, min: number, max: number, fallback: number): number {
-  if (typeof value !== "number" || isNaN(value)) return fallback;
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-function sanitizeEnum(value: unknown, allowed: string[], fallback: string): string {
-  if (typeof value !== "string") return fallback;
-  return allowed.includes(value) ? value : fallback;
-}
-
-// Allowed top-level keys for settings merge (prevents injection of arbitrary fields)
-const SETTINGS_ALLOWED_KEYS = new Set([
-  "profile", "notifications", "dashboard", "security", "theme",
-  "language", "timezone", "dateFormat", "displayDensity",
-]);
-const PROFILE_ALLOWED_KEYS = new Set([
-  "name", "phone", "company", "avatar", "bio", "location",
-]);
-
-function safeMerge(target: any, source: any, depth = 0, allowedKeys?: Set<string>): any {
-  if (depth > 5) return target;
-  if (!source || typeof source !== "object" || Array.isArray(source)) return target;
-  const result = { ...target };
-  for (const key of Object.keys(source)) {
-    if (DANGEROUS_KEYS.has(key)) continue;
-    // At depth 0, enforce whitelist of allowed top-level keys
-    if (allowedKeys && !allowedKeys.has(key)) continue;
-    if (typeof source[key] === "object" && source[key] !== null && !Array.isArray(source[key])) {
-      // For profile sub-object, enforce profile-specific whitelist
-      const childAllowed = key === "profile" ? PROFILE_ALLOWED_KEYS : undefined;
-      result[key] = safeMerge(result[key] || {}, source[key], depth + 1, childAllowed);
-    } else {
-      result[key] = source[key];
-    }
-  }
-  return result;
-}
+// (moved to ./shared/validation.ts)
 
 // ── RATE LIMITER ─────────────────────────────────────────
-
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
-let _lastRateLimitCleanup = Date.now();
-
-function rateLimit(ip: string, maxRequests: number, windowMs: number): boolean {
-  const now = Date.now();
-  // Lazy cleanup — replaces setInterval to eliminate persistent timer
-  if (now - _lastRateLimitCleanup > 60000) {
-    _lastRateLimitCleanup = now;
-    for (const [key, val] of rateLimitStore.entries()) {
-      if (now > val.resetAt) rateLimitStore.delete(key);
-    }
-  }
-  const entry = rateLimitStore.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(ip, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (entry.count >= maxRequests) return false;
-  entry.count++;
-  return true;
-}
-
-function getClientIp(c: any): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const parts = xff.split(",").map((s: string) => s.trim()).filter(Boolean);
-    // Use the leftmost (first) IP — this is the original client IP
-    return parts[0] || "unknown";
-  }
-  return c.req.header("x-real-ip") || "unknown";
-}
+// (moved to ./shared/rate_limit.ts)
 
 // ── KV CACHE ─────────────────────────────────────────────
 
@@ -772,242 +675,6 @@ function generateWebhookToken(): string {
   return "whk_" + Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// ══════════════════════════════════════════════════════════
-// CAYENNE LPP DECODER — decodes base64/hex LoRaWAN payloads
-// ══════════════════════════════════════════════════════════
-
-const LPP_TYPES: Record<number, { name: string; size: number; divisor: number; signed: boolean }> = {
-  0: { name: "digital_input", size: 1, divisor: 1, signed: false },
-  1: { name: "digital_output", size: 1, divisor: 1, signed: false },
-  2: { name: "analog_input", size: 2, divisor: 100, signed: true },
-  3: { name: "analog_output", size: 2, divisor: 100, signed: true },
-  101: { name: "illuminance", size: 2, divisor: 1, signed: false },
-  102: { name: "presence", size: 1, divisor: 1, signed: false },
-  103: { name: "temperature", size: 2, divisor: 10, signed: true },
-  104: { name: "relative_humidity", size: 1, divisor: 2, signed: false },
-  113: { name: "accelerometer", size: 6, divisor: 1000, signed: true },
-  115: { name: "barometric_pressure", size: 2, divisor: 10, signed: false },
-  116: { name: "voltage", size: 2, divisor: 100, signed: false },
-  117: { name: "current", size: 2, divisor: 1000, signed: false },
-  118: { name: "frequency", size: 4, divisor: 1, signed: false },
-  120: { name: "percentage", size: 1, divisor: 1, signed: false },
-  121: { name: "altitude", size: 2, divisor: 1, signed: true },
-  125: { name: "concentration", size: 2, divisor: 1, signed: false },
-  128: { name: "power", size: 2, divisor: 1, signed: false },
-  130: { name: "distance", size: 4, divisor: 1000, signed: false },
-  132: { name: "energy", size: 4, divisor: 1000, signed: false },
-  133: { name: "direction", size: 2, divisor: 1, signed: false },
-  134: { name: "unix_time", size: 4, divisor: 1, signed: false },
-  136: { name: "colour", size: 3, divisor: 1, signed: false },
-  142: { name: "switch", size: 1, divisor: 1, signed: false },
-};
-
-// Milesight AM308L extended types (vendor-specific on fPort 85)
-const MILESIGHT_TYPES: Record<number, { name: string; size: number; divisor: number; signed: boolean }> = {
-  ...LPP_TYPES,
-  // Override/add Milesight-specific sensor IDs
-  // Channel 3 = temperature (0x67), Channel 4 = humidity (0x68), etc.
-};
-
-function decodeCayenneLPP(base64Data: string): Record<string, number> | null {
-  try {
-    // Decode base64 to byte array
-    const binary = atob(base64Data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    const result: Record<string, number> = {};
-    let pos = 0;
-
-    while (pos < bytes.length - 1) {
-      const channel = bytes[pos++];
-      if (pos >= bytes.length) break;
-      const typeId = bytes[pos++];
-
-      const typeDef = LPP_TYPES[typeId];
-      if (!typeDef) {
-        // Unknown type — try to skip intelligently or break
-        break;
-      }
-      if (pos + typeDef.size > bytes.length) break;
-
-      const fieldName = `${typeDef.name}_${channel}`;
-
-      if (typeId === 113) {
-        // Accelerometer: 3x int16
-        const x = toSigned16(bytes[pos] << 8 | bytes[pos + 1]) / typeDef.divisor;
-        const y = toSigned16(bytes[pos + 2] << 8 | bytes[pos + 3]) / typeDef.divisor;
-        const z = toSigned16(bytes[pos + 4] << 8 | bytes[pos + 5]) / typeDef.divisor;
-        result[`accelerometer_x_${channel}`] = Math.round(x * 1000) / 1000;
-        result[`accelerometer_y_${channel}`] = Math.round(y * 1000) / 1000;
-        result[`accelerometer_z_${channel}`] = Math.round(z * 1000) / 1000;
-        pos += 6;
-        continue;
-      }
-
-      let rawValue = 0;
-      for (let b = 0; b < typeDef.size; b++) {
-        rawValue = (rawValue << 8) | bytes[pos + b];
-      }
-      pos += typeDef.size;
-
-      if (typeDef.signed && typeDef.size === 2) rawValue = toSigned16(rawValue);
-      else if (typeDef.signed && typeDef.size === 4) rawValue = toSigned32(rawValue);
-
-      result[fieldName] = Math.round((rawValue / typeDef.divisor) * 100) / 100;
-    }
-
-    return Object.keys(result).length > 0 ? result : null;
-  } catch {
-    return null;
-  }
-}
-
-function toSigned16(val: number): number { return val > 0x7FFF ? val - 0x10000 : val; }
-function toSigned32(val: number): number { return val > 0x7FFFFFFF ? val - 0x100000000 : val; }
-
-// Milesight multi-sensor decoder (fPort 85) — proprietary TLV format
-// Supports: AM308L, AM307, EM300, WS301, WS302, WS50x, VS121 and more
-function decodeMilesightPayload(base64Data: string): Record<string, number> | null {
-  try {
-    const binary = atob(base64Data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    const result: Record<string, number> = {};
-    let pos = 0;
-
-    while (pos < bytes.length - 1) {
-      const ch = bytes[pos++]; // channel
-      if (pos >= bytes.length) break;
-      const typeId = bytes[pos++]; // data type
-
-      // ── 0xFF channel: Milesight device config/info responses ──
-      if (ch === 0xFF) {
-        // Config responses are not sensor data — skip them gracefully
-        const configSizes: Record<number, number> = {
-          0x01: 1, 0x09: 2, 0x0A: 2, 0x0B: 4, 0x0F: 1,
-          0x11: 1, 0x14: 1, 0x15: 2, 0x16: 8, 0x17: 4,
-          0x03: 2, 0x04: 2,
-        };
-        const skip = configSizes[typeId];
-        if (skip !== undefined) { pos += skip; continue; }
-        // Unknown 0xFF sub-type — can't determine size, stop parsing
-        break;
-      }
-
-      // Milesight uses Cayenne-like encoding but with specific channel/type combos
-      switch (typeId) {
-        case 0x67: { // Temperature (int16 LE, /10)
-          if (pos + 2 > bytes.length) return result;
-          const raw = bytes[pos] | (bytes[pos + 1] << 8);
-          result[`temperature_${ch}`] = toSigned16LE(raw) / 10;
-          pos += 2;
-          break;
-        }
-        case 0x68: { // Humidity (uint8, /2)
-          if (pos + 1 > bytes.length) return result;
-          result[`relative_humidity_${ch}`] = bytes[pos] / 2;
-          pos += 1;
-          break;
-        }
-        case 0x73: { // Barometric Pressure (uint16 LE, /10)
-          if (pos + 2 > bytes.length) return result;
-          const raw = bytes[pos] | (bytes[pos + 1] << 8);
-          result[`barometric_pressure_${ch}`] = raw / 10;
-          pos += 2;
-          break;
-        }
-        case 0x65: { // Illuminance (uint16 LE)
-          if (pos + 2 > bytes.length) return result;
-          const raw = bytes[pos] | (bytes[pos + 1] << 8);
-          result[`illuminance_${ch}`] = raw;
-          pos += 2;
-          break;
-        }
-        case 0x00: { // Digital input — PIR / water leak / generic (uint8)
-          if (pos + 1 > bytes.length) return result;
-          result[`digital_input_${ch}`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0x01: { // Digital output / leak status (uint8)
-          if (pos + 1 > bytes.length) return result;
-          result[`digital_${ch}`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0x7D: { // CO2 / TVOC / PM2.5 / PM10 — uint16 LE
-          if (pos + 2 > bytes.length) return result;
-          const raw = bytes[pos] | (bytes[pos + 1] << 8);
-          // 0xFFFF (65535) is a Milesight sensor error/warmup sentinel — skip it
-          if (raw === 0xFFFF) { pos += 2; break; }
-          // Channel mapping for AM308L:
-          // Ch 7 = CO2, Ch 8 = TVOC, Ch 9 = PM2.5 (some FW), Ch 11 = PM2.5, Ch 12 = PM10
-          if (ch === 7) result[`co2_${ch}`] = raw;
-          else if (ch === 8) result[`tvoc_${ch}`] = raw;
-          else if (ch === 9 || ch === 11) result[`pm2_5_${ch}`] = raw;
-          else if (ch === 12) result[`pm10_${ch}`] = raw;
-          else if (ch > 12) result[`pm10_${ch}`] = raw;
-          else result[`concentration_${ch}`] = raw;
-          pos += 2;
-          break;
-        }
-        case 0x75: { // Battery (uint8, percentage)
-          if (pos + 1 > bytes.length) return result;
-          result[`battery`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0xCB: { // Milesight PIR (uint8)
-          if (pos + 1 > bytes.length) return result;
-          result[`pir_${ch}`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0x5B: { // WS302 Sound Level Sensor data (7 bytes)
-          // Format: weighting(1) + Leq(2 LE) + Lmin(2 LE) + Lmax(2 LE), all dB values /10
-          if (pos + 7 > bytes.length) return result;
-          const weighting = bytes[pos]; // 0=A, 1=C, 2=Z
-          const leq = (bytes[pos + 1] | (bytes[pos + 2] << 8)) / 10;
-          const lmin = (bytes[pos + 3] | (bytes[pos + 4] << 8)) / 10;
-          const lmax = (bytes[pos + 5] | (bytes[pos + 6] << 8)) / 10;
-          result[`sound_level_leq`] = leq;
-          result[`sound_level_lmin`] = lmin;
-          result[`sound_level_lmax`] = lmax;
-          result[`sound_level_weighting`] = weighting; // 0=A, 1=C, 2=Z
-          pos += 7;
-          break;
-        }
-        case 0xE7: { // WS30x Door/Window status (1 byte)
-          if (pos + 1 > bytes.length) return result;
-          result[`door_status_${ch}`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0x71: { // Water leak (uint8) — used by EM300-SLD, WS50x
-          if (pos + 1 > bytes.length) return result;
-          result[`water_leak`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        default: {
-          // Unknown type — try common sizes or skip
-          if (typeId < 0x10) { pos += 1; break; }
-          if (typeId >= 0xD0 && typeId <= 0xDF) { pos += 2; break; } // Common 2-byte extended types
-          // Give up — can't determine size
-          return Object.keys(result).length > 0 ? result : null;
-        }
-      }
-    }
-
-    return Object.keys(result).length > 0 ? result : null;
-  } catch {
-    return null;
-  }
-}
-
-function toSigned16LE(val: number): number { return val > 0x7FFF ? val - 0x10000 : val; }
 
 // ── AUDIT LOG (M2) — persist admin actions to KV for forensics ──
 const AUDIT_LOG_TTL = 90 * 24 * 3600; // 90 days

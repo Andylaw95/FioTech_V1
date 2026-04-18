@@ -2,23 +2,26 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import fiotechLogo from '@/assets/fiotech-logo.png';
 import { Layout } from '@/app/components/Layout';
-import { Dashboard } from '@/app/pages/Dashboard';
-import { Devices } from '@/app/pages/Devices';
-import { Alarms } from '@/app/pages/Alarms';
-import { BIMTwins } from '@/app/pages/BIMTwins';
-import { Settings } from '@/app/pages/Settings';
-import { Buildings } from '@/app/pages/Buildings';
-import { BuildingDetails } from '@/app/pages/BuildingDetails';
 import { Login } from '@/app/pages/Login';
-import { WaterAlarms } from '@/app/pages/WaterAlarms';
-import { FireAlarms } from '@/app/pages/FireAlarms';
-import { SmokeAlarms } from '@/app/pages/SmokeAlarms';
-import { Gateways } from '@/app/pages/Gateways';
 
-import { AdminPanel } from '@/app/pages/AdminPanel';
-import { NoiseDashboard } from '@/app/pages/NoiseDashboard';
-import { DustDashboard } from '@/app/pages/DustDashboard';
-import { EnvironmentalMonitoring } from '@/app/pages/EnvironmentalMonitoring';
+// Code-split: heavy pages are lazy-loaded so the initial bundle stays small.
+// Login + Layout are eager to render the first paint without a fallback flash.
+const Dashboard = React.lazy(() => import('@/app/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Devices = React.lazy(() => import('@/app/pages/Devices').then(m => ({ default: m.Devices })));
+const Alarms = React.lazy(() => import('@/app/pages/Alarms').then(m => ({ default: m.Alarms })));
+const BIMTwins = React.lazy(() => import('@/app/pages/BIMTwins').then(m => ({ default: m.BIMTwins })));
+const Settings = React.lazy(() => import('@/app/pages/Settings').then(m => ({ default: m.Settings })));
+const Buildings = React.lazy(() => import('@/app/pages/Buildings').then(m => ({ default: m.Buildings })));
+const BuildingDetails = React.lazy(() => import('@/app/pages/BuildingDetails').then(m => ({ default: m.BuildingDetails })));
+const WaterAlarms = React.lazy(() => import('@/app/pages/WaterAlarms').then(m => ({ default: m.WaterAlarms })));
+const FireAlarms = React.lazy(() => import('@/app/pages/FireAlarms').then(m => ({ default: m.FireAlarms })));
+const SmokeAlarms = React.lazy(() => import('@/app/pages/SmokeAlarms').then(m => ({ default: m.SmokeAlarms })));
+const Gateways = React.lazy(() => import('@/app/pages/Gateways').then(m => ({ default: m.Gateways })));
+const AdminPanel = React.lazy(() => import('@/app/pages/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const NoiseDashboard = React.lazy(() => import('@/app/pages/NoiseDashboard').then(m => ({ default: m.NoiseDashboard })));
+const DustDashboard = React.lazy(() => import('@/app/pages/DustDashboard').then(m => ({ default: m.DustDashboard })));
+const EnvironmentalMonitoring = React.lazy(() => import('@/app/pages/EnvironmentalMonitoring').then(m => ({ default: m.EnvironmentalMonitoring })));
+
 import { ProfileProvider } from '@/app/utils/ProfileContext';
 import { AuthProvider, useAuth } from '@/app/utils/AuthContext';
 import { ThemeProvider } from '@/app/utils/ThemeContext';
@@ -208,6 +211,17 @@ export default function App() {
           <ThemeProvider>
             <ProfileProvider>
               <BrowserRouter>
+                <React.Suspense fallback={
+                  <div className="flex h-screen items-center justify-center bg-slate-50">
+                    <div className="flex flex-col items-center gap-3">
+                      <img src={fiotechLogo} alt="FioTec" className="h-12 object-contain" />
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-sm font-medium">Loading...</span>
+                      </div>
+                    </div>
+                  </div>
+                }>
                 <Routes>
                   <Route path="/" element={<Layout />}>
                     <Route index element={<Dashboard />} />
@@ -231,6 +245,7 @@ export default function App() {
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Route>
                 </Routes>
+                </React.Suspense>
               </BrowserRouter>
               <SpeedInsights />
             </ProfileProvider>
