@@ -30,8 +30,6 @@ import {
   Unplug,
   Activity,
   Pause,
-  Play,
-  Copy,
   Smartphone,
   Radio,
   Hash,
@@ -162,7 +160,7 @@ function DraggableDeviceChip({
 
   return (
     <div
-      ref={drag}
+      ref={(node) => { drag(node); }}
       className={clsx(
         "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all group/chip",
         canEdit ? "cursor-grab active:cursor-grabbing" : "cursor-default",
@@ -209,7 +207,7 @@ function AvailableDeviceChip({ device }: { device: Device }) {
 
   return (
     <div
-      ref={drag}
+      ref={(node) => { drag(node); }}
       className={clsx(
         "flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs transition-all cursor-grab active:cursor-grabbing",
         isDragging ? 'opacity-40 scale-95 shadow-lg border-blue-300 bg-blue-50' :
@@ -250,7 +248,7 @@ function GatewayDropZone({
 
   return (
     <div
-      ref={drop}
+      ref={(node) => { drop(node); }}
       className={clsx(
         "rounded-xl border-2 border-dashed p-3 transition-all min-h-[60px]",
         isOver && canDrop ? 'border-blue-400 bg-blue-50/60 shadow-inner' :
