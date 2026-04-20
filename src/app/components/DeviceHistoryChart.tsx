@@ -444,7 +444,7 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
         <div className={clsx(
           compact
             ? "flex gap-2 mb-3 overflow-x-auto pb-1"
-            : "grid gap-2 mb-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
+            : "grid gap-3 mb-5 grid-cols-2 sm:grid-cols-3"
         )}>
           {sortedMetrics.map((m) => {
             const MIcon = m.icon;
@@ -455,34 +455,37 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
                 key={m.key as string}
                 onClick={() => setSelectedMetricKey(m.key as string)}
                 className={clsx(
-                  "relative rounded-xl text-left transition-all border-2 cursor-pointer group",
-                  compact ? "p-1.5 shrink-0 min-w-[80px]" : "p-3",
+                  "relative rounded-xl text-left transition-all duration-150 cursor-pointer overflow-hidden",
+                  compact ? "p-1.5 shrink-0 min-w-[80px] border-2" : "p-4 border-2",
                   isActive
-                    ? "border-blue-500 bg-blue-50/60 shadow-sm"
-                    : "border-transparent bg-slate-50 hover:bg-slate-100 hover:border-slate-200"
+                    ? "border-blue-500 bg-blue-50/70 shadow-md"
+                    : "border-slate-100 bg-slate-50 hover:bg-white hover:border-slate-300 hover:shadow-sm"
                 )}
               >
-                <div className="flex items-center gap-1 mb-0.5">
-                  <MIcon className={clsx(compact ? "h-2.5 w-2.5" : "h-3.5 w-3.5")} style={{ color: m.color }} />
+                {/* Coloured accent bar on active */}
+                {!compact && isActive && (
+                  <div className="absolute top-0 left-0 right-0 h-1 rounded-t-xl" style={{ backgroundColor: m.color }} />
+                )}
+
+                <div className={clsx("flex items-center gap-1.5", !compact && isActive ? "mt-1" : "")}>
+                  <MIcon className={clsx(compact ? "h-2.5 w-2.5" : "h-4 w-4")} style={{ color: m.color }} />
                   <span className={clsx(
-                    compact ? "text-[10px]" : "text-xs",
-                    "font-medium truncate",
-                    isActive ? "text-blue-700" : "text-slate-500"
+                    compact ? "text-[10px]" : "text-sm",
+                    "font-semibold truncate",
+                    isActive ? "text-blue-700" : "text-slate-600"
                   )}>{m.label}</span>
                 </div>
-                <div className="flex items-baseline gap-1">
+
+                <div className={clsx("flex items-baseline gap-1.5", compact ? "mt-0.5" : "mt-2")}>
                   <span className={clsx(
                     "font-bold font-mono",
-                    compact ? "text-xs" : "text-lg",
-                    isActive ? "text-blue-900" : "text-slate-900"
+                    compact ? "text-xs" : "text-2xl",
+                    isActive ? "text-blue-900" : "text-slate-800"
                   )}>
                     {latest !== undefined ? (Number.isInteger(latest) ? latest : latest.toFixed(1)) : '—'}
                   </span>
-                  <span className={clsx(compact ? "text-[9px]" : "text-xs", "text-slate-400")}>{m.unit}</span>
+                  <span className={clsx(compact ? "text-[9px]" : "text-xs", "text-slate-400 font-medium")}>{m.unit}</span>
                 </div>
-                {isActive && (
-                  <div className="absolute bottom-0 left-1.5 right-1.5 h-0.5 rounded-full bg-blue-500" />
-                )}
               </button>
             );
           })}
