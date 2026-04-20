@@ -72,7 +72,6 @@ function AccountTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
     standard: 'bg-blue-50 text-blue-700 ring-blue-600/20 dark:bg-blue-900/30 dark:text-blue-300',
     testing: 'bg-amber-50 text-amber-700 ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-300',
-    demo: 'bg-slate-50 text-slate-700 ring-slate-600/20 dark:bg-slate-900/30 dark:text-slate-300',
   };
   return (
     <span className={cn(
@@ -1135,7 +1134,6 @@ function UserDetailPanel({ userId, onClose, onUserUpdated, previewData }: UserDe
                 >
                   <option value="standard">Standard</option>
                   <option value="testing">Testing</option>
-                  <option value="demo">Demo</option>
                 </select>
               </div>
             </div>
@@ -1359,10 +1357,9 @@ function CreateUserDialog({ open, onClose, onCreated }: { open: boolean; onClose
             >
               <option value="standard">Standard</option>
               <option value="testing">Testing</option>
-              <option value="demo">Demo</option>
             </select>
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-              Standard accounts get default seed data (properties, devices, gateways).
+              Standard accounts start empty — add real devices via the dashboard.
             </p>
           </div>
         </div>
@@ -1415,7 +1412,7 @@ export function AdminPanel() {
 
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
-  // Redirect non-admins (unless demo mode) — placed after all hooks
+  // Redirect non-admins — placed after all hooks
   if (!isAdmin) {
     return <Navigate to="/" replace />;
   }
@@ -1434,7 +1431,7 @@ export function AdminPanel() {
     total: users.length,
     standard: users.filter(u => u.accountType === 'standard').length,
     testing: users.filter(u => u.accountType === 'testing').length,
-    demo: users.filter(u => u.accountType === 'demo').length,
+
   };
 
   return (
@@ -1486,7 +1483,6 @@ export function AdminPanel() {
             { label: 'Total Users', value: stats.total, icon: Users, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/30' },
             { label: 'Standard', value: stats.standard, icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
             { label: 'Testing', value: stats.testing, icon: AlertTriangle, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30' },
-            { label: 'Demo', value: stats.demo, icon: Eye, color: 'text-slate-600 dark:text-slate-400', bg: 'bg-slate-50 dark:bg-slate-800' },
           ].map(({ label, value, icon: Icon, color, bg }) => (
             <div key={label} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
               <div className="flex items-center gap-3">
@@ -1529,7 +1525,6 @@ export function AdminPanel() {
                 <option value="all">All Types</option>
                 <option value="standard">Standard</option>
                 <option value="testing">Testing</option>
-                <option value="demo">Demo</option>
               </select>
             </div>
 

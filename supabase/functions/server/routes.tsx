@@ -1,7 +1,6 @@
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 import {
-  DEMO_PROPERTIES, DEMO_DEVICES, makeDemoGateways, makeDemoAlarms,
   DEFAULT_SETTINGS,
 } from "./seed_data.tsx";
 import {
@@ -294,17 +293,8 @@ async function getAccountType(userId: string): Promise<string> {
   }
 }
 
-function getCollectionDefaults(accountType: string, collection: string): any[] {
-  if (accountType === "demo") {
-    switch (collection) {
-      case "properties": return JSON.parse(JSON.stringify(DEMO_PROPERTIES));
-      case "devices": return JSON.parse(JSON.stringify(DEMO_DEVICES));
-      case "gateways": return makeDemoGateways();
-      case "alarms": return makeDemoAlarms();
-      default: return [];
-    }
-  }
-  // Standard and testing accounts start empty — no fake seed data
+function getCollectionDefaults(_accountType: string, _collection: string): any[] {
+  // All accounts start empty — real data comes from IoT devices
   return [];
 }
 
@@ -341,13 +331,7 @@ async function getUserSettings(userId: string): Promise<any> {
     console.log("getUserSettings: KV read failed:", errorMessage(e));
     kvFailed = true;
   }
-  const accountType = await getAccountType(userId);
-  let defaults;
-  if (accountType === "demo") {
-    defaults = { ...DEFAULT_SETTINGS, profile: { ...DEFAULT_SETTINGS.profile, name: "Demo User", email: "demo@example.com", role: "Viewer" } };
-  } else {
-    defaults = { ...DEFAULT_SETTINGS };
-  }
+  const defaults = { ...DEFAULT_SETTINGS };
   // ONLY seed defaults when settings genuinely don't exist (null/empty).
   // Do NOT overwrite on transient KV read failures — that would destroy user's saved profile.
   if (!kvFailed) {
@@ -433,33 +417,9 @@ function deriveGatewayStatus(gw: any): any {
   return { ...gw, status, signal };
 }
 
-function simulateDemoHeartbeats(gateways: any[]): any[] {
-  const now = Date.now();
-  return gateways.map((gw) => {
-    if (gw.id === "GW008") return { ...gw, lastSeen: new Date(now - 2 * 3600000).toISOString(), signal: 0 };
-    if (gw.id === "GW006") {
-      const warningAge = 6 * 60 * 1000 + Math.random() * 8 * 60 * 1000;
-      return { ...gw, lastSeen: new Date(now - warningAge).toISOString(), signal: Math.round(45 + Math.random() * 20) };
-    }
-    const jitterMs = Math.floor(Math.random() * 120000);
-    return { ...gw, lastSeen: new Date(now - jitterMs).toISOString() };
-  });
-}
-
 async function getGatewaysWithLiveStatus(userId: string): Promise<any[]> {
   const gateways = await getUserCollection(userId, "gateways");
-  const accountType = await getAccountType(userId);
-  let processed: any[];
-  if (accountType === "demo") {
-    processed = simulateDemoHeartbeats(gateways);
-    const key = uk(userId, "gateways");
-    cachedKvSet(key, processed).catch((e: unknown) => {
-      console.log("Non-fatal: demo heartbeats persist failed:", errorMessage(e));
-    });
-  } else {
-    processed = gateways;
-  }
-  return processed.map(deriveGatewayStatus);
+  return gateways.map(deriveGatewayStatus);
 }
 
 /** Convert an ISO timestamp to a human-friendly relative string. */
@@ -806,7 +766,7 @@ export function registerRoutes(app: any) {
       const email = sanitizeString(body.email, 254);
       const password = typeof body.password === "string" ? body.password : "";
       const name = sanitizeString(body.name, 100);
-      const accountType = sanitizeEnum(body.accountType, ["demo", "testing", "standard"], "standard");
+      const accountType = sanitizeEnum(body.accountType, ["testing", "standard"], "standard");
       if (!email || !password) return c.json({ error: "Email and password are required." }, 400);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: "Invalid email." }, 400);
       if (password.length < 8) return c.json({ error: "Password must be at least 8 characters." }, 400);
@@ -840,9 +800,7 @@ export function registerRoutes(app: any) {
       }
       await kvSetWithRetry(`account_type_${userId}`, accountType);
       accountTypeCache.set(userId, accountType);
-      const profileDefaults = accountType === "demo"
-        ? { name: name || "Demo User", email, role: "Viewer", company: "FioTec Solutions", phone: "" }
-        : accountType === "testing"
+      const profileDefaults = accountType === "testing"
         ? { name: name || "Test Engineer", email, role: "Engineer", company: "FioTec Solutions", phone: "" }
         : { name: name || email.split("@")[0], email, role: "Admin", company: "FioTec Solutions", phone: "" };
       await kvSetWithRetry(uk(userId, "settings"), { ...DEFAULT_SETTINGS, profile: profileDefaults });

@@ -1,7 +1,5 @@
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { supabase } from '@/app/utils/AuthContext';
-import { handleDemoRequest } from '@/app/utils/demoData';
-import { isDemoMode } from '@/app/utils/demoMode';
 
 const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-4916a0b9`;
 
@@ -381,11 +379,6 @@ function buildHeaders(
 }
 
 async function fetchWithAuth(path: string, options: RequestInit = {}) {
-  // ── Demo mode bypass — serve from static data, no network ──
-  if (isDemoMode()) {
-    return handleDemoRequest(path, options);
-  }
-
   const method = options.method || 'GET';
   const isRead = method === 'GET';
   const isBodyRequest = method === 'POST' || method === 'PUT' || method === 'PATCH';

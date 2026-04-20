@@ -1,9 +1,30 @@
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 import {
-  DEMO_PROPERTIES, DEMO_DEVICES, makeDemoGateways, makeDemoAlarms,
   DEFAULT_SETTINGS,
 } from "./seed_data.tsx";
+import {
+  errorMessage,
+  sanitizeString, sanitizeUrl, sanitizeNumber, sanitizeEnum,
+  safeMerge, safeCompare,
+  SETTINGS_ALLOWED_KEYS, PROFILE_ALLOWED_KEYS, DANGEROUS_KEYS,
+  MAX_STRING_LENGTH, MAX_URL_LENGTH,
+} from "./shared/validation.ts";
+import { rateLimit, getClientIp } from "./shared/rate_limit.ts";
+import {
+  LPP_TYPES, MILESIGHT_TYPES,
+  decodeCayenneLPP, decodeMilesightPayload,
+  toSigned16, toSigned32, toSigned16LE,
+  BROKEN_SENSOR_FIELDS, stripBrokenFields,
+} from "./shared/payload_decoders.ts";
+import {
+  initBim,
+  getPropertyGeo, setPropertyGeo, listPropertyGeos,
+  setBimDeviceMapping, getBimDeviceMappingsForProperty, getBimDeviceMappingByExpressId,
+  getDefaultBimModel, upsertBimModel,
+  insertSafetyAlarm, listSafetyAlarms, updateSafetyAlarmStatus,
+  mirrorLegacyAlarmToSafety,
+} from "./shared/bim_helpers.ts";
 
 // ── SUPABASE CLIENT (service role — NEVER expose to frontend) ──
 // Minimal config: disable session persistence & auto-refresh to reduce memory footprint
@@ -20,6 +41,7 @@ const supabase = (() => {
     );
     // Share with kv_store — single client for entire function
     kv.init(c);
+    initBim(c);
     console.log("[FioTec Routes] Supabase client created & shared");
     return c;
   } catch (e) {
@@ -51,41 +73,15 @@ async function ensureBucket() {
 }
 
 // ── HELPERS ──────────────────────────────────────────────
-
-// Known broken sensor fields — strip these from decoded data everywhere
-// AM308L#2 (24e124707e012685): PM2.5 and PM10 sensors are malfunctioning
-const BROKEN_SENSOR_FIELDS: Record<string, string[]> = {
-  "24e124707e012685": ["pm2_5", "pm10", "pm25"],
-};
-function stripBrokenFields(eui: string, decoded: Record<string, any> | null): void {
-  if (!decoded) return;
-  const patterns = BROKEN_SENSOR_FIELDS[eui.toLowerCase()];
-  if (!patterns) return;
-  for (const k of Object.keys(decoded)) {
-    const kl = k.toLowerCase();
-    if (patterns.some(p => kl.includes(p))) delete decoded[k];
-  }
-}
-
-function errorMessage(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  return String(e);
-}
-
-// ── CONSTANT-TIME COMPARISON (prevents timing attacks on tokens) ──
-function safeCompare(a: string, b: string): boolean {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  const encoder = new TextEncoder();
-  const bufA = encoder.encode(a);
-  const bufB = encoder.encode(b);
-  if (bufA.length !== bufB.length) return false;
-  let result = 0;
-  for (let i = 0; i < bufA.length; i++) result |= bufA[i] ^ bufB[i];
-  return result === 0;
-}
+// (errorMessage, safeCompare, sanitize*, safeMerge, rateLimit, getClientIp,
+//  LPP_TYPES, decodeCayenneLPP, decodeMilesightPayload, stripBrokenFields,
+//  BROKEN_SENSOR_FIELDS, toSigned16/32/LE, SETTINGS_ALLOWED_KEYS,
+//  PROFILE_ALLOWED_KEYS, DANGEROUS_KEYS, MAX_STRING_LENGTH, MAX_URL_LENGTH)
+// are imported from ./shared/* — see top of file.
 
 // ── AUTH ─────────────────────────────────────────────────
 
+// Admin identity from environment variables (fallback to defaults for backward compat)
 // Admin identity — FAIL CLOSED: no fallback values (server must have env vars configured)
 const MASTER_EMAILS = new Set(
   (Deno.env.get("MASTER_EMAILS") || "")
@@ -206,158 +202,10 @@ function resolveTargetUser(auth: { userId: string; email: string }, c: any): str
 }
 
 // ── INPUT VALIDATION ─────────────────────────────────────
-
-const MAX_STRING_LENGTH = 500;
-const MAX_URL_LENGTH = 2048;
-const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-
-function sanitizeString(value: unknown, maxLength = MAX_STRING_LENGTH): string {
-  if (typeof value !== "string") return "";
-  return value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").trim().slice(0, maxLength);
-}
-
-function sanitizeUrl(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const cleaned = value.trim().slice(0, MAX_URL_LENGTH);
-  if (cleaned && !cleaned.startsWith("http://") && !cleaned.startsWith("https://")) return "";
-  return cleaned;
-}
-
-function sanitizeNumber(value: unknown, min: number, max: number, fallback: number): number {
-  if (typeof value !== "number" || isNaN(value)) return fallback;
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
-
-function sanitizeEnum(value: unknown, allowed: string[], fallback: string): string {
-  if (typeof value !== "string") return fallback;
-  return allowed.includes(value) ? value : fallback;
-}
-
-// Allowed top-level keys for settings merge (prevents injection of arbitrary fields)
-const SETTINGS_ALLOWED_KEYS = new Set([
-  "profile", "notifications", "dashboard", "security", "theme",
-  "language", "timezone", "dateFormat", "displayDensity",
-]);
-const PROFILE_ALLOWED_KEYS = new Set([
-  "name", "phone", "company", "avatar", "bio", "location",
-]);
-
-function safeMerge(target: any, source: any, depth = 0, allowedKeys?: Set<string>): any {
-  if (depth > 5) return target;
-  if (!source || typeof source !== "object" || Array.isArray(source)) return target;
-  const result = { ...target };
-  for (const key of Object.keys(source)) {
-    if (DANGEROUS_KEYS.has(key)) continue;
-    // At depth 0, enforce whitelist of allowed top-level keys
-    if (allowedKeys && !allowedKeys.has(key)) continue;
-    if (typeof source[key] === "object" && source[key] !== null && !Array.isArray(source[key])) {
-      // For profile sub-object, enforce profile-specific whitelist
-      const childAllowed = key === "profile" ? PROFILE_ALLOWED_KEYS : undefined;
-      result[key] = safeMerge(result[key] || {}, source[key], depth + 1, childAllowed);
-    } else {
-      result[key] = source[key];
-    }
-  }
-  return result;
-}
+// (moved to ./shared/validation.ts)
 
 // ── RATE LIMITER ─────────────────────────────────────────
-
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
-let _lastRateLimitCleanup = Date.now();
-
-function rateLimit(ip: string, maxRequests: number, windowMs: number): boolean {
-  const now = Date.now();
-  // Lazy cleanup — replaces setInterval to eliminate persistent timer
-  if (now - _lastRateLimitCleanup > 60000) {
-    _lastRateLimitCleanup = now;
-    for (const [key, val] of rateLimitStore.entries()) {
-      if (now > val.resetAt) rateLimitStore.delete(key);
-    }
-  }
-  const entry = rateLimitStore.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(ip, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (entry.count >= maxRequests) return false;
-  entry.count++;
-  return true;
-}
-
-// ── WEBHOOK BRUTE-FORCE PROTECTION ──────────────────────
-// Tracks failed webhook auth attempts per IP with progressive lockout.
-// After MAX_FAILURES within the window, the IP is blocked for an escalating duration.
-const webhookFailStore = new Map<string, { failures: number; resetAt: number; lockedUntil: number }>();
-
-function webhookAuthGate(ip: string): { allowed: boolean; retryAfterSec?: number } {
-  const now = Date.now();
-  const MAX_FAILURES = 5;
-  const WINDOW_MS = 5 * 60 * 1000; // 5-minute failure window
-  const entry = webhookFailStore.get(ip);
-  if (!entry || now > entry.resetAt) return { allowed: true };
-  if (entry.lockedUntil > now) {
-    return { allowed: false, retryAfterSec: Math.ceil((entry.lockedUntil - now) / 1000) };
-  }
-  if (entry.failures >= MAX_FAILURES) {
-    // Progressive lockout: 1 min, 5 min, 15 min (based on how far over the limit)
-    const lockMs = Math.min(15 * 60 * 1000, 60 * 1000 * Math.pow(3, Math.floor((entry.failures - MAX_FAILURES) / 3)));
-    entry.lockedUntil = now + lockMs;
-    return { allowed: false, retryAfterSec: Math.ceil(lockMs / 1000) };
-  }
-  return { allowed: true };
-}
-
-function recordWebhookAuthFailure(ip: string): void {
-  const now = Date.now();
-  const WINDOW_MS = 5 * 60 * 1000;
-  const entry = webhookFailStore.get(ip);
-  if (!entry || now > entry.resetAt) {
-    webhookFailStore.set(ip, { failures: 1, resetAt: now + WINDOW_MS, lockedUntil: 0 });
-  } else {
-    entry.failures++;
-  }
-}
-
-function clearWebhookAuthFailures(ip: string): void {
-  webhookFailStore.delete(ip);
-}
-
-// ── FILE MAGIC BYTES VALIDATION ─────────────────────────
-// Validates actual file content against declared MIME type to prevent
-// attackers from uploading executables/scripts with spoofed Content-Type.
-function validateMagicBytes(buffer: Uint8Array, declaredType: string): boolean {
-  if (buffer.length < 12) return false;
-  switch (declaredType) {
-    case "image/png":
-      // PNG: 89 50 4E 47 0D 0A 1A 0A
-      return buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47
-          && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A;
-    case "image/jpeg":
-      // JPEG: FF D8 FF
-      return buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
-    case "image/webp":
-      // WebP: RIFF....WEBP
-      return buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
-          && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
-    case "image/gif":
-      // GIF: GIF87a or GIF89a
-      return buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38
-          && (buffer[4] === 0x37 || buffer[4] === 0x39) && buffer[5] === 0x61;
-    default:
-      return false;
-  }
-}
-
-function getClientIp(c: any): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const parts = xff.split(",").map((s: string) => s.trim()).filter(Boolean);
-    // Use the leftmost (first) IP — this is the original client IP
-    return parts[0] || "unknown";
-  }
-  return c.req.header("x-real-ip") || "unknown";
-}
+// (moved to ./shared/rate_limit.ts)
 
 // ── KV CACHE ─────────────────────────────────────────────
 
@@ -445,17 +293,8 @@ async function getAccountType(userId: string): Promise<string> {
   }
 }
 
-function getCollectionDefaults(accountType: string, collection: string): any[] {
-  if (accountType === "demo") {
-    switch (collection) {
-      case "properties": return JSON.parse(JSON.stringify(DEMO_PROPERTIES));
-      case "devices": return JSON.parse(JSON.stringify(DEMO_DEVICES));
-      case "gateways": return makeDemoGateways();
-      case "alarms": return makeDemoAlarms();
-      default: return [];
-    }
-  }
-  // Standard and testing accounts start empty — no fake seed data
+function getCollectionDefaults(_accountType: string, _collection: string): any[] {
+  // All accounts start empty — real data comes from IoT devices
   return [];
 }
 
@@ -492,13 +331,7 @@ async function getUserSettings(userId: string): Promise<any> {
     console.log("getUserSettings: KV read failed:", errorMessage(e));
     kvFailed = true;
   }
-  const accountType = await getAccountType(userId);
-  let defaults;
-  if (accountType === "demo") {
-    defaults = { ...DEFAULT_SETTINGS, profile: { ...DEFAULT_SETTINGS.profile, name: "Demo User", email: "demo@example.com", role: "Viewer" } };
-  } else {
-    defaults = { ...DEFAULT_SETTINGS };
-  }
+  const defaults = { ...DEFAULT_SETTINGS };
   // ONLY seed defaults when settings genuinely don't exist (null/empty).
   // Do NOT overwrite on transient KV read failures — that would destroy user's saved profile.
   if (!kvFailed) {
@@ -584,33 +417,9 @@ function deriveGatewayStatus(gw: any): any {
   return { ...gw, status, signal };
 }
 
-function simulateDemoHeartbeats(gateways: any[]): any[] {
-  const now = Date.now();
-  return gateways.map((gw) => {
-    if (gw.id === "GW008") return { ...gw, lastSeen: new Date(now - 2 * 3600000).toISOString(), signal: 0 };
-    if (gw.id === "GW006") {
-      const warningAge = 6 * 60 * 1000 + Math.random() * 8 * 60 * 1000;
-      return { ...gw, lastSeen: new Date(now - warningAge).toISOString(), signal: Math.round(45 + Math.random() * 20) };
-    }
-    const jitterMs = Math.floor(Math.random() * 120000);
-    return { ...gw, lastSeen: new Date(now - jitterMs).toISOString() };
-  });
-}
-
 async function getGatewaysWithLiveStatus(userId: string): Promise<any[]> {
   const gateways = await getUserCollection(userId, "gateways");
-  const accountType = await getAccountType(userId);
-  let processed: any[];
-  if (accountType === "demo") {
-    processed = simulateDemoHeartbeats(gateways);
-    const key = uk(userId, "gateways");
-    cachedKvSet(key, processed).catch((e: unknown) => {
-      console.log("Non-fatal: demo heartbeats persist failed:", errorMessage(e));
-    });
-  } else {
-    processed = gateways;
-  }
-  return processed.map(deriveGatewayStatus);
+  return gateways.map(deriveGatewayStatus);
 }
 
 /** Convert an ISO timestamp to a human-friendly relative string. */
@@ -835,242 +644,6 @@ function generateWebhookToken(): string {
   return "whk_" + Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// ══════════════════════════════════════════════════════════
-// CAYENNE LPP DECODER — decodes base64/hex LoRaWAN payloads
-// ══════════════════════════════════════════════════════════
-
-const LPP_TYPES: Record<number, { name: string; size: number; divisor: number; signed: boolean }> = {
-  0: { name: "digital_input", size: 1, divisor: 1, signed: false },
-  1: { name: "digital_output", size: 1, divisor: 1, signed: false },
-  2: { name: "analog_input", size: 2, divisor: 100, signed: true },
-  3: { name: "analog_output", size: 2, divisor: 100, signed: true },
-  101: { name: "illuminance", size: 2, divisor: 1, signed: false },
-  102: { name: "presence", size: 1, divisor: 1, signed: false },
-  103: { name: "temperature", size: 2, divisor: 10, signed: true },
-  104: { name: "relative_humidity", size: 1, divisor: 2, signed: false },
-  113: { name: "accelerometer", size: 6, divisor: 1000, signed: true },
-  115: { name: "barometric_pressure", size: 2, divisor: 10, signed: false },
-  116: { name: "voltage", size: 2, divisor: 100, signed: false },
-  117: { name: "current", size: 2, divisor: 1000, signed: false },
-  118: { name: "frequency", size: 4, divisor: 1, signed: false },
-  120: { name: "percentage", size: 1, divisor: 1, signed: false },
-  121: { name: "altitude", size: 2, divisor: 1, signed: true },
-  125: { name: "concentration", size: 2, divisor: 1, signed: false },
-  128: { name: "power", size: 2, divisor: 1, signed: false },
-  130: { name: "distance", size: 4, divisor: 1000, signed: false },
-  132: { name: "energy", size: 4, divisor: 1000, signed: false },
-  133: { name: "direction", size: 2, divisor: 1, signed: false },
-  134: { name: "unix_time", size: 4, divisor: 1, signed: false },
-  136: { name: "colour", size: 3, divisor: 1, signed: false },
-  142: { name: "switch", size: 1, divisor: 1, signed: false },
-};
-
-// Milesight AM308L extended types (vendor-specific on fPort 85)
-const MILESIGHT_TYPES: Record<number, { name: string; size: number; divisor: number; signed: boolean }> = {
-  ...LPP_TYPES,
-  // Override/add Milesight-specific sensor IDs
-  // Channel 3 = temperature (0x67), Channel 4 = humidity (0x68), etc.
-};
-
-function decodeCayenneLPP(base64Data: string): Record<string, number> | null {
-  try {
-    // Decode base64 to byte array
-    const binary = atob(base64Data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    const result: Record<string, number> = {};
-    let pos = 0;
-
-    while (pos < bytes.length - 1) {
-      const channel = bytes[pos++];
-      if (pos >= bytes.length) break;
-      const typeId = bytes[pos++];
-
-      const typeDef = LPP_TYPES[typeId];
-      if (!typeDef) {
-        // Unknown type — try to skip intelligently or break
-        break;
-      }
-      if (pos + typeDef.size > bytes.length) break;
-
-      const fieldName = `${typeDef.name}_${channel}`;
-
-      if (typeId === 113) {
-        // Accelerometer: 3x int16
-        const x = toSigned16(bytes[pos] << 8 | bytes[pos + 1]) / typeDef.divisor;
-        const y = toSigned16(bytes[pos + 2] << 8 | bytes[pos + 3]) / typeDef.divisor;
-        const z = toSigned16(bytes[pos + 4] << 8 | bytes[pos + 5]) / typeDef.divisor;
-        result[`accelerometer_x_${channel}`] = Math.round(x * 1000) / 1000;
-        result[`accelerometer_y_${channel}`] = Math.round(y * 1000) / 1000;
-        result[`accelerometer_z_${channel}`] = Math.round(z * 1000) / 1000;
-        pos += 6;
-        continue;
-      }
-
-      let rawValue = 0;
-      for (let b = 0; b < typeDef.size; b++) {
-        rawValue = (rawValue << 8) | bytes[pos + b];
-      }
-      pos += typeDef.size;
-
-      if (typeDef.signed && typeDef.size === 2) rawValue = toSigned16(rawValue);
-      else if (typeDef.signed && typeDef.size === 4) rawValue = toSigned32(rawValue);
-
-      result[fieldName] = Math.round((rawValue / typeDef.divisor) * 100) / 100;
-    }
-
-    return Object.keys(result).length > 0 ? result : null;
-  } catch {
-    return null;
-  }
-}
-
-function toSigned16(val: number): number { return val > 0x7FFF ? val - 0x10000 : val; }
-function toSigned32(val: number): number { return val > 0x7FFFFFFF ? val - 0x100000000 : val; }
-
-// Milesight multi-sensor decoder (fPort 85) — proprietary TLV format
-// Supports: AM308L, AM307, EM300, WS301, WS302, WS50x, VS121 and more
-function decodeMilesightPayload(base64Data: string): Record<string, number> | null {
-  try {
-    const binary = atob(base64Data);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-    const result: Record<string, number> = {};
-    let pos = 0;
-
-    while (pos < bytes.length - 1) {
-      const ch = bytes[pos++]; // channel
-      if (pos >= bytes.length) break;
-      const typeId = bytes[pos++]; // data type
-
-      // ── 0xFF channel: Milesight device config/info responses ──
-      if (ch === 0xFF) {
-        // Config responses are not sensor data — skip them gracefully
-        const configSizes: Record<number, number> = {
-          0x01: 1, 0x09: 2, 0x0A: 2, 0x0B: 4, 0x0F: 1,
-          0x11: 1, 0x14: 1, 0x15: 2, 0x16: 8, 0x17: 4,
-          0x03: 2, 0x04: 2,
-        };
-        const skip = configSizes[typeId];
-        if (skip !== undefined) { pos += skip; continue; }
-        // Unknown 0xFF sub-type — can't determine size, stop parsing
-        break;
-      }
-
-      // Milesight uses Cayenne-like encoding but with specific channel/type combos
-      switch (typeId) {
-        case 0x67: { // Temperature (int16 LE, /10)
-          if (pos + 2 > bytes.length) return result;
-          const raw = bytes[pos] | (bytes[pos + 1] << 8);
-          result[`temperature_${ch}`] = toSigned16LE(raw) / 10;
-          pos += 2;
-          break;
-        }
-        case 0x68: { // Humidity (uint8, /2)
-          if (pos + 1 > bytes.length) return result;
-          result[`relative_humidity_${ch}`] = bytes[pos] / 2;
-          pos += 1;
-          break;
-        }
-        case 0x73: { // Barometric Pressure (uint16 LE, /10)
-          if (pos + 2 > bytes.length) return result;
-          const raw = bytes[pos] | (bytes[pos + 1] << 8);
-          result[`barometric_pressure_${ch}`] = raw / 10;
-          pos += 2;
-          break;
-        }
-        case 0x65: { // Illuminance (uint16 LE)
-          if (pos + 2 > bytes.length) return result;
-          const raw = bytes[pos] | (bytes[pos + 1] << 8);
-          result[`illuminance_${ch}`] = raw;
-          pos += 2;
-          break;
-        }
-        case 0x00: { // Digital input — PIR / water leak / generic (uint8)
-          if (pos + 1 > bytes.length) return result;
-          result[`digital_input_${ch}`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0x01: { // Digital output / leak status (uint8)
-          if (pos + 1 > bytes.length) return result;
-          result[`digital_${ch}`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0x7D: { // CO2 / TVOC / PM2.5 / PM10 — uint16 LE
-          if (pos + 2 > bytes.length) return result;
-          const raw = bytes[pos] | (bytes[pos + 1] << 8);
-          // 0xFFFF (65535) is a Milesight sensor error/warmup sentinel — skip it
-          if (raw === 0xFFFF) { pos += 2; break; }
-          // Channel mapping for AM308L:
-          // Ch 7 = CO2, Ch 8 = TVOC, Ch 9 = PM2.5 (some FW), Ch 11 = PM2.5, Ch 12 = PM10
-          if (ch === 7) result[`co2_${ch}`] = raw;
-          else if (ch === 8) result[`tvoc_${ch}`] = raw;
-          else if (ch === 9 || ch === 11) result[`pm2_5_${ch}`] = raw;
-          else if (ch === 12) result[`pm10_${ch}`] = raw;
-          else if (ch > 12) result[`pm10_${ch}`] = raw;
-          else result[`concentration_${ch}`] = raw;
-          pos += 2;
-          break;
-        }
-        case 0x75: { // Battery (uint8, percentage)
-          if (pos + 1 > bytes.length) return result;
-          result[`battery`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0xCB: { // Milesight PIR (uint8)
-          if (pos + 1 > bytes.length) return result;
-          result[`pir_${ch}`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0x5B: { // WS302 Sound Level Sensor data (7 bytes)
-          // Format: weighting(1) + Leq(2 LE) + Lmin(2 LE) + Lmax(2 LE), all dB values /10
-          if (pos + 7 > bytes.length) return result;
-          const weighting = bytes[pos]; // 0=A, 1=C, 2=Z
-          const leq = (bytes[pos + 1] | (bytes[pos + 2] << 8)) / 10;
-          const lmin = (bytes[pos + 3] | (bytes[pos + 4] << 8)) / 10;
-          const lmax = (bytes[pos + 5] | (bytes[pos + 6] << 8)) / 10;
-          result[`sound_level_leq`] = leq;
-          result[`sound_level_lmin`] = lmin;
-          result[`sound_level_lmax`] = lmax;
-          result[`sound_level_weighting`] = weighting; // 0=A, 1=C, 2=Z
-          pos += 7;
-          break;
-        }
-        case 0xE7: { // WS30x Door/Window status (1 byte)
-          if (pos + 1 > bytes.length) return result;
-          result[`door_status_${ch}`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        case 0x71: { // Water leak (uint8) — used by EM300-SLD, WS50x
-          if (pos + 1 > bytes.length) return result;
-          result[`water_leak`] = bytes[pos];
-          pos += 1;
-          break;
-        }
-        default: {
-          // Unknown type — try common sizes or skip
-          if (typeId < 0x10) { pos += 1; break; }
-          if (typeId >= 0xD0 && typeId <= 0xDF) { pos += 2; break; } // Common 2-byte extended types
-          // Give up — can't determine size
-          return Object.keys(result).length > 0 ? result : null;
-        }
-      }
-    }
-
-    return Object.keys(result).length > 0 ? result : null;
-  } catch {
-    return null;
-  }
-}
-
-function toSigned16LE(val: number): number { return val > 0x7FFF ? val - 0x10000 : val; }
 
 // ── AUDIT LOG (M2) — persist admin actions to KV for forensics ──
 const AUDIT_LOG_TTL = 90 * 24 * 3600; // 90 days
@@ -1193,7 +766,7 @@ export function registerRoutes(app: any) {
       const email = sanitizeString(body.email, 254);
       const password = typeof body.password === "string" ? body.password : "";
       const name = sanitizeString(body.name, 100);
-      const accountType = sanitizeEnum(body.accountType, ["demo", "testing", "standard"], "standard");
+      const accountType = sanitizeEnum(body.accountType, ["testing", "standard"], "standard");
       if (!email || !password) return c.json({ error: "Email and password are required." }, 400);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: "Invalid email." }, 400);
       if (password.length < 8) return c.json({ error: "Password must be at least 8 characters." }, 400);
@@ -1227,9 +800,7 @@ export function registerRoutes(app: any) {
       }
       await kvSetWithRetry(`account_type_${userId}`, accountType);
       accountTypeCache.set(userId, accountType);
-      const profileDefaults = accountType === "demo"
-        ? { name: name || "Demo User", email, role: "Viewer", company: "FioTec Solutions", phone: "" }
-        : accountType === "testing"
+      const profileDefaults = accountType === "testing"
         ? { name: name || "Test Engineer", email, role: "Engineer", company: "FioTec Solutions", phone: "" }
         : { name: name || email.split("@")[0], email, role: "Admin", company: "FioTec Solutions", phone: "" };
       await kvSetWithRetry(uk(userId, "settings"), { ...DEFAULT_SETTINGS, profile: profileDefaults });
@@ -1940,11 +1511,6 @@ export function registerRoutes(app: any) {
       const extMap: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
       const fileName = `property-${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${extMap[file.type] || "jpg"}`;
       const arrayBuffer = await file.arrayBuffer();
-      // Validate magic bytes — prevents uploading executables/scripts with spoofed Content-Type
-      if (!validateMagicBytes(new Uint8Array(arrayBuffer), file.type)) {
-        console.log(`Upload rejected: magic bytes mismatch for declared type ${file.type}`);
-        return c.json({ error: "File content does not match declared type." }, 400);
-      }
       const { data: uploadData, error: uploadError } = await supabase.storage.from(BUCKET_NAME).upload(fileName, arrayBuffer, { contentType: file.type, upsert: false });
       if (uploadError) { console.log("Upload error:", uploadError.message); return c.json({ error: "Upload failed." }, 500); }
       // Signed URL valid for 7 days (not 365 days) — reduces leak exposure window
@@ -2097,277 +1663,6 @@ export function registerRoutes(app: any) {
     } catch (e) {
       console.log("Error bulk dismissing alarms:", errorMessage(e));
       return c.json({ error: "Failed to bulk dismiss alarms." }, 500);
-    }
-  });
-
-  // ─── MX8000 ALARM RECEIVER ──────────────────────────────────────────
-  // Receives parsed Contact ID alarm events from HaaS506 RTU-LD1 bridge.
-  // The LD1 reads MX8000 serial output, parses Contact ID, and POSTs here.
-  // Auth: same webhook token system as the LoRaWAN webhook.
-  //
-  // Payload: { account, eventCode, qualifier, partition, zone, description? }
-  //   qualifier: "E" = new event, "R" = restore/closing
-  //   eventCode: 3-digit Contact ID code (e.g. "110" = Fire, "130" = Burglary)
-
-  const CONTACT_ID_SEVERITY: Record<string, { type: string; severity: string }> = {
-    // Medical
-    "100": { type: "Medical Emergency", severity: "critical" },
-    "101": { type: "Medical Pendant", severity: "critical" },
-    "102": { type: "Medical Fail to Report", severity: "high" },
-    // Fire
-    "110": { type: "Fire Alarm", severity: "critical" },
-    "111": { type: "Smoke Alarm", severity: "critical" },
-    "112": { type: "Combustion Alarm", severity: "critical" },
-    "113": { type: "Water Flow Alarm", severity: "high" },
-    "114": { type: "Heat Alarm", severity: "critical" },
-    "115": { type: "Pull Station", severity: "critical" },
-    "116": { type: "Duct Alarm", severity: "high" },
-    "117": { type: "Flame Alarm", severity: "critical" },
-    "118": { type: "Near Alarm (Fire)", severity: "high" },
-    // Panic
-    "120": { type: "Panic Alarm", severity: "critical" },
-    "121": { type: "Duress Alarm", severity: "critical" },
-    "122": { type: "Silent Panic", severity: "critical" },
-    "123": { type: "Audible Panic", severity: "critical" },
-    // Burglary
-    "130": { type: "Burglary Alarm", severity: "high" },
-    "131": { type: "Perimeter Alarm", severity: "high" },
-    "132": { type: "Interior Alarm", severity: "high" },
-    "133": { type: "24hr Burglary", severity: "high" },
-    "134": { type: "Entry/Exit Alarm", severity: "high" },
-    "135": { type: "Day/Night Alarm", severity: "high" },
-    "136": { type: "Outdoor Alarm", severity: "high" },
-    "137": { type: "Tamper Alarm", severity: "high" },
-    "138": { type: "Near Alarm (Burg)", severity: "medium" },
-    "139": { type: "Intrusion Verifier", severity: "high" },
-    // General Alarm
-    "140": { type: "General Alarm", severity: "high" },
-    "141": { type: "Polling Loop Open", severity: "medium" },
-    "142": { type: "Polling Loop Short", severity: "medium" },
-    "143": { type: "Expansion Tamper", severity: "medium" },
-    "144": { type: "Sensor Tamper", severity: "medium" },
-    "145": { type: "Shake Alarm", severity: "medium" },
-    "146": { type: "Tilt Alarm", severity: "medium" },
-    // 24-Hour Non-Burglary
-    "150": { type: "24hr Non-Burglary", severity: "high" },
-    "151": { type: "Gas Detected", severity: "critical" },
-    "152": { type: "Refrigeration", severity: "medium" },
-    "153": { type: "Loss of Heat", severity: "medium" },
-    "154": { type: "Water Leak", severity: "high" },
-    "155": { type: "Foil Break", severity: "medium" },
-    "156": { type: "Day Trouble", severity: "medium" },
-    "157": { type: "Low Gas Level", severity: "medium" },
-    "158": { type: "High Temperature", severity: "high" },
-    "159": { type: "Low Temperature", severity: "medium" },
-    "161": { type: "Loss of Air Flow", severity: "medium" },
-    "162": { type: "Carbon Monoxide", severity: "critical" },
-    "163": { type: "Tank Level", severity: "medium" },
-    // Supervisory
-    "200": { type: "Fire Supervisory", severity: "medium" },
-    "201": { type: "Low Water Pressure", severity: "medium" },
-    "202": { type: "Low CO2", severity: "medium" },
-    "203": { type: "Gate Valve Sensor", severity: "medium" },
-    "204": { type: "Low Water Level", severity: "medium" },
-    "205": { type: "Pump Activated", severity: "low" },
-    "206": { type: "Pump Failure", severity: "high" },
-    // Troubles
-    "300": { type: "System Trouble", severity: "medium" },
-    "301": { type: "AC Power Loss", severity: "high" },
-    "302": { type: "Low Battery", severity: "medium" },
-    "303": { type: "RAM Checksum Bad", severity: "medium" },
-    "304": { type: "ROM Checksum Bad", severity: "medium" },
-    "305": { type: "System Reset", severity: "low" },
-    "306": { type: "Panel Programming Changed", severity: "low" },
-    "307": { type: "Self-test Failure", severity: "medium" },
-    "308": { type: "System Shutdown", severity: "high" },
-    "309": { type: "Battery Test Failure", severity: "medium" },
-    "310": { type: "Ground Fault", severity: "medium" },
-    "311": { type: "Battery Missing", severity: "high" },
-    "320": { type: "Sounder Trouble", severity: "medium" },
-    "321": { type: "Bell 1 Trouble", severity: "medium" },
-    "330": { type: "Peripheral Trouble", severity: "medium" },
-    "333": { type: "Expansion Trouble", severity: "medium" },
-    "341": { type: "Trouble ECP Cover", severity: "medium" },
-    "344": { type: "RF Receiver Jam", severity: "high" },
-    "350": { type: "Communication Trouble", severity: "high" },
-    "351": { type: "Telco Line 1 Fault", severity: "high" },
-    "352": { type: "Telco Line 2 Fault", severity: "high" },
-    "353": { type: "Long Range Trouble", severity: "medium" },
-    "354": { type: "Comm Path Failure", severity: "high" },
-    "370": { type: "Protection Loop Trouble", severity: "medium" },
-    "371": { type: "Protection Loop Open", severity: "medium" },
-    "372": { type: "Protection Loop Short", severity: "medium" },
-    "373": { type: "Fire Loop Trouble", severity: "high" },
-    "380": { type: "Sensor Trouble", severity: "medium" },
-    "381": { type: "Loss of Supervision (RF)", severity: "medium" },
-    "382": { type: "Loss of Supervision (RPM)", severity: "medium" },
-    "383": { type: "Sensor Tamper", severity: "medium" },
-    "384": { type: "RF Low Battery", severity: "medium" },
-    "393": { type: "Clean Me (Smoke)", severity: "low" },
-    // Open/Close
-    "400": { type: "Arm/Disarm", severity: "low" },
-    "401": { type: "Armed by User", severity: "low" },
-    "402": { type: "Group Arm/Disarm", severity: "low" },
-    "403": { type: "Auto Arm/Disarm", severity: "low" },
-    "404": { type: "Late to Arm", severity: "low" },
-    "405": { type: "Deferred Arm", severity: "low" },
-    "406": { type: "Cancel by User", severity: "low" },
-    "407": { type: "Remote Arm/Disarm", severity: "low" },
-    "408": { type: "Quick Arm", severity: "low" },
-    "409": { type: "Keyswitch Arm", severity: "low" },
-    // Access Control
-    "421": { type: "Access Denied", severity: "medium" },
-    "422": { type: "Access Report", severity: "low" },
-    "423": { type: "Forced Access", severity: "high" },
-    "424": { type: "Egress Denied", severity: "medium" },
-    "425": { type: "Egress Granted", severity: "low" },
-    "426": { type: "Door Propped Open", severity: "medium" },
-    "427": { type: "Access Point DSM", severity: "medium" },
-    "428": { type: "Access Point Strike", severity: "low" },
-    "429": { type: "Door Open (AC)", severity: "low" },
-    "430": { type: "Door Closed (AC)", severity: "low" },
-    "431": { type: "Forced Door", severity: "high" },
-    "432": { type: "Door Inactivity", severity: "low" },
-    "434": { type: "Area Armed", severity: "low" },
-    "435": { type: "Area Disarmed", severity: "low" },
-    "436": { type: "Door Tamper", severity: "high" },
-    // Bypasses
-    "570": { type: "Zone Bypass", severity: "low" },
-    "571": { type: "Fire Bypass", severity: "medium" },
-    "572": { type: "24hr Bypass", severity: "medium" },
-    "573": { type: "Burg Bypass", severity: "medium" },
-    "574": { type: "Group Bypass", severity: "medium" },
-    // Test / Misc
-    "601": { type: "Manual Test", severity: "low" },
-    "602": { type: "Periodic Test", severity: "low" },
-    "606": { type: "AAV to Follow", severity: "low" },
-    "607": { type: "Walk Test Mode", severity: "low" },
-    "623": { type: "Event Log Reset", severity: "low" },
-    "625": { type: "Date/Time Reset", severity: "low" },
-    "627": { type: "Program Mode Entry", severity: "low" },
-    "628": { type: "Program Mode Exit", severity: "low" },
-    "631": { type: "Exception Schedule", severity: "low" },
-    "632": { type: "Access Schedule", severity: "low" },
-    "654": { type: "System Inactivity", severity: "medium" },
-  };
-
-  app.post("/make-server-4916a0b9/alarm-receiver", async (c: any) => {
-    const ip = getClientIp(c);
-    if (!rateLimit(ip + ":alarm-rx", 60, 60000)) return c.json({ error: "Rate limited." }, 429);
-    const gate = webhookAuthGate(ip);
-    if (!gate.allowed) return c.json({ error: `Too many failed attempts. Retry after ${gate.retryAfterSec}s.` }, 429);
-
-    let body: any = null;
-    try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body." }, 400); }
-    if (!body || typeof body !== "object") return c.json({ error: "Invalid JSON body." }, 400);
-
-    try {
-      // Auth: same token system as LoRaWAN webhook — LD1 bridge sends the user's webhook token
-      const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
-      if (!token || token.length < 10) { recordWebhookAuthFailure(ip); return c.json({ error: "Missing or invalid webhook token." }, 401); }
-      const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
-      if (!tokenOwner) { recordWebhookAuthFailure(ip); return c.json({ error: "Invalid webhook token." }, 401); }
-      const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
-      if (!safeCompare(storedToken, token)) { recordWebhookAuthFailure(ip); return c.json({ error: "Webhook token revoked." }, 401); }
-      clearWebhookAuthFailures(ip);
-      const userId = tokenOwner as string;
-
-      // Validate required fields
-      const account = sanitizeString(body.account || "", 20);
-      const eventCode = sanitizeString(body.eventCode || "", 4);
-      const qualifier = sanitizeString(body.qualifier || "E", 1); // E=Event, R=Restore
-      const partition = sanitizeString(body.partition || "00", 4);
-      const zone = sanitizeString(body.zone || "000", 6);
-      const description = sanitizeString(body.description || "", 500);
-      const locationName = sanitizeString(body.location || "", 200);
-      const propertyName = sanitizeString(body.property || "", 200);
-      const receivedAt = body.time || new Date().toISOString();
-
-      if (!eventCode) return c.json({ error: "Missing eventCode." }, 400);
-
-      // Look up event type and severity from Contact ID code table
-      const eventInfo = CONTACT_ID_SEVERITY[eventCode] || { type: `Unknown Event (${eventCode})`, severity: "medium" };
-
-      const alarmKey = uk(userId, "alarms");
-      let alarms = await kvGetWithRetry(alarmKey);
-      if (!Array.isArray(alarms)) alarms = [];
-
-      // If restore event (qualifier=R), resolve the matching pending alarm
-      if (qualifier === "R") {
-        const matchIdx = alarms.findIndex((a: any) =>
-          a.source === "MX8000" &&
-          a.eventCode === eventCode &&
-          a.account === account &&
-          a.zone === zone &&
-          a.status === "pending"
-        );
-        if (matchIdx >= 0) {
-          alarms[matchIdx].status = "resolved";
-          alarms[matchIdx].resolvedAt = new Date().toISOString();
-          alarms[matchIdx].resolvedBy = "auto-restore";
-          await kvSetWithRetry(alarmKey, alarms);
-          invalidateKvCache(alarmKey);
-          console.log(`[MX8000] Restored alarm: ${eventInfo.type} acct=${account} zone=${zone}`);
-          return c.json({ success: true, action: "restored", alarmId: alarms[matchIdx].id });
-        }
-        // No matching pending alarm found — still log the restore as info
-        console.log(`[MX8000] Restore received but no matching pending alarm: ${eventCode} acct=${account} zone=${zone}`);
-        return c.json({ success: true, action: "restore-no-match" });
-      }
-
-      // New event — create alarm
-      // Dedup: skip if an identical alarm was created within last 60 seconds
-      const recentDupe = alarms.find((a: any) =>
-        a.source === "MX8000" &&
-        a.eventCode === eventCode &&
-        a.account === account &&
-        a.zone === zone &&
-        a.status === "pending" &&
-        (Date.now() - new Date(a.time).getTime()) < 60000
-      );
-      if (recentDupe) {
-        console.log(`[MX8000] Dedup skipped: ${eventInfo.type} acct=${account} zone=${zone}`);
-        return c.json({ success: true, action: "dedup-skipped", alarmId: recentDupe.id });
-      }
-
-      const newAlarm = {
-        id: `MX-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        type: eventInfo.type,
-        severity: eventInfo.severity,
-        status: "pending",
-        source: "MX8000",
-        location: locationName || `Zone ${zone}`,
-        property: propertyName || `Panel ${account}`,
-        description: description || `${qualifier === "E" ? "New" : ""} ${eventInfo.type} — Account: ${account}, Zone: ${zone}, Partition: ${partition}`,
-        time: receivedAt,
-        eventCode,
-        account,
-        zone,
-        partition,
-      };
-
-      alarms.unshift(newAlarm);
-      if (alarms.length > 1000) {
-        // Prune: keep all pending, trim oldest resolved
-        const pending = alarms.filter((a: any) => a.status !== "resolved");
-        const resolved = alarms.filter((a: any) => a.status === "resolved");
-        alarms = pending.concat(resolved.slice(0, Math.max(0, 800 - pending.length)));
-      }
-
-      await kvSetWithRetry(alarmKey, alarms);
-      invalidateKvCache(alarmKey);
-
-      console.log(`[MX8000] New alarm: ${eventInfo.type} (${eventInfo.severity}) acct=${account} zone=${zone}`);
-
-      // Broadcast critical/high alarms via Realtime for instant frontend notification
-      if (eventInfo.severity === "critical" || eventInfo.severity === "high") {
-        broadcastAlarmPush(userId, newAlarm).catch(() => {});
-      }
-
-      return c.json({ success: true, action: "created", alarmId: newAlarm.id });
-    } catch (e) {
-      console.log("[MX8000] Alarm receiver error:", errorMessage(e));
-      return c.json({ error: "Failed to process alarm." }, 500);
     }
   });
 
@@ -3070,16 +2365,13 @@ export function registerRoutes(app: any) {
   app.get("/make-server-4916a0b9/telemetry-webhook", async (c: any) => {
     const ip = getClientIp(c);
     if (!rateLimit(ip + ":webhook-ping", 30, 60000)) return c.json({ error: "Rate limited." }, 429);
-    const gate = webhookAuthGate(ip);
-    if (!gate.allowed) return c.json({ error: `Too many failed attempts. Retry after ${gate.retryAfterSec}s.` }, 429);
     try {
       const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
-      if (!token || token.length < 10) { recordWebhookAuthFailure(ip); return c.json({ status: "error", message: "Missing or invalid webhook token." }, 401); }
+      if (!token || token.length < 10) return c.json({ status: "error", message: "Missing or invalid webhook token." }, 401);
       const userId = await kvGetWithRetry(`webhook_lookup_${token}`);
-      if (!userId) { recordWebhookAuthFailure(ip); return c.json({ status: "error", message: "Invalid webhook token." }, 401); }
+      if (!userId) return c.json({ status: "error", message: "Invalid webhook token." }, 401);
       const storedToken = await kvGetWithRetry(`webhook_token_${userId}`);
-      if (!safeCompare(storedToken, token)) { recordWebhookAuthFailure(ip); return c.json({ status: "error", message: "Webhook token revoked." }, 401); }
-      clearWebhookAuthFailures(ip);
+      if (!safeCompare(storedToken, token)) return c.json({ status: "error", message: "Webhook token revoked." }, 401);
 
       // Token valid — record this ping as a gateway heartbeat
       const gateways = await getUserCollection(userId, "gateways");
@@ -3140,8 +2432,6 @@ export function registerRoutes(app: any) {
   app.post("/make-server-4916a0b9/telemetry-webhook", async (c: any) => {
     const ip = getClientIp(c);
     if (!rateLimit(ip + ":webhook", 60, 60000)) return c.json({ error: "Rate limited." }, 429);
-    const gate = webhookAuthGate(ip);
-    if (!gate.allowed) return c.json({ error: `Too many failed attempts. Retry after ${gate.retryAfterSec}s.` }, 429);
 
     // Debug: capture raw request info
     let rawBody: any = null;
@@ -3175,12 +2465,11 @@ export function registerRoutes(app: any) {
     try {
       // Prefer X-Webhook-Token header; fall back to query param for backward compat
       const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
-      if (!token || token.length < 10) { recordWebhookAuthFailure(ip); return c.json({ error: "Missing or invalid webhook token." }, 401); }
+      if (!token || token.length < 10) return c.json({ error: "Missing or invalid webhook token." }, 401);
       const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
-      if (!tokenOwner) { recordWebhookAuthFailure(ip); return c.json({ error: "Invalid webhook token." }, 401); }
+      if (!tokenOwner) return c.json({ error: "Invalid webhook token." }, 401);
       const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
-      if (!safeCompare(storedToken, token)) { recordWebhookAuthFailure(ip); return c.json({ error: "Webhook token revoked." }, 401); }
-      clearWebhookAuthFailures(ip);
+      if (!safeCompare(storedToken, token)) return c.json({ error: "Webhook token revoked." }, 401);
 
       // ── Optional HMAC payload verification (ChirpStack / Milesight gateways can sign payloads) ──
       const hmacHeader = c.req.header("X-Signature-SHA256") || c.req.header("X-Signature") || "";
@@ -3332,16 +2621,18 @@ export function registerRoutes(app: any) {
           devices[devIdx].lastUpdate = new Date().toISOString();
           devices[devIdx].status = "online";
           if (rssi > -999) devices[devIdx].signal = Math.max(0, Math.min(100, 2 * (rssi + 100)));
+          // Store latest decoded data on device record for live readings
+          // (sensor_data may be throttled, but device record always has the freshest data)
+          if (decodedData && typeof decodedData === "object") {
+            devices[devIdx].decoded = decodedData;
+            devices[devIdx].decodedAt = new Date().toISOString();
+          }
           // Enrich with manufacturer/model if not set
           if (!devices[devIdx].manufacturer && devEUI.toUpperCase().startsWith("24E124")) {
             devices[devIdx].manufacturer = "Milesight";
           }
           if (decodedData && typeof decodedData.battery === "number") {
             devices[devIdx].battery = decodedData.battery;
-          }
-          if (decodedData) {
-            devices[devIdx].decoded = decodedData;
-            devices[devIdx].decodedAt = new Date().toISOString();
           }
           // Re-classify generic "LoRaWAN Sensor" devices on subsequent uplinks
           if (devices[devIdx].type === "LoRaWAN Sensor") {
@@ -3623,8 +2914,6 @@ export function registerRoutes(app: any) {
   app.post("/make-server-4916a0b9/telemetry-4g", async (c: any) => {
     const ip = getClientIp(c);
     if (!rateLimit(ip + ":telem4g", 120, 60000)) return c.json({ error: "Rate limited." }, 429);
-    const gate = webhookAuthGate(ip);
-    if (!gate.allowed) return c.json({ error: `Too many failed attempts. Retry after ${gate.retryAfterSec}s.` }, 429);
 
     let body: any = null;
     try { body = await c.req.json(); } catch { return c.json({ error: "Invalid JSON body." }, 400); }
@@ -3633,12 +2922,11 @@ export function registerRoutes(app: any) {
     try {
       // Auth: same token-based auth as the LoRaWAN webhook
       const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
-      if (!token || token.length < 10) { recordWebhookAuthFailure(ip); return c.json({ error: "Missing or invalid webhook token." }, 401); }
+      if (!token || token.length < 10) return c.json({ error: "Missing or invalid webhook token." }, 401);
       const tokenOwner = await kvGetWithRetry(`webhook_lookup_${token}`);
-      if (!tokenOwner) { recordWebhookAuthFailure(ip); return c.json({ error: "Invalid webhook token." }, 401); }
+      if (!tokenOwner) return c.json({ error: "Invalid webhook token." }, 401);
       const storedToken = await kvGetWithRetry(`webhook_token_${tokenOwner}`);
-      if (!safeCompare(storedToken, token)) { recordWebhookAuthFailure(ip); return c.json({ error: "Webhook token revoked." }, 401); }
-      clearWebhookAuthFailures(ip);
+      if (!safeCompare(storedToken, token)) return c.json({ error: "Webhook token revoked." }, 401);
 
       const userId = tokenOwner;
 
@@ -4523,16 +3811,10 @@ export function registerRoutes(app: any) {
     const admin = await requireAdmin(c);
     if (admin instanceof Response) return admin;
     try {
-      // Scan KV for audit entries (prefix scan via kv_store)
       const limit = Math.min(100, parseInt(c.req.query("limit") || "50"));
       const entries: any[] = [];
-      // Retrieve recent audit entries by timestamp-based keys
-      const now = Date.now();
-      const scanWindow = 90 * 24 * 3600 * 1000; // 90 days
-      // Since KV doesn't have prefix scan, we store an audit index
       let index: string[] = [];
       try { index = await kvGetWithRetry("audit_index") || []; } catch { /* empty */ }
-      // Fetch the most recent entries
       const recentKeys = index.slice(0, limit);
       const results = await Promise.all(recentKeys.map((k: string) => kvGetWithRetry(k).catch(() => null)));
       for (let i = 0; i < recentKeys.length; i++) {
@@ -4542,6 +3824,201 @@ export function registerRoutes(app: any) {
     } catch (e) {
       console.log("Audit log error:", errorMessage(e));
       return c.json({ error: "Failed to fetch audit log." }, 500);
+    }
+  });
+
+  // ── BIM IOC ROUTES (Phase 0) ────────────────────────────
+  // /properties/geo         — list lat/lng/footprint for portfolio map
+  // /properties/:id/geo     — PUT seed/update one property's geo
+  // /properties/:id/bim     — GET default bim_models row for a property
+  // /properties/:id/bim     — PUT upsert a bim_models entry
+  // /properties/:id/bim/map — GET bim_device_map entries
+  // /properties/:id/bim/map — PUT upsert a single mapping
+  // /safety-alarms          — GET list (optional ?propertyId=&status=)
+  // /safety-alarms          — POST create (auth'd user or webhook)
+  // /safety-alarms/:id/status — PATCH update status/notes
+
+  app.get("/make-server-4916a0b9/properties/geo", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    try {
+      const geos = await listPropertyGeos();
+      return c.json({ geos });
+    } catch (e) {
+      return c.json({ error: "Failed to list property geo.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.put("/make-server-4916a0b9/properties/:id/geo", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const body = await c.req.json();
+      const lat = typeof body.lat === "number" ? body.lat : NaN;
+      const lng = typeof body.lng === "number" ? body.lng : NaN;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ error: "lat and lng are required numbers." }, 400);
+      await setPropertyGeo({
+        propertyId: id,
+        lat, lng,
+        footprint: body.footprint || null,
+        storeys: typeof body.storeys === "number" ? body.storeys : undefined,
+        heightMeters: typeof body.heightMeters === "number" ? body.heightMeters : undefined,
+      });
+      return c.json({ ok: true });
+    } catch (e) {
+      return c.json({ error: "Failed to set property geo.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.get("/make-server-4916a0b9/properties/:id/bim", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const [model, geo] = await Promise.all([getDefaultBimModel(id), getPropertyGeo(id)]);
+      return c.json({ model, geo });
+    } catch (e) {
+      return c.json({ error: "Failed to get BIM model.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.put("/make-server-4916a0b9/properties/:id/bim", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const body = await c.req.json();
+      const name = sanitizeString(body.name) || "default";
+      const version = sanitizeString(body.version) || "v1";
+      const saved = await upsertBimModel({
+        propertyId: id,
+        name,
+        version,
+        fragUrl: body.fragUrl ? sanitizeUrl(body.fragUrl) : null,
+        ifcUrl: body.ifcUrl ? sanitizeUrl(body.ifcUrl) : null,
+        tilesetUrl: body.tilesetUrl ? sanitizeUrl(body.tilesetUrl) : null,
+        isDefault: !!body.isDefault,
+        metadata: body.metadata || {},
+      });
+      return c.json({ model: saved });
+    } catch (e) {
+      return c.json({ error: "Failed to upsert BIM model.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.get("/make-server-4916a0b9/properties/:id/bim/map", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const mappings = await getBimDeviceMappingsForProperty(id);
+      return c.json({ mappings });
+    } catch (e) {
+      return c.json({ error: "Failed to list BIM device map.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.put("/make-server-4916a0b9/properties/:id/bim/map", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const id = sanitizeString(c.req.param("id"));
+    if (!id) return c.json({ error: "Missing property id." }, 400);
+    try {
+      const body = await c.req.json();
+      const expressId = sanitizeString(body.expressId);
+      const deviceId = sanitizeString(body.deviceId);
+      if (!expressId || !deviceId) return c.json({ error: "expressId and deviceId required." }, 400);
+      await setBimDeviceMapping({
+        propertyId: id,
+        expressId,
+        deviceId,
+        storey: body.storey ? sanitizeString(body.storey) : undefined,
+        x: typeof body.x === "number" ? body.x : undefined,
+        y: typeof body.y === "number" ? body.y : undefined,
+        z: typeof body.z === "number" ? body.z : undefined,
+      });
+      return c.json({ ok: true });
+    } catch (e) {
+      return c.json({ error: "Failed to set BIM device mapping.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.get("/make-server-4916a0b9/safety-alarms", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    try {
+      const propertyId = sanitizeString(c.req.query("propertyId") || "") || undefined;
+      const statusQ = sanitizeString(c.req.query("status") || "") || undefined;
+      const limitRaw = parseInt(c.req.query("limit") || "100", 10);
+      const limitQ = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 100;
+      const rows = await listSafetyAlarms({
+        propertyId,
+        status: statusQ as any,
+        limit: limitQ,
+      });
+      return c.json({ alarms: rows });
+    } catch (e) {
+      return c.json({ error: "Failed to list safety alarms.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.post("/make-server-4916a0b9/safety-alarms", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    try {
+      const body = await c.req.json();
+      const alarm_type = sanitizeEnum(body.alarm_type, ["water", "fire", "smoke"], "");
+      const property_id = sanitizeString(body.property_id);
+      const device_id = sanitizeString(body.device_id);
+      if (!alarm_type || !property_id || !device_id) {
+        return c.json({ error: "alarm_type, property_id, device_id required." }, 400);
+      }
+      const row = await insertSafetyAlarm({
+        property_id,
+        property_name: body.property_name ? sanitizeString(body.property_name) : undefined,
+        device_id,
+        device_name: body.device_name ? sanitizeString(body.device_name) : undefined,
+        alarm_type: alarm_type as any,
+        severity: (sanitizeEnum(body.severity, ["critical", "high", "medium", "low"], "high")) as any,
+        source_attr: body.source_attr ? sanitizeString(body.source_attr) : undefined,
+        spatial_id: body.spatial_id ? sanitizeString(body.spatial_id) : undefined,
+        storey: body.storey ? sanitizeString(body.storey) : undefined,
+        location_text: body.location_text ? sanitizeString(body.location_text) : undefined,
+        occurred_at: body.occurred_at || undefined,
+        raw_payload: body.raw_payload || undefined,
+      });
+      return c.json({ alarm: row });
+    } catch (e) {
+      return c.json({ error: "Failed to insert safety alarm.", detail: errorMessage(e) }, 500);
+    }
+  });
+
+  app.patch("/make-server-4916a0b9/safety-alarms/:id/status", async (c: any) => {
+    const auth = await requireAuth(c);
+    if (auth instanceof Response) return auth;
+    const idRaw = sanitizeString(c.req.param("id"));
+    const id = idRaw ? parseInt(idRaw, 10) : NaN;
+    if (!Number.isFinite(id)) return c.json({ error: "Invalid alarm id." }, 400);
+    try {
+      const body = await c.req.json();
+      const status = sanitizeEnum(body.status, ["pending", "acknowledged", "in_progress", "resolved", "false_alarm"], "");
+      if (!status) return c.json({ error: "Invalid status." }, 400);
+      const notes = body.notes ? sanitizeString(body.notes) : undefined;
+      const updated = await updateSafetyAlarmStatus(
+        id,
+        status as any,
+        { id: (auth as any).userId, email: (auth as any).email },
+        notes,
+      );
+      await auditLog("safety_alarm_status", (auth as any).userId, (auth as any).email, String(id), { status });
+      return c.json({ alarm: updated });
+    } catch (e) {
+      return c.json({ error: "Failed to update safety alarm.", detail: errorMessage(e) }, 500);
     }
   });
 
