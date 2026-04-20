@@ -674,7 +674,7 @@ export function Devices() {
                               </div>
                             </div>
                           </div>
-                          <DeviceHistoryChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} period={historyPeriod} liveDecoded={device.decoded} compact />
+                          <DeviceHistoryChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} period={historyPeriod} liveDecoded={device.decoded} />
                         </div>
                       </td>
                     </tr>
