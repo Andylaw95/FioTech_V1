@@ -1,0 +1,50 @@
+#!/bin/sh
+#
+# gateway    Auto-start HY108-1 gateway on boot with auto-restart
+
+SCRIPT="/opt/main.py"
+LOGFILE="/var/log/gateway.log"
+PIDFILE="/var/run/gateway.pid"
+
+start() {
+    printf "Starting HY108 gateway: "
+    (
+        while true; do
+            python3 -u "$SCRIPT" >> "$LOGFILE" 2>&1
+            echo "[$(date)] gateway exited, restarting in 10s..." >> "$LOGFILE"
+            sleep 10
+        done
+    ) &
+    WPID=$!
+    echo $WPID > "$PIDFILE"
+    echo "OK (watchdog PID $WPID)"
+}
+
+stop() {
+    printf "Stopping HY108 gateway: "
+    if [ -f "$PIDFILE" ]; then
+        WPID=$(cat "$PIDFILE")
+        kill $WPID 2>/dev/null || true
+    fi
+    PYPID=$(ps | grep "main.py" | grep -v grep | awk '{print $1}')
+    [ -n "$PYPID" ] && kill $PYPID 2>/dev/null || true
+    rm -f "$PIDFILE"
+    echo "OK"
+}
+
+status() {
+    if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+        echo "gateway RUNNING (watchdog PID $(cat $PIDFILE))"
+    else
+        echo "gateway NOT running"
+    fi
+}
+
+case "$1" in
+    start)   start ;;
+    stop)    stop ;;
+    restart) stop; sleep 2; start ;;
+    status)  status ;;
+    *)       echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac
+exit 0
