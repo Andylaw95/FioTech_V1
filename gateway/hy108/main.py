@@ -32,6 +32,8 @@ Protocol Specification (Reverse-Engineered):
 import time
 import json
 import os
+import math
+import collections
 import serial
 import requests
 
@@ -88,6 +90,14 @@ DEVICE_ID     = _get_secret("DEVICE_ID", "HY108-001")
 
 UPLOAD_INTERVAL = 5   # seconds between readings (2-60)
 RETRY_COUNT = 2
+
+# ── Adaptive upload (AI smart sampling) ─────────────────────────
+INTERVAL_NORMAL  = 60   # seconds between uploads in quiet mode
+INTERVAL_ANOMALY = 1    # seconds between uploads during anomaly burst
+ANOMALY_ZSCORE   = 2.0  # standard deviations above rolling mean → anomaly
+ANOMALY_SPIKE    = 10.0 # dB sudden jump from last reading → anomaly
+ANOMALY_HOLDOFF  = 30   # extra cycles to stay in anomaly mode after event clears
+ROLLING_WINDOW   = 20   # readings kept for rolling mean/stddev calculation
 
 # ═══════════════════════════════════════════════════════════════
 # Input Validation / 输入验证
@@ -427,6 +437,10 @@ def main():
 
     cycle = 0
     errors = 0
+    window   = collections.deque(maxlen=ROLLING_WINDOW)  # rolling LAF values
+    holdoff  = 0        # cycles remaining in anomaly mode
+    prev_laf = None     # previous reading for spike detection
+    interval = INTERVAL_NORMAL
 
     while True:
         cycle += 1
@@ -508,11 +522,39 @@ def main():
             "noise_lcpeak": v_lcpeak,
         }
 
+        # ── Adaptive upload: anomaly detection ──────────────────
+        anomaly = False
+        if v_laf is not None:
+            window.append(v_laf)
+            if len(window) >= 5:
+                mean = sum(window) / len(window)
+                variance = sum((x - mean) ** 2 for x in window) / len(window)
+                stddev = math.sqrt(variance) if variance > 0 else 0.0
+                z = (v_laf - mean) / stddev if stddev > 0.5 else 0.0
+                spike = abs(v_laf - prev_laf) >= ANOMALY_SPIKE if prev_laf is not None else False
+                if z >= ANOMALY_ZSCORE or spike:
+                    anomaly = True
+                    holdoff = ANOMALY_HOLDOFF
+                    reason = ("spike +%.1fdB" % abs(v_laf - prev_laf)) if spike else ("z=%.1f" % z)
+                    print("[ANOMALY] Detected: %s (%.1f dB, mean=%.1f, σ=%.1f)" % (reason, v_laf, mean, stddev))
+            prev_laf = v_laf
+
+        if holdoff > 0:
+            holdoff -= 1
+            interval = INTERVAL_ANOMALY
+        else:
+            interval = INTERVAL_NORMAL
+
+        mode_tag = "ANOMALY" if (holdoff > 0 or anomaly) else "normal"
+        payload["anomaly"]  = anomaly
+        payload["interval"] = interval
+        # ─────────────────────────────────────────────────────────
+
         upload_to_fiotech(payload)
 
         errors = 0
-        print("Sleeping %ds..." % UPLOAD_INTERVAL)
-        time.sleep(UPLOAD_INTERVAL)
+        print("[%s] Next upload in %ds..." % (mode_tag.upper(), interval))
+        time.sleep(interval)
 
 
 if __name__ == "__main__":
