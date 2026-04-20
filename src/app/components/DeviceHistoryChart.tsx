@@ -128,7 +128,6 @@ const METRICS: MetricDef[] = [
       { y1: 0, y2: 0.5, color: '#dcfce7', opacity: 0.3 },
       { y1: 0.5, y2: 1, color: '#fee2e2', opacity: 0.4 },
     ],
-    description: 'C-weighted peak sound level',
   },
 ];
 
