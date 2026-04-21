@@ -10,7 +10,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api, type Property, type PropertyDetails, type Device, type PropertyTelemetry } from '@/app/utils/api';
 import { BMSPanel } from '@/app/components/digital-twin/BMSPanel';
 import { DeviceInspector } from '@/app/components/digital-twin/DeviceInspector';
-import { Bim3DStage } from '@/app/components/digital-twin/Bim3DStage';
 
 // ═══════════════════════════════════════════════════════
 // Digital Twin Adapter Interface
@@ -774,26 +773,7 @@ export function BIMTwins() {
               </div>
             )}
 
-            {/* 3D BIM Stage (replaces previous SVG isometric scene) */}
-            <Bim3DStage
-              showStructure={showStructure}
-              showDevices={showDevices && connectionStatus === 'connected'}
-              selectedDeviceId={selectedDevice?.id ?? null}
-              zoom={zoom}
-              onSelectDevice={(id) => {
-                const dp = devicePositions.find(x => x.device.id === id);
-                if (dp) handleDeviceClick(dp.device);
-              }}
-              onDeselect={() => {
-                setSelectedFloor(null);
-                setSelectedTable(null);
-                setSelectedDevice(null);
-                setInspectorMode('overview');
-              }}
-            />
-
-            {/* Legacy SVG isometric scene kept below as reference (disabled) */}
-            {false && (
+            {/* SVG Isometric Scene */}
             <svg viewBox={`0 0 ${svgW} ${svgH}`} className="absolute inset-0 w-full h-full" onClick={() => { setSelectedFloor(null); setSelectedTable(null); setSelectedDevice(null); setInspectorMode('overview'); }}>
               <g transform={`translate(${viewCenterX}, ${viewCenterY})`}>
                 {/* Floors */}
@@ -885,7 +865,6 @@ export function BIMTwins() {
                 )}
               </g>
             </svg>
-            )}
 
             {/* Floor Legend (when a floor is selected) */}
             {selectedTable !== null && (() => {
