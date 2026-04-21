@@ -1,6 +1,7 @@
-import { Suspense } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Grid } from '@react-three/drei';
+import { Suspense, useRef, useState, useEffect } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, PerspectiveCamera, Grid, ContactShadows, Float } from '@react-three/drei';
+import * as THREE from 'three';
 import { Building } from '@/app/components/demo/bim3d/Building';
 import { SensorPin } from '@/app/components/demo/bim3d/SensorPin';
 import { MOCK_SENSORS, Severity } from '@/app/components/demo/bim3d/mockData';
@@ -13,6 +14,23 @@ interface Bim3DStageProps {
   onDeselect?: () => void;
 }
 
+/** Animates the building in from below with a soft ease-out on first mount. */
+function IntroGroup({ children }: { children: React.ReactNode }) {
+  const ref = useRef<THREE.Group>(null);
+  const t0 = useRef<number | null>(null);
+  useFrame((state) => {
+    if (!ref.current) return;
+    if (t0.current === null) t0.current = state.clock.elapsedTime;
+    const t = Math.min((state.clock.elapsedTime - t0.current) / 1.4, 1);
+    const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+    ref.current.position.y = THREE.MathUtils.lerp(-4, 0, eased);
+    ref.current.scale.setScalar(THREE.MathUtils.lerp(0.6, 1, eased));
+    const mat = ref.current as any;
+    mat.__opacity = eased;
+  });
+  return <group ref={ref}>{children}</group>;
+}
+
 export function Bim3DStage({
   showStructure = true,
   showDevices = true,
@@ -20,64 +38,108 @@ export function Bim3DStage({
   onSelectDevice,
   onDeselect,
 }: Bim3DStageProps) {
+  const [userInteracting, setUserInteracting] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (idleTimer.current) clearTimeout(idleTimer.current); }, []);
+
+  const handleStart = () => {
+    setUserInteracting(true);
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+  };
+  const handleEnd = () => {
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => setUserInteracting(false), 2500);
+  };
+
   return (
     <Canvas
-      shadows
+      shadows="soft"
       dpr={[1, 2]}
       className="absolute inset-0"
+      gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
       style={{ background: 'transparent' }}
       onPointerMissed={onDeselect}
     >
-      <PerspectiveCamera makeDefault position={[20, 18, 22]} fov={45} />
+      <fog attach="fog" args={['#e0ecfa', 35, 90]} />
+
+      <PerspectiveCamera makeDefault position={[22, 16, 24]} fov={40} />
       <OrbitControls
         makeDefault
         enableDamping
-        dampingFactor={0.08}
-        minDistance={8}
-        maxDistance={60}
-        maxPolarAngle={Math.PI / 2.1}
+        dampingFactor={0.1}
+        minDistance={10}
+        maxDistance={55}
+        maxPolarAngle={Math.PI / 2.15}
+        minPolarAngle={Math.PI / 6}
         target={[0, 1.5, 0]}
+        autoRotate={!userInteracting}
+        autoRotateSpeed={0.45}
+        onStart={handleStart}
+        onEnd={handleEnd}
       />
 
-      <ambientLight intensity={0.65} />
+      {/* Key + fill + rim lighting for readable volumes */}
+      <ambientLight intensity={0.45} />
       <directionalLight
-        position={[15, 20, 10]}
-        intensity={1.15}
+        position={[14, 22, 10]}
+        intensity={1.3}
         castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-left={-25}
+        shadow-camera-right={25}
+        shadow-camera-top={25}
+        shadow-camera-bottom={-25}
+        shadow-bias={-0.0005}
       />
-      <hemisphereLight args={['#60a5fa', '#e2e8f0', 0.5]} />
+      <directionalLight position={[-15, 12, -10]} intensity={0.4} color="#7dd3fc" />
+      <hemisphereLight args={['#bfdbfe', '#1e293b', 0.55]} />
 
       <Grid
-        args={[60, 60]}
-        position={[0, -0.03, 0]}
+        args={[80, 80]}
+        position={[0, -0.02, 0]}
         cellSize={1}
-        cellThickness={0.5}
+        cellThickness={0.4}
         cellColor="#cbd5e1"
         sectionSize={5}
         sectionThickness={1}
         sectionColor="#0891b2"
-        fadeDistance={50}
-        fadeStrength={1}
+        fadeDistance={55}
+        fadeStrength={1.2}
         infiniteGrid
       />
 
-      <Suspense fallback={null}>
-        {showStructure && (
-          <Building selectedRoomId={null} onRoomClick={() => {}} wallsVisible={true} />
-        )}
+      <ContactShadows
+        position={[0, -0.01, 0]}
+        opacity={0.55}
+        scale={50}
+        blur={2.4}
+        far={10}
+        resolution={1024}
+        color="#0f172a"
+      />
 
-        {showDevices && MOCK_SENSORS.map(sensor => (
-          <SensorPin
-            key={sensor.id}
-            sensor={sensor}
-            severity={'normal' as Severity}
-            selected={selectedDeviceId === sensor.id}
-            onClick={(id) => onSelectDevice?.(id)}
-          />
-        ))}
+      <Suspense fallback={null}>
+        <IntroGroup>
+          <Float speed={0.8} rotationIntensity={0.05} floatIntensity={0.15}>
+            {showStructure && (
+              <Building selectedRoomId={null} onRoomClick={() => {}} wallsVisible={true} />
+            )}
+
+            {showDevices && MOCK_SENSORS.map(sensor => (
+              <SensorPin
+                key={sensor.id}
+                sensor={sensor}
+                severity={'normal' as Severity}
+                selected={selectedDeviceId === sensor.id}
+                onClick={(id) => onSelectDevice?.(id)}
+              />
+            ))}
+          </Float>
+        </IntroGroup>
       </Suspense>
     </Canvas>
   );
 }
+
