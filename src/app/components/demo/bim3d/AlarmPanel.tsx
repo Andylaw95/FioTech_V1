@@ -75,15 +75,18 @@ export function AlarmPanel({ alarms, selectedAlarmId, onSelect, onResolve, filte
                     <div className="text-xs text-slate-300 mt-0.5 line-clamp-2">
                       {a.message}
                     </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className="text-[10px] text-slate-500">
-                        {a.subsystem} · {timeAgo(a.occurredAt)}
-                      </span>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-700/80 text-slate-200 font-medium">
+                          {a.subsystem}
+                        </span>
+                        <span className="text-slate-500">{timeAgo(a.occurredAt)}</span>
+                      </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); onResolve(a.id); }}
-                        className="text-[10px] text-emerald-400 hover:text-emerald-300 px-1.5 py-0.5 rounded hover:bg-slate-700"
+                        className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 px-2 py-0.5 rounded hover:bg-emerald-500/10 border border-emerald-600/40 flex items-center gap-1"
                       >
-                        Resolve
+                        <CheckCircle2 size={10} /> Resolve
                       </button>
                     </div>
                   </div>
