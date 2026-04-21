@@ -16,17 +16,28 @@ interface Bim3DStageProps {
   zoom?: number;
 }
 
-/** Drives camera distance based on the external zoom prop (smoothly lerped). */
+/** Drives camera distance only when the external `zoom` prop changes; otherwise leaves OrbitControls (mouse wheel) alone. */
 function ZoomDriver({ zoom }: { zoom: number }) {
   const { camera, controls } = useThree() as any;
+  const lastZoom = useRef(zoom);
+  const animating = useRef(false);
+  useEffect(() => {
+    if (zoom !== lastZoom.current) {
+      lastZoom.current = zoom;
+      animating.current = true;
+    }
+  }, [zoom]);
   useFrame(() => {
-    if (!controls) return;
+    if (!controls || !animating.current) return;
     const target = controls.target as THREE.Vector3;
     const dir = new THREE.Vector3().subVectors(camera.position, target);
     const currentDist = dir.length();
     const desiredDist = THREE.MathUtils.clamp(32 / Math.max(zoom, 0.1), 10, 55);
-    if (Math.abs(currentDist - desiredDist) < 0.01) return;
-    const newDist = THREE.MathUtils.lerp(currentDist, desiredDist, 0.12);
+    if (Math.abs(currentDist - desiredDist) < 0.05) {
+      animating.current = false;
+      return;
+    }
+    const newDist = THREE.MathUtils.lerp(currentDist, desiredDist, 0.15);
     dir.setLength(newDist);
     camera.position.copy(target).add(dir);
     controls.update?.();
