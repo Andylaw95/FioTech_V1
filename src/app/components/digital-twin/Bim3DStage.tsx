@@ -1,5 +1,5 @@
 import { Suspense, useRef, useState, useEffect } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid, ContactShadows, Float } from '@react-three/drei';
 import * as THREE from 'three';
 import { Building } from '@/app/components/demo/bim3d/Building';
@@ -12,6 +12,26 @@ interface Bim3DStageProps {
   selectedDeviceId?: string | null;
   onSelectDevice?: (id: string) => void;
   onDeselect?: () => void;
+  /** Zoom level (BIMTwins passes its existing zoom state; 1 = default, >1 = closer, <1 = farther). */
+  zoom?: number;
+}
+
+/** Drives camera distance based on the external zoom prop (smoothly lerped). */
+function ZoomDriver({ zoom }: { zoom: number }) {
+  const { camera, controls } = useThree() as any;
+  useFrame(() => {
+    if (!controls) return;
+    const target = controls.target as THREE.Vector3;
+    const dir = new THREE.Vector3().subVectors(camera.position, target);
+    const currentDist = dir.length();
+    const desiredDist = THREE.MathUtils.clamp(32 / Math.max(zoom, 0.1), 10, 55);
+    if (Math.abs(currentDist - desiredDist) < 0.01) return;
+    const newDist = THREE.MathUtils.lerp(currentDist, desiredDist, 0.12);
+    dir.setLength(newDist);
+    camera.position.copy(target).add(dir);
+    controls.update?.();
+  });
+  return null;
 }
 
 /** Animates the building in from below with a soft ease-out on first mount. */
@@ -37,6 +57,7 @@ export function Bim3DStage({
   selectedDeviceId,
   onSelectDevice,
   onDeselect,
+  zoom = 1,
 }: Bim3DStageProps) {
   const [userInteracting, setUserInteracting] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -121,6 +142,7 @@ export function Bim3DStage({
       />
 
       <Suspense fallback={null}>
+        <ZoomDriver zoom={zoom} />
         <IntroGroup>
           <Float speed={0.8} rotationIntensity={0.05} floatIntensity={0.15}>
             {showStructure && (

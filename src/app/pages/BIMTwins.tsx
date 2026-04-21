@@ -779,6 +779,7 @@ export function BIMTwins() {
               showStructure={showStructure}
               showDevices={showDevices && connectionStatus === 'connected'}
               selectedDeviceId={selectedDevice?.id ?? null}
+              zoom={zoom}
               onSelectDevice={(id) => {
                 const dp = devicePositions.find(x => x.device.id === id);
                 if (dp) handleDeviceClick(dp.device);
