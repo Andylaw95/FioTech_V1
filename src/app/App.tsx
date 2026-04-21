@@ -243,7 +243,7 @@ export default function App() {
                     <Route path="environment/dust" element={<DustDashboard />} />
                     <Route path="bim" element={<BIMTwins />} />
                     <Route path="digital-twin-v2" element={<DigitalTwinPortfolio />} />
-                    <Route path="digital-twin-v2/:propertyId" element={<DigitalTwinPortfolio />} />
+                    <Route path="digital-twin-v2/:propertyId" element={<BIM3DDemo />} />
                     <Route path="demo/bim-3d" element={<BIM3DDemo />} />
                     <Route path="settings" element={<Settings />} />
                     <Route path="admin" element={<AdminPanel />} />

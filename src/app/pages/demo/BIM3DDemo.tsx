@@ -1,4 +1,5 @@
 import { useMemo, useState, useRef, Suspense } from 'react';
+import { useParams, useNavigate } from 'react-router';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid, Stats } from '@react-three/drei';
 import { Building } from '@/app/components/demo/bim3d/Building';
@@ -10,7 +11,7 @@ import { ControlPanel } from '@/app/components/demo/bim3d/ControlPanel';
 import { CameraFlyTo } from '@/app/components/demo/bim3d/CameraFlyTo';
 import { useMockAlarmStream } from '@/app/components/demo/bim3d/useMockAlarmStream';
 import { MOCK_SENSORS, Alarm, Severity } from '@/app/components/demo/bim3d/mockData';
-import { Layers3, Activity } from 'lucide-react';
+import { Layers3, Activity, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 function resolveSensorSeverity(sensorId: string, alarms: Alarm[]): Severity {
@@ -22,6 +23,8 @@ function resolveSensorSeverity(sensorId: string, alarms: Alarm[]): Severity {
 }
 
 export function BIM3DDemo() {
+  const { propertyId } = useParams<{ propertyId?: string }>();
+  const navigate = useNavigate();
   const { alarms, triggerAlarm, resolveAlarm } = useMockAlarmStream();
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
   const [selectedAlarmId, setSelectedAlarmId] = useState<string | null>(null);
@@ -80,10 +83,19 @@ export function BIM3DDemo() {
       <aside className="w-96 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-900/95">
         <div className="px-4 py-3 border-b border-slate-700 bg-gradient-to-r from-slate-900 to-slate-800">
           <div className="flex items-center gap-2">
+            {propertyId && (
+              <button
+                onClick={() => navigate('/digital-twin-v2')}
+                className="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition flex-shrink-0"
+                title="Back to portfolio"
+              >
+                <ArrowLeft size={16} />
+              </button>
+            )}
             <Layers3 size={18} className="text-cyan-400 flex-shrink-0" />
             <div className="min-w-0">
               <div className="text-[10px] text-cyan-400 uppercase tracking-wider font-bold">
-                Demo · Phase 2
+                {propertyId ? `Digital Twin · ${decodeURIComponent(propertyId)}` : 'Demo · Phase 2'}
               </div>
               <div className="text-sm font-bold text-white truncate">
                 CCC Office · Floor 17 · BIM Digital Twin
