@@ -241,7 +241,7 @@ export default function App() {
                     <Route path="environment" element={<EnvironmentalMonitoring />} />
                     <Route path="environment/noise" element={<NoiseDashboard />} />
                     <Route path="environment/dust" element={<DustDashboard />} />
-                    <Route path="bim" element={<BIM3DDemo />} />
+                    <Route path="bim" element={<BIMTwins />} />
                     <Route path="bim-legacy" element={<BIMTwins />} />
                     <Route path="digital-twin-v2" element={<DigitalTwinPortfolio />} />
                     <Route path="digital-twin-v2/:propertyId" element={<BIM3DDemo />} />
