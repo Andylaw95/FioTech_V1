@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Grid, Environment, Stats } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, Grid, Stats } from '@react-three/drei';
 import { Building } from '@/app/components/demo/bim3d/Building';
 import { SensorPin } from '@/app/components/demo/bim3d/SensorPin';
 import { AlarmPanel } from '@/app/components/demo/bim3d/AlarmPanel';
@@ -202,7 +202,6 @@ export function BIM3DDemo() {
             ))}
 
             <CameraFlyTo target={flyTarget} enabled={!!flyTarget} />
-            <Environment preset="city" />
           </Suspense>
 
           {import.meta.env.DEV && <Stats className="!top-auto !bottom-0 !left-auto !right-0" />}
