@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import * as THREE from 'three';
 import {
   ZoneLabel,
-  getLabel,
-  upsertLabel,
-  deleteLabel,
+  getLabelById,
+  getLabelsByExpressId,
+  createLabel,
+  updateLabel,
+  deleteLabelById,
 } from './zoneLabels';
 import { MOCK_SENSORS } from './mockData';
 
@@ -14,11 +16,15 @@ export interface PickedInfo {
   name: string | null;
   storey: string | null;
   point: THREE.Vector3;
+  /** When set, the card edits this existing label instead of creating a new one. */
+  editLabelId?: string;
 }
 
 const ZONE_TYPES: Array<NonNullable<ZoneLabel['zoneType']>> = [
   'room', 'area', 'zone', 'asset', 'other',
 ];
+
+const EMPTY_DRAFT: Partial<ZoneLabel> = { zoneType: 'room' };
 
 export function PickedElementCard({
   picked,
@@ -31,34 +37,62 @@ export function PickedElementCard({
   onClose: () => void;
   onLabelChange?: (label: ZoneLabel | null) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [label, setLabel] = useState<ZoneLabel | null>(null);
-  const [draft, setDraft] = useState<Partial<ZoneLabel>>({});
+  const [editing, setEditing] = useState<boolean>(!!picked.editLabelId);
+  const [draft, setDraft] = useState<Partial<ZoneLabel>>(EMPTY_DRAFT);
+
+  // The label currently being edited (only when picked.editLabelId is set)
+  const existingLabel = useMemo<ZoneLabel | null>(
+    () => (picked.editLabelId ? getLabelById(modelKey, picked.editLabelId) : null),
+    [picked.editLabelId, modelKey],
+  );
+
+  // Other labels on the same IFC element (so user knows what's already there)
+  const siblingLabels = useMemo<ZoneLabel[]>(
+    () => getLabelsByExpressId(modelKey, picked.expressId)
+      .filter((l) => l.id !== picked.editLabelId),
+    [picked.expressId, modelKey, picked.editLabelId],
+  );
 
   useEffect(() => {
-    const l = getLabel(modelKey, picked.expressId);
-    setLabel(l);
-    setDraft(l ?? { zoneType: 'room' });
-    setEditing(false);
-  }, [picked.expressId, modelKey]);
-
-  const displayName = label?.customName || picked.name || '(unnamed)';
-  const displayCode = label?.customCode;
+    if (existingLabel) {
+      setDraft(existingLabel);
+      setEditing(true);
+    } else {
+      setDraft(EMPTY_DRAFT);
+      setEditing(false);
+    }
+  }, [existingLabel]);
 
   function save() {
-    const saved = upsertLabel(modelKey, picked.expressId, {
+    const patch = {
       customName: draft.customName?.trim() || undefined,
       customCode: draft.customCode?.trim() || undefined,
       zoneType: draft.zoneType,
       notes: draft.notes?.trim() || undefined,
       color: draft.color || undefined,
       assignedDeviceIds: draft.assignedDeviceIds,
-      // Anchor the floating 3D label at the click point
-      anchor: { x: picked.point.x, y: picked.point.y, z: picked.point.z },
-    });
-    setLabel(saved);
+    };
+    let saved: ZoneLabel | null;
+    if (existingLabel) {
+      saved = updateLabel(modelKey, existingLabel.id, patch);
+    } else {
+      saved = createLabel(
+        modelKey,
+        picked.expressId,
+        { x: picked.point.x, y: picked.point.y, z: picked.point.z },
+        patch,
+      );
+    }
     setEditing(false);
     onLabelChange?.(saved);
+    onClose();
+  }
+
+  function clear() {
+    if (!existingLabel) return;
+    deleteLabelById(modelKey, existingLabel.id);
+    onLabelChange?.(null);
+    onClose();
   }
 
   function toggleDevice(deviceId: string) {
@@ -68,20 +102,17 @@ export function PickedElementCard({
     setDraft({ ...draft, assignedDeviceIds: Array.from(current) });
   }
 
-  function clear() {
-    deleteLabel(modelKey, picked.expressId);
-    setLabel(null);
-    setDraft({ zoneType: 'room' });
-    setEditing(false);
-    onLabelChange?.(null);
-  }
+  const displayName = existingLabel?.customName || picked.name || '(unnamed)';
+  const isNew = !existingLabel;
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[460px] max-w-[92vw] rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-amber-400/50">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[480px] max-w-[92vw] rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-amber-400/50">
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
         <div className="text-xs font-semibold text-amber-300 flex items-center gap-2">
           📌 {displayName}
-          {label && <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/30 text-cyan-200">labeled</span>}
+          {isNew
+            ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/30 text-emerald-200">new label</span>
+            : <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/30 text-cyan-200">editing</span>}
         </div>
         <button onClick={onClose} className="text-white/60 hover:text-white text-xs">✕</button>
       </div>
@@ -89,48 +120,37 @@ export function PickedElementCard({
       {!editing && (
         <>
           <div className="px-4 py-3 space-y-1.5 text-xs font-mono">
-            {displayCode && (
-              <div className="flex justify-between"><span className="text-white/60">code</span><span className="text-cyan-200">{displayCode}</span></div>
-            )}
-            {label?.zoneType && (
-              <div className="flex justify-between"><span className="text-white/60">type</span><span>{label.zoneType}</span></div>
-            )}
             <div className="flex justify-between"><span className="text-white/60">expressId</span><span className="text-amber-200 font-bold">{picked.expressId}</span></div>
             <div className="flex justify-between"><span className="text-white/60">IFC type</span><span>{picked.ifcType}</span></div>
             <div className="flex justify-between"><span className="text-white/60">IFC name</span><span className="truncate ml-2 text-right">{picked.name ?? '—'}</span></div>
             <div className="flex justify-between"><span className="text-white/60">storey</span><span>{picked.storey ?? '—'}</span></div>
             <div className="flex justify-between"><span className="text-white/60">x, y, z</span><span>{picked.point.x.toFixed(2)}, {picked.point.y.toFixed(2)}, {picked.point.z.toFixed(2)}</span></div>
-            {label?.notes && (
-              <div className="pt-1.5 border-t border-white/10 text-white/80 font-sans text-[11px] leading-snug whitespace-pre-wrap">
-                {label.notes}
-              </div>
-            )}
-            {label?.assignedDeviceIds && label.assignedDeviceIds.length > 0 && (
-              <div className="pt-1.5 border-t border-white/10">
-                <div className="text-white/60 text-[10px] uppercase tracking-wider mb-1">📡 Assigned devices ({label.assignedDeviceIds.length})</div>
-                <div className="flex flex-wrap gap-1 font-sans">
-                  {label.assignedDeviceIds.map((id) => {
-                    const s = MOCK_SENSORS.find((x) => x.id === id);
-                    return (
-                      <span key={id} className="text-[10px] bg-emerald-500/20 text-emerald-200 rounded px-1.5 py-0.5 ring-1 ring-emerald-400/40">
-                        {s ? `${s.type} · ${s.name.split('(')[0].trim()}` : id}
-                      </span>
-                    );
-                  })}
+            {siblingLabels.length > 0 && (
+              <div className="pt-1.5 border-t border-white/10 font-sans">
+                <div className="text-white/60 text-[10px] uppercase tracking-wider mb-1">
+                  📍 {siblingLabels.length} existing label{siblingLabels.length === 1 ? '' : 's'} on this element
                 </div>
+                <div className="flex flex-wrap gap-1">
+                  {siblingLabels.map((l) => (
+                    <span key={l.id} className="text-[10px] bg-white/10 rounded px-1.5 py-0.5">
+                      {l.customCode ? `${l.customCode} · ` : ''}{l.customName ?? '(unnamed)'}
+                    </span>
+                  ))}
+                </div>
+                <div className="text-[9px] text-white/40 mt-1">Click any floating label in the 3D view to edit it.</div>
               </div>
             )}
           </div>
           <div className="px-4 py-2 border-t border-white/10 flex gap-2">
             <button
               onClick={() => setEditing(true)}
-              className="flex-1 text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold rounded px-3 py-1.5"
+              className="flex-1 text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold rounded px-3 py-1.5"
             >
-              ✏️ {label ? 'Edit label' : 'Add label'}
+              ➕ Add new label here
             </button>
             <button
               onClick={() => {
-                const snippet = `{ id: 'sensor-${picked.expressId}', roomId: 'room-${picked.expressId}', x: ${picked.point.x.toFixed(2)}, y: ${picked.point.y.toFixed(2)}, z: ${picked.point.z.toFixed(2)}, expressId: ${picked.expressId} },`;
+                const snippet = `{ expressId: ${picked.expressId}, x: ${picked.point.x.toFixed(2)}, y: ${picked.point.y.toFixed(2)}, z: ${picked.point.z.toFixed(2)} },`;
                 navigator.clipboard.writeText(snippet);
               }}
               className="text-xs bg-white/10 hover:bg-white/20 rounded px-3 py-1.5"
@@ -171,7 +191,7 @@ export function PickedElementCard({
                 onChange={(e) => setDraft({ ...draft, zoneType: e.target.value as ZoneLabel['zoneType'] })}
                 className="w-full mt-0.5 px-2 py-1.5 rounded bg-slate-800 border border-white/10 focus:border-cyan-400 outline-none text-white"
               >
-                {ZONE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {ZONE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </label>
           </div>
@@ -212,19 +232,22 @@ export function PickedElementCard({
               onClick={save}
               className="flex-1 text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold rounded px-3 py-1.5"
             >
-              💾 Save
+              💾 {existingLabel ? 'Update label' : 'Save new label'}
             </button>
             <button
-              onClick={() => { setEditing(false); setDraft(label ?? { zoneType: 'room' }); }}
+              onClick={() => {
+                if (existingLabel) onClose();
+                else { setEditing(false); setDraft(EMPTY_DRAFT); }
+              }}
               className="text-xs bg-white/10 hover:bg-white/20 rounded px-3 py-1.5"
             >
               Cancel
             </button>
-            {label && (
+            {existingLabel && (
               <button
                 onClick={clear}
                 className="text-xs bg-red-500/80 hover:bg-red-500 rounded px-3 py-1.5"
-                title="Delete label"
+                title="Delete this label"
               >
                 🗑
               </button>

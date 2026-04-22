@@ -170,7 +170,7 @@ export function Bim3DStage({
     wireframe: false,
     edges: true,
     ghost: false,
-    clipHeight: 100,
+    clipHeight: 1.0,
     maxHeight: 100,
     rotationPreset: 'D',
   });
@@ -360,7 +360,8 @@ export function Bim3DStage({
                 setTools(prev => ({
                   ...prev,
                   maxHeight: m.height,
-                  clipHeight: m.height + 0.5,
+                  // Default to 1.0 m floor-plan view on first load
+                  clipHeight: prev.clipHeight === 1.0 ? 1.0 : prev.clipHeight,
                 }));
               }}
               pickMode={pickMode}
@@ -384,7 +385,20 @@ export function Bim3DStage({
 
         <PickerOverlay enabled={pickMode} onPick={setPicked} />
 
-        <ZoneLabels3D modelKey={MODEL_KEY} version={labelsVersion} />
+        <ZoneLabels3D
+          modelKey={MODEL_KEY}
+          version={labelsVersion}
+          onEdit={(label) => {
+            setPicked({
+              expressId: label.expressId,
+              ifcType: 'IFCLABEL',
+              name: label.customName ?? null,
+              storey: null,
+              point: new THREE.Vector3(label.anchor.x, label.anchor.y, label.anchor.z),
+              editLabelId: label.id,
+            });
+          }}
+        />
 
         {/* Autodesk-style navigation cube — click faces/edges to snap orientation */}
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>

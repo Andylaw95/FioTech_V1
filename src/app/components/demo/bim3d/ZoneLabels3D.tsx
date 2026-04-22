@@ -1,28 +1,31 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Html } from '@react-three/drei';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Text } from '@react-three/drei';
+import * as THREE from 'three';
 import { getAllLabels, ZoneLabel } from './zoneLabels';
 
-const ZONE_COLORS: Record<NonNullable<ZoneLabel['zoneType']>, string> = {
-  room:  'bg-blue-500',
-  area:  'bg-emerald-500',
-  zone:  'bg-amber-500',
-  asset: 'bg-violet-500',
-  other: 'bg-slate-500',
+const ZONE_COLOR: Record<NonNullable<ZoneLabel['zoneType']>, string> = {
+  room:  '#0ea5e9',
+  area:  '#10b981',
+  zone:  '#f59e0b',
+  asset: '#a855f7',
+  other: '#94a3b8',
 };
 
 /**
- * Renders all saved zone labels as floating 3D pills above their
+ * Renders all saved zone labels as flat text on the floor at their
  * anchor point. Re-reads localStorage on demand via the `version`
- * prop so a save/delete in PickedElementCard updates immediately.
+ * prop so a save / delete in PickedElementCard updates immediately.
+ *
+ * Click a label to edit it (calls onEdit with the label id + anchor).
  */
 export function ZoneLabels3D({
   modelKey,
   version,
-  onClick,
+  onEdit,
 }: {
   modelKey: string;
-  version: number; // bump to force reload
-  onClick?: (expressId: number) => void;
+  version: number;
+  onEdit?: (label: ZoneLabel) => void;
 }) {
   const [labels, setLabels] = useState<ZoneLabel[]>([]);
 
@@ -32,34 +35,73 @@ export function ZoneLabels3D({
 
   useEffect(() => { reload(); }, [reload, version]);
 
+  // Lay text flat on the floor: rotate -90° around X so it reads from above.
+  const flatRotation = useMemo<[number, number, number]>(() => [-Math.PI / 2, 0, 0], []);
+
   return (
     <>
       {labels.map((l) => {
-        const color = ZONE_COLORS[l.zoneType ?? 'other'];
+        const color = ZONE_COLOR[l.zoneType ?? 'other'];
+        const text = l.customCode ? `${l.customCode}\n${l.customName}` : (l.customName ?? '');
+        const subText = l.assignedDeviceIds && l.assignedDeviceIds.length > 0
+          ? `📡 ${l.assignedDeviceIds.length} device${l.assignedDeviceIds.length === 1 ? '' : 's'}`
+          : null;
+        // Lift slightly above the picked surface to avoid z-fighting with the floor mesh.
+        const y = l.anchor.y + 0.05;
         return (
-          <Html
-            key={l.expressId}
-            position={[l.anchor!.x, l.anchor!.y + 0.6, l.anchor!.z]}
-            center
-            distanceFactor={12}
-            zIndexRange={[10, 0]}
-            style={{ pointerEvents: onClick ? 'auto' : 'none' }}
-          >
-            <div
-              onClick={() => onClick?.(l.expressId)}
-              className={`${color} text-white px-2.5 py-1 rounded-full text-[11px] font-semibold shadow-lg ring-2 ring-white/40 whitespace-nowrap select-none ${
-                onClick ? 'cursor-pointer hover:scale-110 transition-transform' : ''
-              }`}
-              title={l.customCode ? `${l.customName} · ${l.customCode}` : l.customName}
+          <group key={l.id} position={[l.anchor.x, y, l.anchor.z]}>
+            {/* Subtle disc behind the text so it stays readable on busy floors */}
+            <mesh rotation={flatRotation} position={[0, 0.001, 0]} renderOrder={998}>
+              <circleGeometry args={[1.4, 32]} />
+              <meshBasicMaterial
+                color="#0f172a"
+                transparent
+                opacity={0.55}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+            <Text
+              rotation={flatRotation}
+              fontSize={0.42}
+              color={color}
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.04}
+              outlineColor="#000"
+              outlineOpacity={0.9}
+              depthOffset={-2}
+              renderOrder={999}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit?.(l);
+              }}
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                document.body.style.cursor = 'pointer';
+              }}
+              onPointerOut={() => { document.body.style.cursor = ''; }}
             >
-              {l.customCode ? `${l.customCode} · ${l.customName}` : l.customName}
-              {l.assignedDeviceIds && l.assignedDeviceIds.length > 0 && (
-                <span className="ml-1.5 inline-flex items-center justify-center bg-white/30 rounded-full px-1.5 text-[9px]">
-                  {l.assignedDeviceIds.length}📡
-                </span>
-              )}
-            </div>
-          </Html>
+              {text}
+            </Text>
+            {subText && (
+              <Text
+                rotation={flatRotation}
+                position={[0, 0.001, 0.55]}
+                fontSize={0.22}
+                color="#fbbf24"
+                anchorX="center"
+                anchorY="middle"
+                outlineWidth={0.025}
+                outlineColor="#000"
+                outlineOpacity={0.9}
+                depthOffset={-2}
+                renderOrder={999}
+              >
+                {subText}
+              </Text>
+            )}
+          </group>
         );
       })}
     </>
