@@ -47,7 +47,7 @@ export function BimToolsPanel({
     return (
       <button
         onClick={() => setCollapsed(false)}
-        className="absolute top-3 left-3 z-20 px-3 py-1.5 rounded-md bg-slate-900/85 text-white text-xs font-semibold shadow-lg backdrop-blur-sm hover:bg-slate-800"
+        className="absolute top-3 right-3 z-20 px-3 py-1.5 rounded-md bg-slate-900/85 text-white text-xs font-semibold shadow-lg backdrop-blur-sm hover:bg-slate-800"
       >
         🛠️ Tools
       </button>
@@ -55,7 +55,7 @@ export function BimToolsPanel({
   }
 
   return (
-    <div className="absolute top-3 left-3 z-20 w-64 rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-white/10 overflow-hidden">
+    <div className="absolute top-3 right-3 z-20 w-64 rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-white/10 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
         <div className="text-xs font-bold tracking-wider text-cyan-300">🛠️ BIM TOOLS</div>

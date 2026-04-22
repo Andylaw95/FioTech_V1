@@ -21,14 +21,9 @@ import {
 import { BimToolsPanel, BimToolsState } from '@/app/components/demo/bim3d/BimToolsPanel';
 import { SensorPin } from '@/app/components/demo/bim3d/SensorPin';
 import { MOCK_SENSORS, Severity } from '@/app/components/demo/bim3d/mockData';
+import { PickedElementCard, PickedInfo } from '@/app/components/demo/bim3d/PickedElementCard';
 
-interface PickedInfo {
-  expressId: number;
-  ifcType: string;
-  name: string | null;
-  storey: string | null;
-  point: { x: number; y: number; z: number };
-}
+const MODEL_KEY = 'ccc-17f';
 
 const ALL_CATS = new Set(Object.keys(CATEGORY_GROUPS));
 
@@ -56,7 +51,7 @@ function BuildingShell({
         e.stopPropagation();
         const info = await getIfcInfoFromIntersection(e.intersections[0]);
         if (info) {
-          onPick({ ...info, point: { x: e.point.x, y: e.point.y, z: e.point.z } });
+          onPick({ ...info, point: e.point.clone() });
         }
       }}
     >
@@ -276,30 +271,11 @@ export function Bim3DStage({
       )}
 
       {picked && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[420px] max-w-[90vw] rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-amber-400/50">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
-            <div className="text-xs font-semibold text-amber-300">📌 Picked element</div>
-            <button onClick={() => { setPicked(null); highlightExpressId(null); }} className="text-white/60 hover:text-white text-xs">✕</button>
-          </div>
-          <div className="px-4 py-3 space-y-1.5 text-xs font-mono">
-            <div className="flex justify-between"><span className="text-white/60">expressId</span><span className="text-amber-200 font-bold">{picked.expressId}</span></div>
-            <div className="flex justify-between"><span className="text-white/60">type</span><span>{picked.ifcType}</span></div>
-            <div className="flex justify-between"><span className="text-white/60">name</span><span className="truncate ml-2 text-right">{picked.name ?? '—'}</span></div>
-            <div className="flex justify-between"><span className="text-white/60">storey</span><span>{picked.storey ?? '—'}</span></div>
-            <div className="flex justify-between"><span className="text-white/60">x, y, z</span><span>{picked.point.x.toFixed(2)}, {picked.point.y.toFixed(2)}, {picked.point.z.toFixed(2)}</span></div>
-          </div>
-          <div className="px-4 py-2 border-t border-white/10 flex gap-2">
-            <button
-              onClick={() => {
-                const snippet = `{ id: 'sensor-${picked.expressId}', roomId: 'room-${picked.expressId}', x: ${picked.point.x.toFixed(2)}, y: ${picked.point.y.toFixed(2)}, z: ${picked.point.z.toFixed(2)}, expressId: ${picked.expressId} },`;
-                navigator.clipboard.writeText(snippet);
-              }}
-              className="flex-1 text-xs bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded px-3 py-1.5"
-            >
-              📋 Copy mockData snippet
-            </button>
-          </div>
-        </div>
+        <PickedElementCard
+          picked={picked}
+          modelKey={MODEL_KEY}
+          onClose={() => { setPicked(null); highlightExpressId(null); }}
+        />
       )}
 
       <Canvas
