@@ -1,22 +1,22 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Text } from '@react-three/drei';
-import * as THREE from 'three';
+import { useEffect, useState, useCallback } from 'react';
+import { Html } from '@react-three/drei';
 import { getAllLabels, ZoneLabel } from './zoneLabels';
 
-const ZONE_COLOR: Record<NonNullable<ZoneLabel['zoneType']>, string> = {
-  room:  '#0ea5e9',
-  area:  '#10b981',
-  zone:  '#f59e0b',
-  asset: '#a855f7',
-  other: '#94a3b8',
+const ZONE_BG: Record<NonNullable<ZoneLabel['zoneType']>, string> = {
+  room:  'bg-sky-500/85 ring-sky-200',
+  area:  'bg-emerald-500/85 ring-emerald-200',
+  zone:  'bg-amber-500/85 ring-amber-100',
+  asset: 'bg-violet-500/85 ring-violet-200',
+  other: 'bg-slate-600/85 ring-slate-200',
 };
 
 /**
- * Renders all saved zone labels as flat text on the floor at their
- * anchor point. Re-reads localStorage on demand via the `version`
- * prop so a save / delete in PickedElementCard updates immediately.
+ * Renders all saved zone labels FLAT ON THE FLOOR using `<Html transform>`.
+ * We use HTML (not drei <Text>) on purpose — <Text> lazily loads a font
+ * file and SUSPENDS the surrounding tree, which restarts IfcModel and
+ * causes an infinite-load loop on this 46 MB IFC.
  *
- * Click a label to edit it (calls onEdit with the label id + anchor).
+ * Re-reads labels on demand via the `version` prop.
  */
 export function ZoneLabels3D({
   modelKey,
@@ -35,73 +35,43 @@ export function ZoneLabels3D({
 
   useEffect(() => { reload(); }, [reload, version]);
 
-  // Lay text flat on the floor: rotate -90° around X so it reads from above.
-  const flatRotation = useMemo<[number, number, number]>(() => [-Math.PI / 2, 0, 0], []);
-
   return (
     <>
       {labels.map((l) => {
-        const color = ZONE_COLOR[l.zoneType ?? 'other'];
-        const text = l.customCode ? `${l.customCode}\n${l.customName}` : (l.customName ?? '');
-        const subText = l.assignedDeviceIds && l.assignedDeviceIds.length > 0
-          ? `📡 ${l.assignedDeviceIds.length} device${l.assignedDeviceIds.length === 1 ? '' : 's'}`
-          : null;
-        // Lift slightly above the picked surface to avoid z-fighting with the floor mesh.
-        const y = l.anchor.y + 0.05;
+        const bg = ZONE_BG[l.zoneType ?? 'other'];
+        const deviceCount = l.assignedDeviceIds?.length ?? 0;
         return (
-          <group key={l.id} position={[l.anchor.x, y, l.anchor.z]}>
-            {/* Subtle disc behind the text so it stays readable on busy floors */}
-            <mesh rotation={flatRotation} position={[0, 0.001, 0]} renderOrder={998}>
-              <circleGeometry args={[1.4, 32]} />
-              <meshBasicMaterial
-                color="#0f172a"
-                transparent
-                opacity={0.55}
-                depthWrite={false}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-            <Text
-              rotation={flatRotation}
-              fontSize={0.42}
-              color={color}
-              anchorX="center"
-              anchorY="middle"
-              outlineWidth={0.04}
-              outlineColor="#000"
-              outlineOpacity={0.9}
-              depthOffset={-2}
-              renderOrder={999}
+          <Html
+            key={l.id}
+            position={[l.anchor.x, l.anchor.y + 0.06, l.anchor.z]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            transform
+            occlude={false}
+            distanceFactor={6}
+            zIndexRange={[20, 0]}
+            sprite={false}
+            wrapperClass="zone-label-wrapper"
+          >
+            <div
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit?.(l);
               }}
-              onPointerOver={(e) => {
-                e.stopPropagation();
-                document.body.style.cursor = 'pointer';
-              }}
-              onPointerOut={() => { document.body.style.cursor = ''; }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className={`${bg} text-white rounded-lg px-3 py-1.5 shadow-2xl ring-2 whitespace-nowrap select-none cursor-pointer hover:scale-105 transition-transform text-center`}
+              title="Click to edit this zone"
             >
-              {text}
-            </Text>
-            {subText && (
-              <Text
-                rotation={flatRotation}
-                position={[0, 0.001, 0.55]}
-                fontSize={0.22}
-                color="#fbbf24"
-                anchorX="center"
-                anchorY="middle"
-                outlineWidth={0.025}
-                outlineColor="#000"
-                outlineOpacity={0.9}
-                depthOffset={-2}
-                renderOrder={999}
-              >
-                {subText}
-              </Text>
-            )}
-          </group>
+              {l.customCode && (
+                <div className="text-[10px] font-mono opacity-80 leading-tight">{l.customCode}</div>
+              )}
+              <div className="text-base font-bold leading-tight">{l.customName}</div>
+              {deviceCount > 0 && (
+                <div className="text-[10px] mt-0.5 bg-black/30 rounded-full px-2 py-0.5 inline-block">
+                  📡 {deviceCount} device{deviceCount === 1 ? '' : 's'}
+                </div>
+              )}
+            </div>
+          </Html>
         );
       })}
     </>

@@ -24,6 +24,7 @@ import { MOCK_SENSORS, Severity } from '@/app/components/demo/bim3d/mockData';
 import { PickedElementCard, PickedInfo } from '@/app/components/demo/bim3d/PickedElementCard';
 import { PickerOverlay } from '@/app/components/demo/bim3d/PickerOverlay';
 import { ZoneLabels3D } from '@/app/components/demo/bim3d/ZoneLabels3D';
+import { ZoneListSidebar } from '@/app/components/demo/bim3d/ZoneListSidebar';
 
 const MODEL_KEY = 'ccc-17f';
 
@@ -272,6 +273,35 @@ export function Bim3DStage({
           modelKey={MODEL_KEY}
           onClose={() => { setPicked(null); highlightExpressId(null); }}
           onLabelChange={() => setLabelsVersion(v => v + 1)}
+        />
+      )}
+
+      {ifcStatus.state === 'ready' && (
+        <ZoneListSidebar
+          modelKey={MODEL_KEY}
+          version={labelsVersion}
+          onSelect={(label) => {
+            setPicked({
+              expressId: label.expressId,
+              ifcType: 'IFCLABEL',
+              name: label.customName ?? null,
+              storey: null,
+              point: new THREE.Vector3(label.anchor.x, label.anchor.y, label.anchor.z),
+              editLabelId: label.id,
+            });
+          }}
+          onFlyTo={(anchor) => {
+            const box = new THREE.Box3().setFromCenterAndSize(
+              anchor,
+              new THREE.Vector3(8, 4, 8),
+            );
+            setFitBox(box);
+            setFitToken(t => t + 1);
+          }}
+          onDeleted={() => {
+            setLabelsVersion(v => v + 1);
+            if (picked) setPicked(null);
+          }}
         />
       )}
 
