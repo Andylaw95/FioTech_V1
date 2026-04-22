@@ -10,8 +10,12 @@ import {
   setWireframe,
   setClipHeight,
   setEdgesVisible,
+  setGhostMode,
+  isolateExpressIds,
+  showAll as ifcShowAll,
   highlightExpressId,
   getModelGroup,
+  getExpressIdBoundingBox,
   CATEGORY_GROUPS,
 } from '@/app/components/demo/bim3d/IfcModel';
 import { BimToolsPanel, BimToolsState } from '@/app/components/demo/bim3d/BimToolsPanel';
@@ -116,17 +120,21 @@ function CameraResetter({ token }: { token: number }) {
 }
 
 /** Frames the camera to a Box3 so the entire object fits in view. */
-function CameraFitter({ token }: { token: number }) {
+function CameraFitter({ token, box }: { token: number; box?: THREE.Box3 | null }) {
   const { camera, controls } = useThree() as any;
   const last = useRef(0);
   useEffect(() => {
     if (token === 0 || token === last.current) return;
     last.current = token;
-    const target = getModelGroup();
-    if (!target || !controls) return;
-    const box = new THREE.Box3().setFromObject(target);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
+    let target: THREE.Box3 | null = box ?? null;
+    if (!target) {
+      const grp = getModelGroup();
+      if (!grp) return;
+      target = new THREE.Box3().setFromObject(grp);
+    }
+    if (!controls || target.isEmpty()) return;
+    const center = target.getCenter(new THREE.Vector3());
+    const size = target.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
     if (maxDim === 0) return;
     const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
@@ -155,6 +163,7 @@ export function Bim3DStage({
   const [picked, setPicked] = useState<PickedInfo | null>(null);
   const [resetToken, setResetToken] = useState(0);
   const [fitToken, setFitToken] = useState(0);
+  const [fitBox, setFitBox] = useState<THREE.Box3 | null>(null);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -162,6 +171,7 @@ export function Bim3DStage({
     visibleCats: ALL_CATS,
     wireframe: false,
     edges: true,
+    ghost: false,
     clipHeight: 100,
     maxHeight: 100,
     rotationPreset: 'D',
@@ -189,6 +199,11 @@ export function Bim3DStage({
     if (ifcStatus.state !== 'ready') return;
     setEdgesVisible(tools.edges);
   }, [tools.edges, ifcStatus.state]);
+
+  useEffect(() => {
+    if (ifcStatus.state !== 'ready') return;
+    setGhostMode(tools.ghost);
+  }, [tools.ghost, ifcStatus.state]);
 
   useEffect(() => {
     if (ifcStatus.state !== 'ready') return;
@@ -229,16 +244,22 @@ export function Bim3DStage({
             state={tools}
             setState={setTools}
             categoryCounts={categoryCounts}
-            onResetView={() => setResetToken(t => t + 1)}
-            onFitView={() => setFitToken(t => t + 1)}
+            onResetView={() => { setFitBox(null); setResetToken(t => t + 1); }}
+            onFitView={() => { setFitBox(null); setFitToken(t => t + 1); }}
             onIsolateSelected={() => {
               if (!picked) return;
-              highlightExpressId(picked.expressId);
+              isolateExpressIds([picked.expressId]);
+              const box = getExpressIdBoundingBox(picked.expressId);
+              if (box && !box.isEmpty()) {
+                setFitBox(box);
+                setFitToken(t => t + 1);
+              }
             }}
             onShowAll={() => {
-              setTools(s => ({ ...s, visibleCats: new Set(ALL_CATS), clipHeight: s.maxHeight + 0.5 }));
+              ifcShowAll();
+              setTools(s => ({ ...s, visibleCats: new Set(ALL_CATS), clipHeight: s.maxHeight + 0.5, ghost: false }));
               setPicked(null);
-              highlightExpressId(null);
+              setFitBox(null);
             }}
             hasSelection={!!picked}
           />
@@ -356,7 +377,7 @@ export function Bim3DStage({
         <Suspense fallback={null}>
           <ZoomDriver zoom={zoom} />
           <CameraResetter token={resetToken} />
-          <CameraFitter token={fitToken} />
+          <CameraFitter token={fitToken} box={fitBox} />
           {showStructure && (
             <BuildingShell
               rotationX={rotationX}

@@ -15,11 +15,11 @@ let cachedLoader: any = null;
 let cachedModelID: number | null = null;
 let cachedScene: THREE.Scene | null = null;
 let loadingPromise: Promise<THREE.Group> | null = null;
-// Original IFC meshes (so we can hide/show them without affecting subsets that are children)
 let originalMeshes: THREE.Mesh[] = [];
-// Edge LineSegments overlaying each mesh (Autodesk-style outline)
 let edgeLines: THREE.LineSegments[] = [];
 let edgesEnabled = true;
+let allIfcIds: number[] = [];
+let isolated = false;
 
 export function setEdgesVisible(on: boolean) {
   edgesEnabled = on;
@@ -28,6 +28,24 @@ export function setEdgesVisible(on: boolean) {
 
 export function getModelGroup(): THREE.Group | null {
   return cached;
+}
+
+export function getExpressIdBoundingBox(expressId: number): THREE.Box3 | null {
+  if (!cached || !cachedLoader || cachedModelID === null) return null;
+  try {
+    const subset = cachedLoader.ifcManager.createSubset({
+      modelID: cachedModelID,
+      ids: [expressId],
+      scene: cached,
+      removePrevious: true,
+      customID: '__bbox-tmp',
+    });
+    const box = new THREE.Box3().setFromObject(subset);
+    cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, '__bbox-tmp');
+    return box;
+  } catch {
+    return null;
+  }
 }
 
 // Categories (display name → IFC type IDs grouped together)
@@ -69,8 +87,19 @@ const HIGHLIGHT_MAT = new THREE.MeshBasicMaterial({
 });
 HIGHLIGHT_MAT.clippingPlanes = [clipPlane];
 
+const GHOST_MAT = new THREE.MeshLambertMaterial({
+  color: 0x94a3b8,
+  transparent: true,
+  opacity: 0.15,
+  depthWrite: false,
+  side: THREE.DoubleSide,
+});
+GHOST_MAT.clippingPlanes = [clipPlane];
+
 const SUBSET_VISIBLE = 'visible-cats';
 const SUBSET_HIGHLIGHT = 'highlight-pick';
+const SUBSET_GHOST = 'ghost-all';
+const SUBSET_ISOLATE = 'isolated';
 
 function patchSubsetMaterials(mesh: THREE.Object3D | undefined) {
   if (!mesh) return;
@@ -135,6 +164,58 @@ export function highlightExpressId(expressId: number | null) {
     material: HIGHLIGHT_MAT,
     customID: SUBSET_HIGHLIGHT,
   });
+}
+
+/** Ghost mode: dim everything to translucent grey so highlighted/picked element pops. */
+export function setGhostMode(on: boolean) {
+  if (!cachedLoader || cachedModelID === null || !cached) return;
+  cachedLoader.ifcManager.removeSubset(cachedModelID, GHOST_MAT, SUBSET_GHOST);
+  if (!on || allIfcIds.length === 0 || isolated) {
+    if (!isolated) originalMeshes.forEach((m) => { m.visible = true; });
+    return;
+  }
+  originalMeshes.forEach((m) => { m.visible = false; });
+  cachedLoader.ifcManager.createSubset({
+    modelID: cachedModelID,
+    ids: allIfcIds,
+    scene: cached,
+    removePrevious: true,
+    material: GHOST_MAT,
+    customID: SUBSET_GHOST,
+  });
+}
+
+/** True isolate: hide everything except the given expressIds. */
+export function isolateExpressIds(ids: number[] | null) {
+  if (!cachedLoader || cachedModelID === null || !cached) return;
+  cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_ISOLATE);
+  cachedLoader.ifcManager.removeSubset(cachedModelID, GHOST_MAT, SUBSET_GHOST);
+  if (!ids || ids.length === 0) {
+    isolated = false;
+    originalMeshes.forEach((m) => { m.visible = true; });
+    return;
+  }
+  isolated = true;
+  originalMeshes.forEach((m) => { m.visible = false; });
+  const subset = cachedLoader.ifcManager.createSubset({
+    modelID: cachedModelID,
+    ids,
+    scene: cached,
+    removePrevious: true,
+    customID: SUBSET_ISOLATE,
+  });
+  patchSubsetMaterials(subset);
+}
+
+/** Restore everything: clears isolate, ghost, highlight, category subset; shows all originals. */
+export function showAll() {
+  if (!cachedLoader || cachedModelID === null || !cached) return;
+  cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_ISOLATE);
+  cachedLoader.ifcManager.removeSubset(cachedModelID, GHOST_MAT, SUBSET_GHOST);
+  cachedLoader.ifcManager.removeSubset(cachedModelID, HIGHLIGHT_MAT, SUBSET_HIGHLIGHT);
+  cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE);
+  isolated = false;
+  originalMeshes.forEach((m) => { m.visible = true; });
 }
 
 /** Look up the IFC ExpressID + property name for a Three.js intersection on the IFC model. */
@@ -266,6 +347,7 @@ async function loadIfc(url: string): Promise<THREE.Group> {
       }
       categoryIds[key] = ids;
     }
+    allIfcIds = Array.from(new Set(Object.values(categoryIds).flat()));
     console.log('[IfcModel] indexed categories:', Object.fromEntries(
       Object.entries(categoryIds).map(([k, v]) => [k, v.length])
     ));

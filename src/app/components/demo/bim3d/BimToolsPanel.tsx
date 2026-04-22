@@ -5,6 +5,7 @@ export interface BimToolsState {
   visibleCats: Set<string>;
   wireframe: boolean;
   edges: boolean;
+  ghost: boolean;
   clipHeight: number;
   maxHeight: number;
   rotationPreset: 'A' | 'B' | 'C' | 'D';
@@ -114,6 +115,16 @@ export function BimToolsPanel({
               type="checkbox"
               checked={state.wireframe}
               onChange={(e) => setState({ ...state, wireframe: e.target.checked })}
+              className="accent-cyan-400 w-4 h-4"
+            />
+          </label>
+
+          <label className="flex items-center justify-between text-[11px] cursor-pointer">
+            <span className="text-white/70 font-semibold">Ghost mode</span>
+            <input
+              type="checkbox"
+              checked={state.ghost}
+              onChange={(e) => setState({ ...state, ghost: e.target.checked })}
               className="accent-cyan-400 w-4 h-4"
             />
           </label>
