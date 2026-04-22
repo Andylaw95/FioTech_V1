@@ -20,6 +20,8 @@ let edgeLines: THREE.LineSegments[] = [];
 let edgesEnabled = true;
 let allIfcIds: number[] = [];
 let isolated = false;
+let cachedSpatialStructure: any = null;
+let cachedSpatialFlat: Map<number, string | null> | null = null;
 
 export function setEdgesVisible(on: boolean) {
   edgesEnabled = on;
@@ -231,23 +233,30 @@ export async function getIfcInfoFromIntersection(intersection: THREE.Intersectio
   if (faceIndex == null || !geometry) return null;
   try {
     const expressId = cachedLoader.ifcManager.getExpressId(geometry, faceIndex);
-    const props: any = await cachedLoader.ifcManager.getItemProperties(cachedModelID, expressId, true);
+    const props: any = await cachedLoader.ifcManager.getItemProperties(cachedModelID, expressId, false);
     const ifcType = (await cachedLoader.ifcManager.getIfcType(cachedModelID, expressId)) || 'unknown';
     const name = props?.Name?.value ?? props?.LongName?.value ?? null;
     let storey: string | null = null;
     try {
-      const struct = await cachedLoader.ifcManager.getSpatialStructure(cachedModelID, true);
-      const findStorey = (node: any, eid: number, currentStorey: string | null): string | null => {
-        if (node.expressID === eid) return currentStorey;
-        const ns = node.type === 'IFCBUILDINGSTOREY' ? (node.Name?.value ?? `Storey ${node.expressID}`) : currentStorey;
-        for (const c of node.children ?? []) {
-          const r = findStorey(c, eid, ns);
-          if (r) return r;
-        }
-        return null;
-      };
-      storey = findStorey(struct, expressId, null);
-    } catch {}
+      if (!cachedSpatialFlat) {
+        // Build flat expressId → storey lookup once (heavy call, do it lazily on first pick)
+        const struct = await cachedLoader.ifcManager.getSpatialStructure(cachedModelID, false);
+        cachedSpatialStructure = struct;
+        const flat = new Map<number, string | null>();
+        const walk = (node: any, currentStorey: string | null) => {
+          const ns = node.type === 'IFCBUILDINGSTOREY'
+            ? (node.Name?.value ?? `Storey ${node.expressID}`)
+            : currentStorey;
+          flat.set(node.expressID, ns);
+          for (const c of node.children ?? []) walk(c, ns);
+        };
+        walk(struct, null);
+        cachedSpatialFlat = flat;
+      }
+      storey = cachedSpatialFlat.get(expressId) ?? null;
+    } catch (e) {
+      console.warn('[IfcModel] spatial structure lookup failed', e);
+    }
     return { expressId, ifcType, name, storey };
   } catch (e) {
     console.warn('[IfcModel] getInfo failed', e);

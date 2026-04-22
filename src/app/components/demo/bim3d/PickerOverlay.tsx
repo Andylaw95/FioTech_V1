@@ -51,12 +51,27 @@ export function PickerOverlay({
       const ray = new THREE.Raycaster();
       ray.setFromCamera(ndc, camera);
       const hits = ray.intersectObject(grp, true);
-      const hit = hits.find((h) => h.faceIndex != null && (h.object as any).geometry);
+      // Only consider Mesh hits with valid IFC geometry; skip edge LineSegments
+      const hit = hits.find((h) => {
+        const obj = h.object as any;
+        if (!obj?.isMesh) return false;
+        if (h.faceIndex == null) return false;
+        const geom = obj.geometry;
+        // IFC subset meshes have an `expressID` attribute; edge meshes don't
+        if (!geom?.attributes?.expressID && !geom?.index) return false;
+        return true;
+      });
       if (!hit) {
         console.log('[PickerOverlay] no IFC hit', { hitCount: hits.length });
         return;
       }
-      const info = await getIfcInfoFromIntersection(hit);
+      let info;
+      try {
+        info = await getIfcInfoFromIntersection(hit);
+      } catch (err) {
+        console.warn('[PickerOverlay] getInfo threw', err);
+        return;
+      }
       if (info) {
         onPick({ ...info, point: hit.point.clone() });
       } else {
