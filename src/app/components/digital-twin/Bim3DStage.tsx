@@ -3,8 +3,18 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid, ContactShadows, Float } from '@react-three/drei';
 import * as THREE from 'three';
 import { Building } from '@/app/components/demo/bim3d/Building';
+import { IfcModel } from '@/app/components/demo/bim3d/IfcModel';
 import { SensorPin } from '@/app/components/demo/bim3d/SensorPin';
 import { MOCK_SENSORS, Severity } from '@/app/components/demo/bim3d/mockData';
+
+/** Tries to load real IFC; falls back to procedural Building if it fails. */
+function BuildingShell({ wallsVisible }: { wallsVisible: boolean }) {
+  const [ifcFailed, setIfcFailed] = useState(false);
+  if (ifcFailed) {
+    return <Building selectedRoomId={null} onRoomClick={() => {}} wallsVisible={wallsVisible} />;
+  }
+  return <IfcModel onError={() => setIfcFailed(true)} />;
+}
 
 interface Bim3DStageProps {
   showStructure?: boolean;
@@ -156,9 +166,7 @@ export function Bim3DStage({
         <ZoomDriver zoom={zoom} />
         <IntroGroup>
           <Float speed={0.8} rotationIntensity={0.05} floatIntensity={0.15}>
-            {showStructure && (
-              <Building selectedRoomId={null} onRoomClick={() => {}} wallsVisible={true} />
-            )}
+            {showStructure && <BuildingShell wallsVisible={true} />}
 
             {showDevices && MOCK_SENSORS.map(sensor => (
               <SensorPin

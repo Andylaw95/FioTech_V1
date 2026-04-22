@@ -14,6 +14,9 @@ export default defineConfig({
     alias: {
       // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),
+      // web-ifc-three@0.0.125 imports legacy `mergeBufferGeometries` which Three.js r152+ removed.
+      // Shim it back via a re-export.
+      'three/examples/jsm/utils/BufferGeometryUtils': path.resolve(__dirname, './src/shims/BufferGeometryUtils.ts'),
     },
   },
 
