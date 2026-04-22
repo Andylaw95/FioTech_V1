@@ -23,8 +23,6 @@ import { SensorPin } from '@/app/components/demo/bim3d/SensorPin';
 import { MOCK_SENSORS, Severity } from '@/app/components/demo/bim3d/mockData';
 import { PickedElementCard, PickedInfo } from '@/app/components/demo/bim3d/PickedElementCard';
 import { PickerOverlay } from '@/app/components/demo/bim3d/PickerOverlay';
-import { EffectComposer, Bloom, SSAO, SMAA, Vignette } from '@react-three/postprocessing';
-import { BlendFunction } from 'postprocessing';
 
 const MODEL_KEY = 'ccc-17f';
 
@@ -382,30 +380,6 @@ export function Bim3DStage({
         </Suspense>
 
         <PickerOverlay enabled={pickMode} onPick={setPicked} />
-
-        {/* Cinematic post-processing — ARMATURA-style polish */}
-        <EffectComposer multisampling={0} enableNormalPass>
-          <SSAO
-            blendFunction={BlendFunction.MULTIPLY}
-            samples={16}
-            radius={0.08}
-            intensity={20}
-            luminanceInfluence={0.6}
-            color={new THREE.Color(0x000000)}
-            worldDistanceThreshold={1}
-            worldDistanceFalloff={0.1}
-            worldProximityThreshold={0.5}
-            worldProximityFalloff={0.1}
-          />
-          <Bloom
-            intensity={0.45}
-            luminanceThreshold={0.85}
-            luminanceSmoothing={0.3}
-            mipmapBlur
-          />
-          <Vignette eskil={false} offset={0.15} darkness={0.55} />
-          <SMAA />
-        </EffectComposer>
 
         {/* Autodesk-style navigation cube — click faces/edges to snap orientation */}
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
