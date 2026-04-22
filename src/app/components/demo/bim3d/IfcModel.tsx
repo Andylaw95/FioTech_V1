@@ -1,11 +1,105 @@
 import { useEffect, useState, useRef } from 'react';
 import * as THREE from 'three';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
+import {
+  IFCWALL, IFCWALLSTANDARDCASE, IFCSLAB, IFCROOF, IFCWINDOW, IFCDOOR,
+  IFCSTAIR, IFCSTAIRFLIGHT, IFCRAILING, IFCCOLUMN, IFCBEAM,
+  IFCFURNISHINGELEMENT, IFCSPACE, IFCCOVERING,
+  IFCFLOWSEGMENT, IFCFLOWFITTING, IFCFLOWTERMINAL, IFCDISTRIBUTIONELEMENT,
+  IFCBUILDINGELEMENTPROXY, IFCPLATE, IFCMEMBER, IFCCURTAINWALL,
+} from 'web-ifc';
 
+// Module-level cache (single model)
 let cached: THREE.Group | null = null;
 let cachedLoader: any = null;
 let cachedModelID: number | null = null;
+let cachedScene: THREE.Scene | null = null;
 let loadingPromise: Promise<THREE.Group> | null = null;
+
+// Categories (display name → IFC type IDs grouped together)
+export const CATEGORY_GROUPS: Record<string, { label: string; types: number[]; color?: string }> = {
+  walls:     { label: 'Walls',     types: [IFCWALL, IFCWALLSTANDARDCASE, IFCCURTAINWALL, IFCMEMBER, IFCPLATE], color: '#94a3b8' },
+  slabs:     { label: 'Floors',    types: [IFCSLAB, IFCCOVERING],          color: '#cbd5e1' },
+  roof:      { label: 'Roof',      types: [IFCROOF],                       color: '#fbbf24' },
+  doors:     { label: 'Doors',     types: [IFCDOOR],                       color: '#a78bfa' },
+  windows:   { label: 'Windows',   types: [IFCWINDOW],                     color: '#7dd3fc' },
+  stairs:    { label: 'Stairs',    types: [IFCSTAIR, IFCSTAIRFLIGHT, IFCRAILING], color: '#fb923c' },
+  structure: { label: 'Structure', types: [IFCCOLUMN, IFCBEAM],            color: '#64748b' },
+  furniture: { label: 'Furniture', types: [IFCFURNISHINGELEMENT],          color: '#34d399' },
+  mep:       { label: 'MEP',       types: [IFCFLOWSEGMENT, IFCFLOWFITTING, IFCFLOWTERMINAL, IFCDISTRIBUTIONELEMENT], color: '#22d3ee' },
+  spaces:    { label: 'Spaces',    types: [IFCSPACE],                      color: '#facc15' },
+  other:     { label: 'Other',     types: [IFCBUILDINGELEMENTPROXY],       color: '#f472b6' },
+};
+
+let categoryIds: Record<string, number[]> = {};
+
+// Module-level shared clipping plane (cuts everything ABOVE the height)
+export const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 9999);
+
+export function setClipHeight(h: number) {
+  clipPlane.constant = h;
+}
+
+export function setWireframe(on: boolean) {
+  if (!cached) return;
+  cached.traverse((obj: any) => {
+    if (obj.isMesh && obj.material) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach((m: any) => { m.wireframe = on; });
+    }
+  });
+}
+
+const HIGHLIGHT_MAT = new THREE.MeshBasicMaterial({
+  color: 0xfbbf24, depthTest: false, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
+});
+
+const SUBSET_VISIBLE = 'visible-cats';
+const SUBSET_HIGHLIGHT = 'highlight-pick';
+
+export async function setVisibleCategories(active: Set<string>) {
+  if (!cachedLoader || cachedModelID === null || !cachedScene || !cached) return;
+  const allActive = active.size === Object.keys(CATEGORY_GROUPS).length;
+
+  if (allActive) {
+    // Show full model, drop subset
+    cached.visible = true;
+    cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE);
+    return;
+  }
+
+  cached.visible = false;
+  const ids: number[] = [];
+  active.forEach((cat) => {
+    const list = categoryIds[cat];
+    if (list) ids.push(...list);
+  });
+
+  cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE);
+  if (ids.length === 0) return;
+
+  cachedLoader.ifcManager.createSubset({
+    modelID: cachedModelID,
+    ids,
+    scene: cachedScene,
+    removePrevious: true,
+    customID: SUBSET_VISIBLE,
+  });
+}
+
+export function highlightExpressId(expressId: number | null) {
+  if (!cachedLoader || cachedModelID === null || !cachedScene) return;
+  cachedLoader.ifcManager.removeSubset(cachedModelID, HIGHLIGHT_MAT, SUBSET_HIGHLIGHT);
+  if (expressId == null) return;
+  cachedLoader.ifcManager.createSubset({
+    modelID: cachedModelID,
+    ids: [expressId],
+    scene: cachedScene,
+    removePrevious: true,
+    material: HIGHLIGHT_MAT,
+    customID: SUBSET_HIGHLIGHT,
+  });
+}
 
 /** Look up the IFC ExpressID + property name for a Three.js intersection on the IFC model. */
 export async function getIfcInfoFromIntersection(intersection: THREE.Intersection): Promise<{
@@ -73,7 +167,6 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     cachedLoader = loader;
     cachedModelID = (model as any).modelID ?? 0;
 
-    // No rotation here — applied at render time so it can be tweaked live.
     group.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(group);
     const size = box.getSize(new THREE.Vector3());
@@ -85,7 +178,7 @@ async function loadIfc(url: string): Promise<THREE.Group> {
       group.scale.setScalar(scale);
     }
 
-    // Soft shadows + cleaner materials
+    // Apply shared clipping plane + soft shadows to all materials
     group.traverse((obj: any) => {
       if (obj.isMesh) {
         obj.castShadow = true;
@@ -95,10 +188,28 @@ async function loadIfc(url: string): Promise<THREE.Group> {
           mats.forEach((m: any) => {
             m.transparent = m.opacity < 1;
             m.side = THREE.DoubleSide;
+            m.clippingPlanes = [clipPlane];
+            m.clipShadows = true;
+            m.needsUpdate = true;
           });
         }
       }
     });
+
+    // Index categories by IFC type
+    for (const [key, group_] of Object.entries(CATEGORY_GROUPS)) {
+      const ids: number[] = [];
+      for (const t of group_.types) {
+        try {
+          const list = await loader.ifcManager.getAllItemsOfType(cachedModelID!, t, false);
+          ids.push(...list);
+        } catch {}
+      }
+      categoryIds[key] = ids;
+    }
+    console.log('[IfcModel] indexed categories:', Object.fromEntries(
+      Object.entries(categoryIds).map(([k, v]) => [k, v.length])
+    ));
 
     cached = group;
     return group;
@@ -109,14 +220,17 @@ async function loadIfc(url: string): Promise<THREE.Group> {
 
 export function IfcModel({
   url = '/bim/ccc-17f.ifc',
-  rotationX = -Math.PI / 2,
+  rotationX = 0,
   onLoaded,
   onError,
+  onMetrics,
 }: {
   url?: string;
   rotationX?: number;
   onLoaded?: () => void;
   onError?: (err: Error) => void;
+  /** Called once after model is positioned: provides total Y-height in world units. */
+  onMetrics?: (m: { height: number; categoryCounts: Record<string, number> }) => void;
 }) {
   const [group, setGroup] = useState<THREE.Group | null>(null);
   const [error, setError] = useState<Error | null>(null);
@@ -137,15 +251,14 @@ export function IfcModel({
         setError(err);
         onError?.(err);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [url]);
 
-  // Re-center every time rotation changes so the model stays visible + on the floor
+  // Re-center every time rotation changes; expose height via onMetrics
   useEffect(() => {
     if (!group || !wrapperRef.current) return;
     const wrapper = wrapperRef.current;
+    cachedScene = wrapper.parent as THREE.Scene | null;
     wrapper.rotation.set(rotationX, 0, 0);
     wrapper.position.set(0, 0, 0);
     wrapper.updateMatrixWorld(true);
@@ -154,6 +267,15 @@ export function IfcModel({
     wrapper.position.x -= center.x;
     wrapper.position.z -= center.z;
     wrapper.position.y -= box.min.y;
+    wrapper.updateMatrixWorld(true);
+    const finalBox = new THREE.Box3().setFromObject(wrapper);
+    const height = finalBox.max.y - finalBox.min.y;
+    // Reset clip to top so nothing is hidden initially
+    setClipHeight(height + 0.5);
+    onMetrics?.({
+      height,
+      categoryCounts: Object.fromEntries(Object.entries(categoryIds).map(([k, v]) => [k, v.length])),
+    });
   }, [group, rotationX]);
 
   if (error || !group) return null;
