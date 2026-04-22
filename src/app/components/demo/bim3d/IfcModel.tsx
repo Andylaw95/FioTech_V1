@@ -3,21 +3,75 @@ import * as THREE from 'three';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
 
 let cached: THREE.Group | null = null;
+let cachedLoader: any = null;
+let cachedModelID: number | null = null;
 let loadingPromise: Promise<THREE.Group> | null = null;
+
+/** Look up the IFC ExpressID + property name for a Three.js intersection on the IFC model. */
+export async function getIfcInfoFromIntersection(intersection: THREE.Intersection): Promise<{
+  expressId: number;
+  ifcType: string;
+  name: string | null;
+  storey: string | null;
+} | null> {
+  if (!cachedLoader || cachedModelID === null) return null;
+  const faceIndex = intersection.faceIndex;
+  const geometry = (intersection.object as THREE.Mesh).geometry;
+  if (faceIndex == null || !geometry) return null;
+  try {
+    const expressId = cachedLoader.ifcManager.getExpressId(geometry, faceIndex);
+    const props: any = await cachedLoader.ifcManager.getItemProperties(cachedModelID, expressId, true);
+    const ifcType = (await cachedLoader.ifcManager.getIfcType(cachedModelID, expressId)) || 'unknown';
+    const name = props?.Name?.value ?? props?.LongName?.value ?? null;
+    let storey: string | null = null;
+    try {
+      const struct = await cachedLoader.ifcManager.getSpatialStructure(cachedModelID, true);
+      const findStorey = (node: any, eid: number, currentStorey: string | null): string | null => {
+        if (node.expressID === eid) return currentStorey;
+        const ns = node.type === 'IFCBUILDINGSTOREY' ? (node.Name?.value ?? `Storey ${node.expressID}`) : currentStorey;
+        for (const c of node.children ?? []) {
+          const r = findStorey(c, eid, ns);
+          if (r) return r;
+        }
+        return null;
+      };
+      storey = findStorey(struct, expressId, null);
+    } catch {}
+    return { expressId, ifcType, name, storey };
+  } catch (e) {
+    console.warn('[IfcModel] getInfo failed', e);
+    return null;
+  }
+}
 
 async function loadIfc(url: string): Promise<THREE.Group> {
   if (cached) return cached;
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
+    console.log('[IfcModel] loading', url);
+    const t0 = performance.now();
     const loader = new IFCLoader();
     await loader.ifcManager.setWasmPath('/wasm/');
 
     const model: any = await new Promise((resolve, reject) => {
-      loader.load(url, resolve, undefined, reject);
+      loader.load(
+        url,
+        resolve,
+        (p) => {
+          if (p.lengthComputable) {
+            const pct = Math.round((p.loaded / p.total) * 100);
+            if (pct % 20 === 0) console.log(`[IfcModel] download ${pct}%`);
+          }
+        },
+        reject,
+      );
     });
 
+    console.log(`[IfcModel] parsed in ${Math.round(performance.now() - t0)}ms`);
     const group: THREE.Group = model;
+    cachedLoader = loader;
+    cachedModelID = (model as any).modelID ?? 0;
 
     // Revit IFC default orientation: Z-up. Three.js is Y-up.
     group.rotation.x = -Math.PI / 2;

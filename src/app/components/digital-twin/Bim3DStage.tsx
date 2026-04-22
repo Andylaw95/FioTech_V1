@@ -3,17 +3,57 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid, ContactShadows, Float } from '@react-three/drei';
 import * as THREE from 'three';
 import { Building } from '@/app/components/demo/bim3d/Building';
-import { IfcModel } from '@/app/components/demo/bim3d/IfcModel';
+import { IfcModel, getIfcInfoFromIntersection } from '@/app/components/demo/bim3d/IfcModel';
 import { SensorPin } from '@/app/components/demo/bim3d/SensorPin';
 import { MOCK_SENSORS, Severity } from '@/app/components/demo/bim3d/mockData';
 
+interface PickedInfo {
+  expressId: number;
+  ifcType: string;
+  name: string | null;
+  storey: string | null;
+  point: { x: number; y: number; z: number };
+}
+
 /** Tries to load real IFC; falls back to procedural Building if it fails. */
-function BuildingShell({ wallsVisible }: { wallsVisible: boolean }) {
+function BuildingShell({
+  wallsVisible,
+  onStatus,
+  pickMode,
+  onPick,
+}: {
+  wallsVisible: boolean;
+  onStatus: (s: 'loading' | 'ready' | 'failed', msg?: string) => void;
+  pickMode: boolean;
+  onPick: (info: PickedInfo) => void;
+}) {
   const [ifcFailed, setIfcFailed] = useState(false);
   if (ifcFailed) {
     return <Building selectedRoomId={null} onRoomClick={() => {}} wallsVisible={wallsVisible} />;
   }
-  return <IfcModel onError={() => setIfcFailed(true)} />;
+  return (
+    <group
+      onClick={async (e) => {
+        if (!pickMode) return;
+        e.stopPropagation();
+        const info = await getIfcInfoFromIntersection(e.intersections[0]);
+        if (info) {
+          onPick({
+            ...info,
+            point: { x: e.point.x, y: e.point.y, z: e.point.z },
+          });
+        }
+      }}
+    >
+      <IfcModel
+        onLoaded={() => onStatus('ready')}
+        onError={(e) => {
+          onStatus('failed', e.message);
+          setIfcFailed(true);
+        }}
+      />
+    </group>
+  );
 }
 
 interface Bim3DStageProps {
@@ -81,6 +121,9 @@ export function Bim3DStage({
   zoom = 1,
 }: Bim3DStageProps) {
   const [userInteracting, setUserInteracting] = useState(false);
+  const [ifcStatus, setIfcStatus] = useState<{ state: 'loading' | 'ready' | 'failed'; msg?: string }>({ state: 'loading' });
+  const [pickMode, setPickMode] = useState(false);
+  const [picked, setPicked] = useState<PickedInfo | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { if (idleTimer.current) clearTimeout(idleTimer.current); }, []);
@@ -95,7 +138,55 @@ export function Bim3DStage({
   };
 
   return (
-    <Canvas
+    <div className="absolute inset-0">
+      {ifcStatus.state !== 'ready' && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-md bg-slate-900/85 text-white text-xs font-medium shadow-lg backdrop-blur-sm pointer-events-none">
+          {ifcStatus.state === 'loading' && '⏳ Loading CCC 17F BIM model (46 MB)…'}
+          {ifcStatus.state === 'failed' && `⚠️ IFC failed (${ifcStatus.msg ?? 'unknown'}) — using fallback`}
+        </div>
+      )}
+
+      {ifcStatus.state === 'ready' && (
+        <button
+          onClick={() => { setPickMode(p => !p); if (pickMode) setPicked(null); }}
+          className={`absolute top-3 right-3 z-10 px-3 py-1.5 rounded-md text-xs font-semibold shadow-lg backdrop-blur-sm transition ${
+            pickMode
+              ? 'bg-amber-500 text-slate-900 ring-2 ring-amber-300'
+              : 'bg-slate-900/85 text-white hover:bg-slate-800'
+          }`}
+        >
+          {pickMode ? '🎯 Pick Mode ON — click any element' : '🎯 Pick Mode'}
+        </button>
+      )}
+
+      {picked && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 w-[420px] max-w-[90vw] rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-amber-400/50">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
+            <div className="text-xs font-semibold text-amber-300">📌 Picked element</div>
+            <button onClick={() => setPicked(null)} className="text-white/60 hover:text-white text-xs">✕</button>
+          </div>
+          <div className="px-4 py-3 space-y-1.5 text-xs font-mono">
+            <div className="flex justify-between"><span className="text-white/60">expressId</span><span className="text-amber-200 font-bold">{picked.expressId}</span></div>
+            <div className="flex justify-between"><span className="text-white/60">type</span><span>{picked.ifcType}</span></div>
+            <div className="flex justify-between"><span className="text-white/60">name</span><span className="truncate ml-2 text-right">{picked.name ?? '—'}</span></div>
+            <div className="flex justify-between"><span className="text-white/60">storey</span><span>{picked.storey ?? '—'}</span></div>
+            <div className="flex justify-between"><span className="text-white/60">x, y, z</span><span>{picked.point.x.toFixed(2)}, {picked.point.y.toFixed(2)}, {picked.point.z.toFixed(2)}</span></div>
+          </div>
+          <div className="px-4 py-2 border-t border-white/10 flex gap-2">
+            <button
+              onClick={() => {
+                const snippet = `{ id: 'sensor-${picked.expressId}', roomId: 'room-${picked.expressId}', x: ${picked.point.x.toFixed(2)}, y: ${picked.point.y.toFixed(2)}, z: ${picked.point.z.toFixed(2)}, expressId: ${picked.expressId} },`;
+                navigator.clipboard.writeText(snippet);
+              }}
+              className="flex-1 text-xs bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold rounded px-3 py-1.5"
+            >
+              📋 Copy mockData snippet
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Canvas
       shadows="soft"
       dpr={[1, 2]}
       className="absolute inset-0"
@@ -166,7 +257,7 @@ export function Bim3DStage({
         <ZoomDriver zoom={zoom} />
         <IntroGroup>
           <Float speed={0.8} rotationIntensity={0.05} floatIntensity={0.15}>
-            {showStructure && <BuildingShell wallsVisible={true} />}
+            {showStructure && <BuildingShell wallsVisible={true} onStatus={(s, m) => setIfcStatus({ state: s, msg: m })} pickMode={pickMode} onPick={setPicked} />}
 
             {showDevices && MOCK_SENSORS.map(sensor => (
               <SensorPin
@@ -181,6 +272,7 @@ export function Bim3DStage({
         </IntroGroup>
       </Suspense>
     </Canvas>
+    </div>
   );
 }
 
