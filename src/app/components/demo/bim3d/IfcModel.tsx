@@ -74,7 +74,7 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     cachedModelID = (model as any).modelID ?? 0;
 
     // Revit IFC default orientation: Z-up. Three.js is Y-up.
-    group.rotation.x = -Math.PI / 2;
+    group.rotation.x = Math.PI / 2;
 
     // Compute bounding box AFTER rotation by updating world matrix
     group.updateMatrixWorld(true);
