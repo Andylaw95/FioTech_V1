@@ -20,7 +20,9 @@ import {
 } from '@/app/components/demo/bim3d/IfcModel';
 import { BimToolsPanel, BimToolsState } from '@/app/components/demo/bim3d/BimToolsPanel';
 import { SensorPin } from '@/app/components/demo/bim3d/SensorPin';
-import { MOCK_SENSORS, Severity } from '@/app/components/demo/bim3d/mockData';
+import { MOCK_SENSORS, Severity, severityColor } from '@/app/components/demo/bim3d/mockData';
+import { useMockAlarmStream } from '@/app/components/demo/bim3d/useMockAlarmStream';
+import { DeviceDetailCard } from '@/app/components/demo/bim3d/DeviceDetailCard';
 import { PickedElementCard, PickedInfo } from '@/app/components/demo/bim3d/PickedElementCard';
 import { PickerOverlay } from '@/app/components/demo/bim3d/PickerOverlay';
 import { ZoneLabels3D } from '@/app/components/demo/bim3d/ZoneLabels3D';
@@ -176,6 +178,31 @@ export function Bim3DStage({
     rotationPreset: 'D',
   });
 
+  // Live device status — feed alarm stream into per-sensor severity
+  const { alarms, triggerAlarm, resolveAlarm } = useMockAlarmStream(3, 15000);
+  const SEV_RANK: Record<Severity, number> = { critical: 3, warning: 2, info: 1, normal: 0 };
+  const severityById = useMemo(() => {
+    const map = new Map<string, Severity>();
+    for (const s of MOCK_SENSORS) map.set(s.id, 'normal');
+    for (const a of alarms) {
+      if (a.resolved) continue;
+      const cur = map.get(a.sensorId) ?? 'normal';
+      if (SEV_RANK[a.severity] > SEV_RANK[cur]) map.set(a.sensorId, a.severity);
+    }
+    return map;
+  }, [alarms]);
+
+  const statusCounts = useMemo(() => {
+    const c = { critical: 0, warning: 0, info: 0, normal: 0 } as Record<Severity, number>;
+    for (const sev of severityById.values()) c[sev]++;
+    return c;
+  }, [severityById]);
+
+  const internalSelectedSensor = useMemo(
+    () => MOCK_SENSORS.find(s => s.id === selectedDeviceId) ?? null,
+    [selectedDeviceId],
+  );
+
   const ROTATION_MAP: Record<BimToolsState['rotationPreset'], number> = useMemo(() => ({
     A: -Math.PI / 2, B: Math.PI / 2, C: Math.PI, D: 0,
   }), []);
@@ -305,6 +332,47 @@ export function Bim3DStage({
         />
       )}
 
+      {ifcStatus.state === 'ready' && showDevices && (
+        <div className="absolute top-3 right-[110px] z-20 pointer-events-none">
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-900/85 border border-slate-700 backdrop-blur shadow-lg pointer-events-auto">
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mr-1">Devices</span>
+            {(['critical','warning','info','normal'] as Severity[]).map(sev => (
+              <button
+                key={sev}
+                onClick={() => {
+                  // Pick a random sensor and trigger a fake alarm of this severity (or resolve all if normal)
+                  if (sev === 'normal') {
+                    alarms.filter(a => !a.resolved).forEach(a => resolveAlarm(a.id));
+                  } else {
+                    const s = MOCK_SENSORS[Math.floor(Math.random() * MOCK_SENSORS.length)];
+                    triggerAlarm(s.id, sev);
+                  }
+                }}
+                title={sev === 'normal' ? 'Resolve all alarms' : `Inject ${sev} alarm`}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-slate-800 transition"
+              >
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-full"
+                  style={{ background: severityColor(sev), boxShadow: `0 0 6px ${severityColor(sev)}` }}
+                />
+                <span className="text-[11px] font-mono text-slate-200 tabular-nums">{statusCounts[sev]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {internalSelectedSensor && (
+        <div className="absolute bottom-3 right-3 z-20 w-[320px] rounded-lg overflow-hidden shadow-2xl border border-cyan-500/40">
+          <DeviceDetailCard
+            sensor={internalSelectedSensor}
+            alarms={alarms}
+            onClose={() => onDeselect?.()}
+          />
+        </div>
+      )}
+
+
       <Canvas
         shadows="soft"
         dpr={[1, 2]}
@@ -405,7 +473,7 @@ export function Bim3DStage({
               <SensorPin
                 key={sensor.id}
                 sensor={sensor}
-                severity={'normal' as Severity}
+                severity={severityById.get(sensor.id) ?? 'normal'}
                 selected={selectedDeviceId === sensor.id}
                 onClick={(id) => onSelectDevice?.(id)}
               />
