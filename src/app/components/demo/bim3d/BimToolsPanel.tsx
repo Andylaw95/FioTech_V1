@@ -4,6 +4,7 @@ import { CATEGORY_GROUPS } from './IfcModel';
 export interface BimToolsState {
   visibleCats: Set<string>;
   wireframe: boolean;
+  edges: boolean;
   clipHeight: number;
   maxHeight: number;
   rotationPreset: 'A' | 'B' | 'C' | 'D';
@@ -14,6 +15,7 @@ export function BimToolsPanel({
   setState,
   categoryCounts,
   onResetView,
+  onFitView,
   onIsolateSelected,
   onShowAll,
   hasSelection,
@@ -22,6 +24,7 @@ export function BimToolsPanel({
   setState: (s: BimToolsState) => void;
   categoryCounts: Record<string, number>;
   onResetView: () => void;
+  onFitView: () => void;
   onIsolateSelected: () => void;
   onShowAll: () => void;
   hasSelection: boolean;
@@ -96,6 +99,16 @@ export function BimToolsPanel({
           </div>
 
           <label className="flex items-center justify-between text-[11px] cursor-pointer">
+            <span className="text-white/70 font-semibold">Edges (outline)</span>
+            <input
+              type="checkbox"
+              checked={state.edges}
+              onChange={(e) => setState({ ...state, edges: e.target.checked })}
+              className="accent-cyan-400 w-4 h-4"
+            />
+          </label>
+
+          <label className="flex items-center justify-between text-[11px] cursor-pointer">
             <span className="text-white/70 font-semibold">Wireframe</span>
             <input
               type="checkbox"
@@ -106,6 +119,7 @@ export function BimToolsPanel({
           </label>
 
           <div className="flex gap-1.5">
+            <button onClick={onFitView} className="flex-1 text-[11px] py-1.5 rounded bg-cyan-500/80 hover:bg-cyan-400 text-slate-900 font-semibold">⊡ Fit</button>
             <button onClick={onResetView} className="flex-1 text-[11px] py-1.5 rounded bg-white/5 hover:bg-white/10 font-semibold">🎥 Reset</button>
             <button
               onClick={onIsolateSelected}

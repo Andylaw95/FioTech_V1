@@ -17,6 +17,18 @@ let cachedScene: THREE.Scene | null = null;
 let loadingPromise: Promise<THREE.Group> | null = null;
 // Original IFC meshes (so we can hide/show them without affecting subsets that are children)
 let originalMeshes: THREE.Mesh[] = [];
+// Edge LineSegments overlaying each mesh (Autodesk-style outline)
+let edgeLines: THREE.LineSegments[] = [];
+let edgesEnabled = true;
+
+export function setEdgesVisible(on: boolean) {
+  edgesEnabled = on;
+  edgeLines.forEach((l) => { l.visible = on; });
+}
+
+export function getModelGroup(): THREE.Group | null {
+  return cached;
+}
 
 // Categories (display name → IFC type IDs grouped together)
 export const CATEGORY_GROUPS: Record<string, { label: string; types: number[]; color?: string }> = {
@@ -204,6 +216,7 @@ async function loadIfc(url: string): Promise<THREE.Group> {
 
     // Apply shared clipping plane + soft shadows to all materials, capture original meshes
     originalMeshes = [];
+    edgeLines = [];
     group.traverse((obj: any) => {
       if (obj.isMesh) {
         originalMeshes.push(obj);
@@ -225,6 +238,20 @@ async function loadIfc(url: string): Promise<THREE.Group> {
             m.needsUpdate = true;
           });
         }
+        // Generate crisp edge lines (Autodesk-style outline) per mesh
+        try {
+          const edgeGeo = new THREE.EdgesGeometry(obj.geometry, 30);
+          const edgeMat = new THREE.LineBasicMaterial({
+            color: 0x1e293b,
+            transparent: true,
+            opacity: 0.55,
+            clippingPlanes: [clipPlane],
+          });
+          const lines = new THREE.LineSegments(edgeGeo, edgeMat);
+          lines.visible = edgesEnabled;
+          obj.add(lines);
+          edgeLines.push(lines);
+        } catch {}
       }
     });
 

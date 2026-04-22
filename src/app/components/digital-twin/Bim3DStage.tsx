@@ -1,6 +1,6 @@
 import { Suspense, useRef, useState, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Grid, ContactShadows, Float } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, Grid, ContactShadows, Float, GizmoHelper, GizmoViewcube } from '@react-three/drei';
 import * as THREE from 'three';
 import { Building } from '@/app/components/demo/bim3d/Building';
 import {
@@ -9,7 +9,9 @@ import {
   setVisibleCategories,
   setWireframe,
   setClipHeight,
+  setEdgesVisible,
   highlightExpressId,
+  getModelGroup,
   CATEGORY_GROUPS,
 } from '@/app/components/demo/bim3d/IfcModel';
 import { BimToolsPanel, BimToolsState } from '@/app/components/demo/bim3d/BimToolsPanel';
@@ -113,6 +115,32 @@ function CameraResetter({ token }: { token: number }) {
   return null;
 }
 
+/** Frames the camera to a Box3 so the entire object fits in view. */
+function CameraFitter({ token }: { token: number }) {
+  const { camera, controls } = useThree() as any;
+  const last = useRef(0);
+  useEffect(() => {
+    if (token === 0 || token === last.current) return;
+    last.current = token;
+    const target = getModelGroup();
+    if (!target || !controls) return;
+    const box = new THREE.Box3().setFromObject(target);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (maxDim === 0) return;
+    const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
+    const distance = (maxDim / 2 / Math.tan(fov / 2)) * 1.6;
+    const dir = new THREE.Vector3(0.7, 0.55, 0.85).normalize();
+    const newPos = center.clone().addScaledVector(dir, distance);
+    camera.position.copy(newPos);
+    controls.target.copy(center);
+    camera.lookAt(center);
+    controls.update?.();
+  }, [token]);
+  return null;
+}
+
 export function Bim3DStage({
   showStructure = true,
   showDevices = true,
@@ -126,12 +154,14 @@ export function Bim3DStage({
   const [pickMode, setPickMode] = useState(false);
   const [picked, setPicked] = useState<PickedInfo | null>(null);
   const [resetToken, setResetToken] = useState(0);
+  const [fitToken, setFitToken] = useState(0);
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [tools, setTools] = useState<BimToolsState>({
     visibleCats: ALL_CATS,
     wireframe: false,
+    edges: true,
     clipHeight: 100,
     maxHeight: 100,
     rotationPreset: 'D',
@@ -157,6 +187,11 @@ export function Bim3DStage({
 
   useEffect(() => {
     if (ifcStatus.state !== 'ready') return;
+    setEdgesVisible(tools.edges);
+  }, [tools.edges, ifcStatus.state]);
+
+  useEffect(() => {
+    if (ifcStatus.state !== 'ready') return;
     setClipHeight(tools.clipHeight);
   }, [tools.clipHeight, ifcStatus.state]);
 
@@ -175,7 +210,12 @@ export function Bim3DStage({
   };
 
   return (
-    <div className="absolute inset-0">
+    <div
+      className="absolute inset-0"
+      style={{
+        background: 'linear-gradient(180deg, #c5dcef 0%, #dcebf8 35%, #f0f4f7 70%, #e9e2d2 100%)',
+      }}
+    >
       {ifcStatus.state !== 'ready' && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 px-3 py-1.5 rounded-md bg-slate-900/85 text-white text-xs font-medium shadow-lg backdrop-blur-sm pointer-events-none">
           {ifcStatus.state === 'loading' && '⏳ Loading CCC 17F BIM model (46 MB)…'}
@@ -190,9 +230,9 @@ export function Bim3DStage({
             setState={setTools}
             categoryCounts={categoryCounts}
             onResetView={() => setResetToken(t => t + 1)}
+            onFitView={() => setFitToken(t => t + 1)}
             onIsolateSelected={() => {
               if (!picked) return;
-              // Just highlight + auto-frame; full isolation would require subset-by-id which we keep simple.
               highlightExpressId(picked.expressId);
             }}
             onShowAll={() => {
@@ -248,15 +288,14 @@ export function Bim3DStage({
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.1,
+          toneMappingExposure: 1.05,
           localClippingEnabled: true,
           logarithmicDepthBuffer: true,
+          alpha: true,
         }}
         style={{ background: 'transparent' }}
         onPointerMissed={onDeselect}
       >
-        <fog attach="fog" args={['#e0ecfa', 80, 180]} />
-
         <PerspectiveCamera makeDefault position={[28, 22, 32]} fov={42} near={0.5} far={500} />
         <OrbitControls
           makeDefault
@@ -317,6 +356,7 @@ export function Bim3DStage({
         <Suspense fallback={null}>
           <ZoomDriver zoom={zoom} />
           <CameraResetter token={resetToken} />
+          <CameraFitter token={fitToken} />
           {showStructure && (
             <BuildingShell
               rotationX={rotationX}
@@ -347,6 +387,16 @@ export function Bim3DStage({
             ))}
           </Float>
         </Suspense>
+
+        {/* Autodesk-style navigation cube — click faces/edges to snap orientation */}
+        <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
+          <GizmoViewcube
+            color="#1e293b"
+            textColor="#fef3c7"
+            strokeColor="#fbbf24"
+            hoverColor="#0891b2"
+          />
+        </GizmoHelper>
       </Canvas>
     </div>
   );
