@@ -250,13 +250,14 @@ export function Bim3DStage({
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.1,
           localClippingEnabled: true,
+          logarithmicDepthBuffer: true,
         }}
         style={{ background: 'transparent' }}
         onPointerMissed={onDeselect}
       >
-        <fog attach="fog" args={['#e0ecfa', 60, 140]} />
+        <fog attach="fog" args={['#e0ecfa', 80, 180]} />
 
-        <PerspectiveCamera makeDefault position={[28, 22, 32]} fov={42} />
+        <PerspectiveCamera makeDefault position={[28, 22, 32]} fov={42} near={0.5} far={500} />
         <OrbitControls
           makeDefault
           enableDamping
@@ -289,25 +290,26 @@ export function Bim3DStage({
         <hemisphereLight args={['#bfdbfe', '#1e293b', 0.55]} />
 
         <Grid
-          args={[120, 120]}
-          position={[0, -0.02, 0]}
+          args={[160, 160]}
+          position={[0, -0.5, 0]}
           cellSize={1}
           cellThickness={0.4}
           cellColor="#cbd5e1"
           sectionSize={5}
           sectionThickness={1}
           sectionColor="#0891b2"
-          fadeDistance={80}
-          fadeStrength={1.2}
+          fadeDistance={90}
+          fadeStrength={1.5}
+          followCamera={false}
           infiniteGrid
         />
 
         <ContactShadows
-          position={[0, -0.01, 0]}
-          opacity={0.45}
+          position={[0, -0.48, 0]}
+          opacity={0.4}
           scale={70}
-          blur={2.6}
-          far={12}
+          blur={2.8}
+          far={14}
           resolution={1024}
           color="#0f172a"
         />

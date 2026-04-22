@@ -186,10 +186,16 @@ async function loadIfc(url: string): Promise<THREE.Group> {
         if (obj.material) {
           const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
           mats.forEach((m: any) => {
-            m.transparent = m.opacity < 1;
-            m.side = THREE.DoubleSide;
+            const isTransparent = m.opacity < 1;
+            m.transparent = isTransparent;
+            m.side = isTransparent ? THREE.DoubleSide : THREE.FrontSide;
             m.clippingPlanes = [clipPlane];
             m.clipShadows = true;
+            m.polygonOffset = true;
+            m.polygonOffsetFactor = 1;
+            m.polygonOffsetUnits = 1;
+            m.flatShading = false;
+            if (m.map) m.map.anisotropy = 8;
             m.needsUpdate = true;
           });
         }
