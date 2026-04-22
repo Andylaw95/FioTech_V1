@@ -1,7 +1,9 @@
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { supabase } from '@/app/utils/AuthContext';
 
-const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-4916a0b9`;
+const BASE_URL = import.meta.env.DEV
+  ? `/sb/functions/v1/make-server-4916a0b9`
+  : `https://${projectId}.supabase.co/functions/v1/make-server-4916a0b9`;
 
 // ===============================================================
 // COLD-START GRACE PERIOD — for a window after app boot, transient

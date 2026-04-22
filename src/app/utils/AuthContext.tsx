@@ -245,7 +245,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = useCallback(
     async (email: string, password: string, name: string, accountType?: string) => {
       try {
-        const BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-4916a0b9`;
+        const BASE_URL = import.meta.env.DEV
+          ? `/sb/functions/v1/make-server-4916a0b9`
+          : `https://${projectId}.supabase.co/functions/v1/make-server-4916a0b9`;
         const res = await fetch(`${BASE_URL}/signup`, {
           method: 'POST',
           headers: {
