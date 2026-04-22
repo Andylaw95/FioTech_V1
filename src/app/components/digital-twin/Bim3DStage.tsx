@@ -21,11 +21,13 @@ function BuildingShell({
   onStatus,
   pickMode,
   onPick,
+  rotationX,
 }: {
   wallsVisible: boolean;
   onStatus: (s: 'loading' | 'ready' | 'failed', msg?: string) => void;
   pickMode: boolean;
   onPick: (info: PickedInfo) => void;
+  rotationX: number;
 }) {
   const [ifcFailed, setIfcFailed] = useState(false);
   if (ifcFailed) {
@@ -46,6 +48,7 @@ function BuildingShell({
       }}
     >
       <IfcModel
+        rotationX={rotationX}
         onLoaded={() => onStatus('ready')}
         onError={(e) => {
           onStatus('failed', e.message);
@@ -124,7 +127,16 @@ export function Bim3DStage({
   const [ifcStatus, setIfcStatus] = useState<{ state: 'loading' | 'ready' | 'failed'; msg?: string }>({ state: 'loading' });
   const [pickMode, setPickMode] = useState(false);
   const [picked, setPicked] = useState<PickedInfo | null>(null);
+  const [rotationPreset, setRotationPreset] = useState<'A' | 'B' | 'C' | 'D'>('A');
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const ROTATION_MAP: Record<typeof rotationPreset, number> = {
+    A: -Math.PI / 2,  // standard Z-up → Y-up
+    B:  Math.PI / 2,  // flipped
+    C:  Math.PI,      // 180°
+    D:  0,            // none
+  };
+  const rotationX = ROTATION_MAP[rotationPreset];
 
   useEffect(() => () => { if (idleTimer.current) clearTimeout(idleTimer.current); }, []);
 
@@ -147,16 +159,32 @@ export function Bim3DStage({
       )}
 
       {ifcStatus.state === 'ready' && (
-        <button
-          onClick={() => { setPickMode(p => !p); if (pickMode) setPicked(null); }}
-          className={`absolute top-3 right-3 z-10 px-3 py-1.5 rounded-md text-xs font-semibold shadow-lg backdrop-blur-sm transition ${
-            pickMode
-              ? 'bg-amber-500 text-slate-900 ring-2 ring-amber-300'
-              : 'bg-slate-900/85 text-white hover:bg-slate-800'
-          }`}
-        >
-          {pickMode ? '🎯 Pick Mode ON — click any element' : '🎯 Pick Mode'}
-        </button>
+        <>
+          <button
+            onClick={() => { setPickMode(p => !p); if (pickMode) setPicked(null); }}
+            className={`absolute top-3 right-3 z-10 px-3 py-1.5 rounded-md text-xs font-semibold shadow-lg backdrop-blur-sm transition ${
+              pickMode
+                ? 'bg-amber-500 text-slate-900 ring-2 ring-amber-300'
+                : 'bg-slate-900/85 text-white hover:bg-slate-800'
+            }`}
+          >
+            {pickMode ? '🎯 Pick Mode ON — click any element' : '🎯 Pick Mode'}
+          </button>
+
+          <div className="absolute top-3 left-3 z-10 flex items-center gap-1 bg-slate-900/85 text-white text-xs rounded-md shadow-lg backdrop-blur-sm px-2 py-1">
+            <span className="text-white/60 mr-1">Orient:</span>
+            {(['A', 'B', 'C', 'D'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setRotationPreset(p)}
+                className={`px-2 py-0.5 rounded font-mono ${rotationPreset === p ? 'bg-cyan-500 text-slate-900 font-bold' : 'hover:bg-white/10'}`}
+                title={p === 'A' ? '-90° (Z-up→Y-up)' : p === 'B' ? '+90°' : p === 'C' ? '180°' : '0°'}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </>
       )}
 
       {picked && (
@@ -257,7 +285,7 @@ export function Bim3DStage({
         <ZoomDriver zoom={zoom} />
         <IntroGroup>
           <Float speed={0.8} rotationIntensity={0.05} floatIntensity={0.15}>
-            {showStructure && <BuildingShell wallsVisible={true} onStatus={(s, m) => setIfcStatus({ state: s, msg: m })} pickMode={pickMode} onPick={setPicked} />}
+            {showStructure && <BuildingShell wallsVisible={true} onStatus={(s, m) => setIfcStatus({ state: s, msg: m })} pickMode={pickMode} onPick={setPicked} rotationX={rotationX} />}
 
             {showDevices && MOCK_SENSORS.map(sensor => (
               <SensorPin

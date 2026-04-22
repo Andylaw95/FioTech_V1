@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import * as THREE from 'three';
 import { IFCLoader } from 'web-ifc-three/IFCLoader';
 
@@ -73,27 +73,16 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     cachedLoader = loader;
     cachedModelID = (model as any).modelID ?? 0;
 
-    // Revit IFC default orientation: Z-up. Three.js is Y-up.
-    group.rotation.x = Math.PI / 2;
-
-    // Compute bounding box AFTER rotation by updating world matrix
+    // No rotation here — applied at render time so it can be tweaked live.
     group.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(group);
     const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
 
-    // Center horizontally, sit on floor (y=0)
-    group.position.x -= center.x;
-    group.position.z -= center.z;
-    group.position.y -= box.min.y;
-
-    // Normalize scale so longest horizontal dim ≈ 30 units (matches mock building scale)
-    const maxHoriz = Math.max(size.x, size.z);
-    if (maxHoriz > 0) {
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (maxDim > 0) {
       const targetSize = 30;
-      const scale = targetSize / maxHoriz;
+      const scale = targetSize / maxDim;
       group.scale.setScalar(scale);
-      group.position.multiplyScalar(scale);
     }
 
     // Soft shadows + cleaner materials
@@ -120,15 +109,18 @@ async function loadIfc(url: string): Promise<THREE.Group> {
 
 export function IfcModel({
   url = '/bim/ccc-17f.ifc',
+  rotationX = -Math.PI / 2,
   onLoaded,
   onError,
 }: {
   url?: string;
+  rotationX?: number;
   onLoaded?: () => void;
   onError?: (err: Error) => void;
 }) {
   const [group, setGroup] = useState<THREE.Group | null>(null);
   const [error, setError] = useState<Error | null>(null);
+  const wrapperRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +142,24 @@ export function IfcModel({
     };
   }, [url]);
 
+  // Re-center every time rotation changes so the model stays visible + on the floor
+  useEffect(() => {
+    if (!group || !wrapperRef.current) return;
+    const wrapper = wrapperRef.current;
+    wrapper.rotation.set(rotationX, 0, 0);
+    wrapper.position.set(0, 0, 0);
+    wrapper.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(wrapper);
+    const center = box.getCenter(new THREE.Vector3());
+    wrapper.position.x -= center.x;
+    wrapper.position.z -= center.z;
+    wrapper.position.y -= box.min.y;
+  }, [group, rotationX]);
+
   if (error || !group) return null;
-  return <primitive object={group} />;
+  return (
+    <group ref={wrapperRef}>
+      <primitive object={group} />
+    </group>
+  );
 }
