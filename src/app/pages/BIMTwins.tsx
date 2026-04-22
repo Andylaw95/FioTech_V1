@@ -748,11 +748,9 @@ export function BIMTwins() {
               <button onClick={() => setZoom(1)} className="p-1.5 bg-white rounded-lg shadow-sm border border-slate-200 text-slate-400 hover:text-slate-600 mt-1"><RotateCcw className="h-3.5 w-3.5" /></button>
             </div>
 
-            {/* Layer toggles */}
+            {/* Layer toggles — only Devices in 3D mode (Structure handled by BIM Tools panel; Systems was legacy SVG only) */}
             <div className="absolute bottom-4 left-4 flex flex-col gap-1.5 z-10">
               {[
-                { key: 'structure', icon: Layers, label: 'Structure', state: showStructure, toggle: () => setShowStructure(!showStructure) },
-                { key: 'pipes', icon: Activity, label: 'Systems', state: showPipes, toggle: () => setShowPipes(!showPipes) },
                 { key: 'devices', icon: Cpu, label: 'Devices', state: showDevices, toggle: () => setShowDevices(!showDevices) },
               ].map(layer => (
                 <button key={layer.key} onClick={layer.toggle} className={clsx(

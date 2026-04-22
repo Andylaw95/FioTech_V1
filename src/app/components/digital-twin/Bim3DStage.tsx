@@ -22,6 +22,7 @@ import { BimToolsPanel, BimToolsState } from '@/app/components/demo/bim3d/BimToo
 import { SensorPin } from '@/app/components/demo/bim3d/SensorPin';
 import { MOCK_SENSORS, Severity } from '@/app/components/demo/bim3d/mockData';
 import { PickedElementCard, PickedInfo } from '@/app/components/demo/bim3d/PickedElementCard';
+import { PickerOverlay } from '@/app/components/demo/bim3d/PickerOverlay';
 
 const MODEL_KEY = 'ccc-17f';
 
@@ -257,16 +258,9 @@ export function Bim3DStage({
               setFitBox(null);
             }}
             hasSelection={!!picked}
+            pickMode={pickMode}
+            onTogglePickMode={() => { setPickMode(p => !p); if (pickMode) setPicked(null); }}
           />
-
-          <button
-            onClick={() => { setPickMode(p => !p); if (pickMode) setPicked(null); }}
-            className={`absolute top-3 right-3 z-20 px-3 py-1.5 rounded-md text-xs font-semibold shadow-lg backdrop-blur-sm transition ${
-              pickMode ? 'bg-amber-500 text-slate-900 ring-2 ring-amber-300' : 'bg-slate-900/85 text-white hover:bg-slate-800'
-            }`}
-          >
-            {pickMode ? '🎯 Pick ON — click element' : '🎯 Pick Mode'}
-          </button>
         </>
       )}
 
@@ -384,6 +378,8 @@ export function Bim3DStage({
             ))}
           </Float>
         </Suspense>
+
+        <PickerOverlay enabled={pickMode} onPick={setPicked} />
 
         {/* Autodesk-style navigation cube — click faces/edges to snap orientation */}
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>

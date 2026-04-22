@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CATEGORY_GROUPS } from './IfcModel';
 
 export interface BimToolsState {
@@ -20,6 +20,8 @@ export function BimToolsPanel({
   onIsolateSelected,
   onShowAll,
   hasSelection,
+  pickMode,
+  onTogglePickMode,
 }: {
   state: BimToolsState;
   setState: (s: BimToolsState) => void;
@@ -29,9 +31,52 @@ export function BimToolsPanel({
   onIsolateSelected: () => void;
   onShowAll: () => void;
   hasSelection: boolean;
+  pickMode: boolean;
+  onTogglePickMode: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [section, setSection] = useState<'view' | 'cats' | 'orient'>('view');
+
+  // Draggable position (top-right by default; offset from right edge)
+  const [pos, setPos] = useState<{ top: number; right: number }>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = window.localStorage.getItem('fiotec.bim.tools.pos');
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return { top: 12, right: 12 };
+  });
+  const dragRef = useRef<{ startX: number; startY: number; startTop: number; startRight: number } | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('fiotec.bim.tools.pos', JSON.stringify(pos));
+    } catch {}
+  }, [pos]);
+
+  const onHeaderPointerDown = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startTop: pos.top,
+      startRight: pos.right,
+    };
+  };
+  const onHeaderPointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    setPos({
+      top: Math.max(0, dragRef.current.startTop + dy),
+      right: Math.max(0, dragRef.current.startRight - dx),
+    });
+  };
+  const onHeaderPointerUp = (e: React.PointerEvent) => {
+    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+    dragRef.current = null;
+  };
 
   const toggleCat = (key: string) => {
     const next = new Set(state.visibleCats);
@@ -45,25 +90,62 @@ export function BimToolsPanel({
 
   if (collapsed) {
     return (
-      <button
-        onClick={() => setCollapsed(false)}
-        className="absolute top-3 right-3 z-20 px-3 py-1.5 rounded-md bg-slate-900/85 text-white text-xs font-semibold shadow-lg backdrop-blur-sm hover:bg-slate-800"
-      >
-        🛠️ Tools
-      </button>
+      <div className="absolute z-20 flex flex-col gap-1.5" style={{ top: pos.top, right: pos.right }}>
+        <button
+          onClick={() => setCollapsed(false)}
+          className="px-3 py-1.5 rounded-md bg-slate-900/85 text-white text-xs font-semibold shadow-lg backdrop-blur-sm hover:bg-slate-800"
+        >
+          🛠️ Tools
+        </button>
+        <button
+          onClick={onTogglePickMode}
+          className={`px-3 py-1.5 rounded-md text-xs font-semibold shadow-lg backdrop-blur-sm transition ${
+            pickMode ? 'bg-amber-500 text-slate-900 ring-2 ring-amber-300' : 'bg-slate-900/85 text-white hover:bg-slate-800'
+          }`}
+        >
+          🎯 {pickMode ? 'Pick ON' : 'Pick'}
+        </button>
+      </div>
     );
   }
 
   return (
-    <div className="absolute top-3 right-3 z-20 w-64 rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-white/10 overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-        <div className="text-xs font-bold tracking-wider text-cyan-300">🛠️ BIM TOOLS</div>
-        <button onClick={() => setCollapsed(true)} className="text-white/60 hover:text-white text-xs">−</button>
+    <div
+      className="absolute z-20 w-64 rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-white/10 overflow-hidden"
+      style={{ top: pos.top, right: pos.right }}
+    >
+      {/* Header — draggable */}
+      <div
+        className="flex items-center justify-between px-3 py-2 border-b border-white/10 cursor-move select-none"
+        onPointerDown={onHeaderPointerDown}
+        onPointerMove={onHeaderPointerMove}
+        onPointerUp={onHeaderPointerUp}
+        onPointerCancel={onHeaderPointerUp}
+      >
+        <div className="text-xs font-bold tracking-wider text-cyan-300 flex items-center gap-1.5">
+          <span className="text-white/30">⋮⋮</span> 🛠️ BIM TOOLS
+        </div>
+        <button
+          onClick={() => setCollapsed(true)}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="text-white/60 hover:text-white text-xs px-1"
+        >−</button>
       </div>
 
+      {/* Pick toggle — always visible at top */}
+      <button
+        onClick={onTogglePickMode}
+        className={`w-full text-[11px] py-1.5 font-semibold transition ${
+          pickMode
+            ? 'bg-amber-500 text-slate-900 hover:bg-amber-400'
+            : 'bg-white/5 text-white hover:bg-white/10'
+        }`}
+      >
+        🎯 {pickMode ? 'Pick Mode ON — click element' : 'Enable Pick Mode'}
+      </button>
+
       {/* Tabs */}
-      <div className="flex border-b border-white/10 text-[11px] font-semibold">
+      <div className="flex border-b border-t border-white/10 text-[11px] font-semibold">
         {(['view', 'cats', 'orient'] as const).map(s => (
           <button
             key={s}
