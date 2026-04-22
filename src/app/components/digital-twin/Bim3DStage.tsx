@@ -23,6 +23,7 @@ import { SensorPin } from '@/app/components/demo/bim3d/SensorPin';
 import { MOCK_SENSORS, Severity } from '@/app/components/demo/bim3d/mockData';
 import { PickedElementCard, PickedInfo } from '@/app/components/demo/bim3d/PickedElementCard';
 import { PickerOverlay } from '@/app/components/demo/bim3d/PickerOverlay';
+import { ZoneLabels3D } from '@/app/components/demo/bim3d/ZoneLabels3D';
 
 const MODEL_KEY = 'ccc-17f';
 
@@ -157,6 +158,7 @@ export function Bim3DStage({
   const [ifcStatus, setIfcStatus] = useState<{ state: 'loading' | 'ready' | 'failed'; msg?: string }>({ state: 'loading' });
   const [pickMode, setPickMode] = useState(false);
   const [picked, setPicked] = useState<PickedInfo | null>(null);
+  const [labelsVersion, setLabelsVersion] = useState(0);
   const [resetToken, setResetToken] = useState(0);
   const [fitToken, setFitToken] = useState(0);
   const [fitBox, setFitBox] = useState<THREE.Box3 | null>(null);
@@ -269,6 +271,7 @@ export function Bim3DStage({
           picked={picked}
           modelKey={MODEL_KEY}
           onClose={() => { setPicked(null); highlightExpressId(null); }}
+          onLabelChange={() => setLabelsVersion(v => v + 1)}
         />
       )}
 
@@ -380,6 +383,8 @@ export function Bim3DStage({
         </Suspense>
 
         <PickerOverlay enabled={pickMode} onPick={setPicked} />
+
+        <ZoneLabels3D modelKey={MODEL_KEY} version={labelsVersion} />
 
         {/* Autodesk-style navigation cube — click faces/edges to snap orientation */}
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>

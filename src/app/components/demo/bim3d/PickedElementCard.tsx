@@ -6,6 +6,7 @@ import {
   upsertLabel,
   deleteLabel,
 } from './zoneLabels';
+import { MOCK_SENSORS } from './mockData';
 
 export interface PickedInfo {
   expressId: number;
@@ -51,10 +52,20 @@ export function PickedElementCard({
       zoneType: draft.zoneType,
       notes: draft.notes?.trim() || undefined,
       color: draft.color || undefined,
+      assignedDeviceIds: draft.assignedDeviceIds,
+      // Anchor the floating 3D label at the click point
+      anchor: { x: picked.point.x, y: picked.point.y, z: picked.point.z },
     });
     setLabel(saved);
     setEditing(false);
     onLabelChange?.(saved);
+  }
+
+  function toggleDevice(deviceId: string) {
+    const current = new Set(draft.assignedDeviceIds ?? []);
+    if (current.has(deviceId)) current.delete(deviceId);
+    else current.add(deviceId);
+    setDraft({ ...draft, assignedDeviceIds: Array.from(current) });
   }
 
   function clear() {
@@ -92,6 +103,21 @@ export function PickedElementCard({
             {label?.notes && (
               <div className="pt-1.5 border-t border-white/10 text-white/80 font-sans text-[11px] leading-snug whitespace-pre-wrap">
                 {label.notes}
+              </div>
+            )}
+            {label?.assignedDeviceIds && label.assignedDeviceIds.length > 0 && (
+              <div className="pt-1.5 border-t border-white/10">
+                <div className="text-white/60 text-[10px] uppercase tracking-wider mb-1">📡 Assigned devices ({label.assignedDeviceIds.length})</div>
+                <div className="flex flex-wrap gap-1 font-sans">
+                  {label.assignedDeviceIds.map((id) => {
+                    const s = MOCK_SENSORS.find((x) => x.id === id);
+                    return (
+                      <span key={id} className="text-[10px] bg-emerald-500/20 text-emerald-200 rounded px-1.5 py-0.5 ring-1 ring-emerald-400/40">
+                        {s ? `${s.type} · ${s.name.split('(')[0].trim()}` : id}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -158,6 +184,29 @@ export function PickedElementCard({
               className="w-full mt-0.5 px-2 py-1.5 rounded bg-slate-800 border border-white/10 focus:border-cyan-400 outline-none text-white resize-none"
             />
           </label>
+          <div>
+            <span className="text-white/60 text-[10px] uppercase tracking-wider">📡 Assign devices to this zone</span>
+            <div className="mt-1 max-h-32 overflow-y-auto rounded bg-slate-800/60 border border-white/10 divide-y divide-white/5">
+              {MOCK_SENSORS.map((s) => {
+                const checked = draft.assignedDeviceIds?.includes(s.id) ?? false;
+                return (
+                  <label key={s.id} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-white/5">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleDevice(s.id)}
+                      className="accent-cyan-400"
+                    />
+                    <span className="flex-1 text-[11px] truncate">
+                      <span className="text-cyan-300 font-mono">{s.type}</span>
+                      <span className="text-white/70 ml-1.5">{s.name}</span>
+                    </span>
+                    <span className="text-[9px] text-white/40">{s.subsystem}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
           <div className="flex gap-2 pt-1">
             <button
               onClick={save}

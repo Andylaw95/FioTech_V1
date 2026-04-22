@@ -13,6 +13,10 @@ export interface ZoneLabel {
   zoneType?: 'room' | 'area' | 'zone' | 'asset' | 'other';
   notes?: string;
   color?: string;
+  /** World-space anchor for the floating 3D label (set automatically on save) */
+  anchor?: { x: number; y: number; z: number };
+  /** Sensor IDs (from MOCK_SENSORS) assigned to this zone */
+  assignedDeviceIds?: string[];
   updatedAt: string;
 }
 
