@@ -15,6 +15,8 @@ let cachedLoader: any = null;
 let cachedModelID: number | null = null;
 let cachedScene: THREE.Scene | null = null;
 let loadingPromise: Promise<THREE.Group> | null = null;
+// Original IFC meshes (so we can hide/show them without affecting subsets that are children)
+let originalMeshes: THREE.Mesh[] = [];
 
 // Categories (display name → IFC type IDs grouped together)
 export const CATEGORY_GROUPS: Record<string, { label: string; types: number[]; color?: string }> = {
@@ -53,22 +55,43 @@ export function setWireframe(on: boolean) {
 const HIGHLIGHT_MAT = new THREE.MeshBasicMaterial({
   color: 0xfbbf24, depthTest: false, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
 });
+HIGHLIGHT_MAT.clippingPlanes = [clipPlane];
 
 const SUBSET_VISIBLE = 'visible-cats';
 const SUBSET_HIGHLIGHT = 'highlight-pick';
 
+function patchSubsetMaterials(mesh: THREE.Object3D | undefined) {
+  if (!mesh) return;
+  mesh.traverse((obj: any) => {
+    if (obj.isMesh && obj.material) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach((m: any) => {
+        m.clippingPlanes = [clipPlane];
+        m.clipShadows = true;
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = 1;
+        m.polygonOffsetUnits = 1;
+        m.needsUpdate = true;
+      });
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    }
+  });
+}
+
 export async function setVisibleCategories(active: Set<string>) {
-  if (!cachedLoader || cachedModelID === null || !cachedScene || !cached) return;
+  if (!cachedLoader || cachedModelID === null || !cached) return;
   const allActive = active.size === Object.keys(CATEGORY_GROUPS).length;
 
   if (allActive) {
-    // Show full model, drop subset
-    cached.visible = true;
+    originalMeshes.forEach((m) => { m.visible = true; });
     cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE);
     return;
   }
 
-  cached.visible = false;
+  // Hide each original mesh individually (so subset which is a child of `cached` stays visible)
+  originalMeshes.forEach((m) => { m.visible = false; });
+
   const ids: number[] = [];
   active.forEach((cat) => {
     const list = categoryIds[cat];
@@ -78,23 +101,24 @@ export async function setVisibleCategories(active: Set<string>) {
   cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE);
   if (ids.length === 0) return;
 
-  cachedLoader.ifcManager.createSubset({
+  const subset = cachedLoader.ifcManager.createSubset({
     modelID: cachedModelID,
     ids,
-    scene: cachedScene,
+    scene: cached, // parent = the IFC group itself → inherits all wrapper transforms
     removePrevious: true,
     customID: SUBSET_VISIBLE,
   });
+  patchSubsetMaterials(subset);
 }
 
 export function highlightExpressId(expressId: number | null) {
-  if (!cachedLoader || cachedModelID === null || !cachedScene) return;
+  if (!cachedLoader || cachedModelID === null || !cached) return;
   cachedLoader.ifcManager.removeSubset(cachedModelID, HIGHLIGHT_MAT, SUBSET_HIGHLIGHT);
   if (expressId == null) return;
   cachedLoader.ifcManager.createSubset({
     modelID: cachedModelID,
     ids: [expressId],
-    scene: cachedScene,
+    scene: cached, // parent = IFC group → inherits transforms
     removePrevious: true,
     material: HIGHLIGHT_MAT,
     customID: SUBSET_HIGHLIGHT,
@@ -178,9 +202,11 @@ async function loadIfc(url: string): Promise<THREE.Group> {
       group.scale.setScalar(scale);
     }
 
-    // Apply shared clipping plane + soft shadows to all materials
+    // Apply shared clipping plane + soft shadows to all materials, capture original meshes
+    originalMeshes = [];
     group.traverse((obj: any) => {
       if (obj.isMesh) {
+        originalMeshes.push(obj);
         obj.castShadow = true;
         obj.receiveShadow = true;
         if (obj.material) {
@@ -276,8 +302,8 @@ export function IfcModel({
     wrapper.updateMatrixWorld(true);
     const finalBox = new THREE.Box3().setFromObject(wrapper);
     const height = finalBox.max.y - finalBox.min.y;
-    // Reset clip to top so nothing is hidden initially
     setClipHeight(height + 0.5);
+    // Reapply current visibility/highlight state in case wrapper transforms changed
     onMetrics?.({
       height,
       categoryCounts: Object.fromEntries(Object.entries(categoryIds).map(([k, v]) => [k, v.length])),
