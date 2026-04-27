@@ -310,6 +310,18 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     const t0 = performance.now();
     const loader = new IFCLoader();
     await loader.ifcManager.setWasmPath('/wasm/');
+    // Tune web-ifc for large models (48MB+ IFC files OOM with defaults).
+    try {
+      loader.ifcManager.applyWebIfcConfig({
+        COORDINATE_TO_ORIGIN: true,
+        USE_FAST_BOOLS: true,
+        OPTIMIZE_PROFILES: true,
+        // Higher initial WASM heap so big buildings don't crash on parse.
+        MEMORY_LIMIT: 2 * 1024 * 1024 * 1024,
+      } as any);
+    } catch (e) {
+      console.warn('[IfcModel] applyWebIfcConfig failed', e);
+    }
 
     const model: any = await new Promise((resolve, reject) => {
       loader.load(
@@ -321,7 +333,10 @@ async function loadIfc(url: string): Promise<THREE.Group> {
             if (pct % 20 === 0) console.log(`[IfcModel] download ${pct}%`);
           }
         },
-        reject,
+        (err: any) => {
+          console.error('[IfcModel] load failed url=', url, 'err=', err);
+          reject(err);
+        },
       );
     });
 

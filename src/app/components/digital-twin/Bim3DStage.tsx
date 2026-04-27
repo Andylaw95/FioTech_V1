@@ -417,6 +417,21 @@ export function Bim3DStage({
         >
           🎯 {pickMode ? 'Pick: ON' : 'Pick'}
         </button>
+        {/* "Auto" toggle — auto-rotate camera. Stacked below Pick. */}
+        <button
+          onClick={() => setAutoOn(v => !v)}
+          title={autoOn
+            ? 'Auto ON — camera auto-rotates. Sensor readings stay live either way. Click to turn OFF.'
+            : 'Auto OFF — camera holds still. Sensor readings still update live. Click to turn ON.'}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold shadow-lg backdrop-blur transition border ${
+            autoOn
+              ? 'bg-amber-500/90 hover:bg-amber-500 text-slate-900 border-amber-300'
+              : 'bg-slate-900/80 hover:bg-slate-900 text-slate-200 border-slate-700'
+          }`}
+        >
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${autoOn ? 'bg-slate-900 animate-pulse' : 'bg-slate-500'}`} />
+          Auto: {autoOn ? 'ON' : 'OFF'}
+        </button>
       </div>
 
       {showTools && ifcStatus.state === 'ready' && (
@@ -485,23 +500,7 @@ export function Bim3DStage({
         />
       )}
 
-      {/* "Auto" toggle — controls camera auto-rotate + demo-data auto-spawn */}
-      <button
-        onClick={() => setAutoOn(v => !v)}
-        title={autoOn
-          ? 'Auto ON — camera auto-rotates and synthetic alarms spawn over time. Readings stay live either way. Click to turn OFF.'
-          : 'Auto OFF — camera holds still and no new alarms auto-spawn. Sensor readings still update live. Click to turn ON.'}
-        className={`absolute z-30 top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold shadow-lg backdrop-blur transition pointer-events-auto ${
-          autoOn
-            ? 'bg-amber-500/90 hover:bg-amber-500 text-slate-900 border border-amber-300'
-            : 'bg-slate-900/80 hover:bg-slate-900 text-slate-300 border border-slate-700'
-        }`}
-      >
-        <span
-          className={`inline-block w-1.5 h-1.5 rounded-full ${autoOn ? 'bg-slate-900 animate-pulse' : 'bg-slate-500'}`}
-        />
-        Auto: {autoOn ? 'ON' : 'OFF'}
-      </button>
+      {/* "Auto" toggle moved into the top-left stack below Pick (above). */}
 
       <Canvas
         shadows="soft"
