@@ -381,15 +381,9 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     cachedModelID = null;
 
     group.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(group);
-    const size = box.getSize(new THREE.Vector3());
-
-    const maxDim = Math.max(size.x, size.y, size.z);
-    if (maxDim > 0) {
-      const targetSize = 30;
-      const scale = targetSize / maxDim;
-      group.scale.setScalar(scale);
-    }
+    // Note: do NOT compute bbox/scale here — @thatopen streams geometry in
+    // tiles, so at parse time fragModel.object has no children yet. The
+    // per-frame auto-fit in IfcModel handles scaling once tiles arrive.
 
     // Apply shared clipping plane + soft shadows to all materials, capture original meshes
     originalMeshes = [];
@@ -471,8 +465,11 @@ export function IfcModel({
   const [group, setGroup] = useState<THREE.Group | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const wrapperRef = useRef<THREE.Group>(null);
-  const { camera } = useThree();
+  const { camera, controls } = useThree() as any;
   const cameraBoundRef = useRef(false);
+  const fittedRef = useRef(false);
+  const stableFramesRef = useRef(0);
+  const lastBoxSizeRef = useRef(0);
 
   // Tick the @thatopen Fragments streaming culler every frame so tiles load
   // and the building actually appears. Without this, parsing finishes but
@@ -483,6 +480,54 @@ export function IfcModel({
       const mgr = components.get(OBC.FragmentsManager);
       mgr.core?.update?.();
     } catch {}
+
+    // Streaming auto-fit: once the bbox stabilises, rescale + recenter the
+    // wrapper and frame the camera. The IFC arrives at real-world scale and
+    // origin (often hundreds of meters from 0,0,0) — without this you stare
+    // into empty space.
+    if (fittedRef.current) return;
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const box = new THREE.Box3().setFromObject(wrapper);
+    if (!isFinite(box.min.x) || box.isEmpty()) return;
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (maxDim <= 0) return;
+
+    if (Math.abs(maxDim - lastBoxSizeRef.current) < 0.01) {
+      stableFramesRef.current++;
+    } else {
+      stableFramesRef.current = 0;
+      lastBoxSizeRef.current = maxDim;
+    }
+    if (stableFramesRef.current < 20) return;
+
+    // Stable bbox — fit it.
+    const targetSize = 30;
+    const scale = targetSize / maxDim;
+    wrapper.scale.setScalar(scale);
+    wrapper.updateMatrixWorld(true);
+    const scaled = new THREE.Box3().setFromObject(wrapper);
+    const center = scaled.getCenter(new THREE.Vector3());
+    wrapper.position.sub(center);
+    wrapper.position.y -= scaled.min.y - center.y;
+    wrapper.updateMatrixWorld(true);
+
+    const final = new THREE.Box3().setFromObject(wrapper);
+    const fSize = final.getSize(new THREE.Vector3());
+    const fCenter = final.getCenter(new THREE.Vector3());
+    const radius = Math.max(fSize.x, fSize.y, fSize.z) * 0.6 || 30;
+    const dir = new THREE.Vector3(1, 0.7, 1).normalize();
+    camera.position.copy(fCenter).addScaledVector(dir, radius * 2);
+    if (controls?.target) {
+      (controls.target as THREE.Vector3).copy(fCenter);
+      controls.update?.();
+    }
+    (camera as any).near = Math.max(0.1, radius / 100);
+    (camera as any).far = radius * 100;
+    (camera as any).updateProjectionMatrix?.();
+    fittedRef.current = true;
+    console.log('[IfcModel] fitted to bbox', { size: fSize.toArray(), center: fCenter.toArray() });
   });
 
   useEffect(() => {
@@ -518,22 +563,18 @@ export function IfcModel({
     return () => { cancelled = true; };
   }, [url]);
 
-  // Re-center every time rotation changes; expose height via onMetrics
+  // Re-center every time rotation changes; expose height via onMetrics.
+  // Skipped on initial mount because the streaming bbox is empty until tiles
+  // arrive — the per-frame auto-fit handles that.
   useEffect(() => {
     if (!group || !wrapperRef.current) return;
+    if (!fittedRef.current) return;
     const wrapper = wrapperRef.current;
     wrapper.rotation.set(rotationX, 0, 0);
-    wrapper.position.set(0, 0, 0);
-    wrapper.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(wrapper);
-    const center = box.getCenter(new THREE.Vector3());
-    wrapper.position.x -= center.x;
-    wrapper.position.z -= center.z;
-    wrapper.position.y -= box.min.y;
     wrapper.updateMatrixWorld(true);
     const finalBox = new THREE.Box3().setFromObject(wrapper);
+    if (!isFinite(finalBox.min.x) || finalBox.isEmpty()) return;
     const height = finalBox.max.y - finalBox.min.y;
-    // Only set the clip on first load — don't clobber user-driven slider on subsequent rotations
     if (!initialClipApplied) {
       setClipHeight(height + 0.5);
       initialClipApplied = true;
