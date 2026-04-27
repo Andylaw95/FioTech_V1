@@ -343,9 +343,21 @@ async function loadIfc(url: string): Promise<THREE.Group> {
 
     const loader = await ensureThatOpenLoader();
 
-    const resp = await fetch(url);
+    const resp = await fetch(url, { cache: 'no-store' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${url}`);
+    const ct = resp.headers.get('content-type') || '';
+    if (ct.includes('text/html')) {
+      throw new Error(`${url} returned HTML (${ct}) — file likely missing on the server`);
+    }
     const buf = new Uint8Array(await resp.arrayBuffer());
+    if (buf.byteLength < 1024) {
+      throw new Error(`${url} too small (${buf.byteLength} bytes) — not a valid IFC`);
+    }
+    // IFC files always start with "ISO-10303-21" (STEP file header)
+    const head = new TextDecoder().decode(buf.subarray(0, 16));
+    if (!head.startsWith('ISO-10303')) {
+      throw new Error(`${url} is not an IFC (header="${head}")`);
+    }
     console.log(`[IfcModel] fetched ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB in ${Math.round(performance.now() - t0)}ms`);
 
     const fragModel: any = await loader.load(buf, true, 'main');
