@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import * as OBC from '@thatopen/components';
 import {
@@ -463,6 +464,19 @@ export function IfcModel({
   const [group, setGroup] = useState<THREE.Group | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const wrapperRef = useRef<THREE.Group>(null);
+  const { camera } = useThree();
+  const cameraBoundRef = useRef(false);
+
+  // Tick the @thatopen Fragments streaming culler every frame so tiles load
+  // and the building actually appears. Without this, parsing finishes but
+  // FragmentsModel.object stays empty.
+  useFrame(() => {
+    if (!components || !cachedFragModel) return;
+    try {
+      const mgr = components.get(OBC.FragmentsManager);
+      mgr.core?.update?.();
+    } catch {}
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -475,6 +489,15 @@ export function IfcModel({
     loadIfc(url)
       .then((g) => {
         if (cancelled) return;
+        // Bind the R3F camera to the streaming culler so tiles get fetched.
+        if (cachedFragModel && !cameraBoundRef.current) {
+          try {
+            cachedFragModel.useCamera?.(camera as any);
+            cameraBoundRef.current = true;
+          } catch (e) {
+            console.warn('[IfcModel] useCamera failed', e);
+          }
+        }
         setGroup(g);
         onLoaded?.();
       })
