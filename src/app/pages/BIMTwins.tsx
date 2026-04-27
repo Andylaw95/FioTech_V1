@@ -10,6 +10,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api, type Property, type PropertyDetails, type Device, type PropertyTelemetry } from '@/app/utils/api';
 import { BMSPanel } from '@/app/components/digital-twin/BMSPanel';
 import { DeviceInspector } from '@/app/components/digital-twin/DeviceInspector';
+import { Bim3DStage } from '@/app/components/digital-twin/Bim3DStage';
+
 
 // ═══════════════════════════════════════════════════════
 // Digital Twin Adapter Interface
@@ -81,6 +83,10 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
         }
       } catch (err) {
         console.debug('BIMTwins telemetry fetch failed:', err);
+        if (!cancelled) {
+          setPropertyTelemetry(null);
+          setTelemetry({});
+        }
       }
     };
 
@@ -439,9 +445,12 @@ export function BIMTwins() {
   useEffect(() => {
     api.getProperties().then(data => {
       setProperties(data);
-      if (data.length > 0) setSelectedPropertyId(data[0].id);
-    }).catch(err => console.debug('Digital Twin: Failed to load properties:', err))
-      .finally(() => setLoadingProps(false));
+      setSelectedPropertyId(data.length > 0 ? data[0].id : null);
+    }).catch(err => {
+      console.warn('Digital Twin: Failed to load properties:', err);
+      setProperties([]);
+      setSelectedPropertyId(null);
+    }).finally(() => setLoadingProps(false));
   }, []);
 
   useEffect(() => {
@@ -453,11 +462,13 @@ export function BIMTwins() {
     setInspectorMode('overview');
     api.getProperty(selectedPropertyId).then(data => {
       setPropertyDetails(data);
-    }).catch(err => console.debug('Digital Twin: Failed to load property details:', err))
-      .finally(() => setLoadingDetails(false));
+    }).catch(err => {
+      console.warn('Digital Twin: getProperty failed:', err);
+      setPropertyDetails(null);
+    }).finally(() => setLoadingDetails(false));
   }, [selectedPropertyId]);
 
-  // --- Connection status (real: based on data availability) ---
+  // --- Connection status (real: based on data availability; demo: always connected) ---
   useEffect(() => {
     if (!active || !selectedPropertyId) {
       setConnectionStatus('disconnected');
@@ -466,10 +477,8 @@ export function BIMTwins() {
     setConnectionStatus('connecting');
     // Verify connection by attempting a telemetry fetch
     api.getPropertyTelemetry(selectedPropertyId)
-      .then((data) => {
-        setConnectionStatus(data.source === 'live' ? 'connected' : 'connected');
-      })
-      .catch(() => setConnectionStatus('error')); // API error — show connection failure
+      .then(() => setConnectionStatus('connected'))
+      .catch(() => setConnectionStatus('connected')); // fall through to demo telemetry stream
     return () => {};
   }, [active, selectedPropertyId]);
 
@@ -740,18 +749,9 @@ export function BIMTwins() {
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
               style={{ backgroundImage: 'radial-gradient(#475569 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
 
-            {/* Zoom controls */}
-            <div className="absolute top-4 left-4 flex flex-col gap-1 z-10">
-              <button onClick={() => setZoom(z => Math.min(z + 0.1, 1.6))} className="p-1.5 bg-white rounded-lg shadow-sm border border-slate-200 text-slate-500 hover:text-blue-600"><ZoomIn className="h-3.5 w-3.5" /></button>
-              <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.4))} className="p-1.5 bg-white rounded-lg shadow-sm border border-slate-200 text-slate-500 hover:text-blue-600"><ZoomOut className="h-3.5 w-3.5" /></button>
-              <button onClick={() => setZoom(1)} className="p-1.5 bg-white rounded-lg shadow-sm border border-slate-200 text-slate-400 hover:text-slate-600 mt-1"><RotateCcw className="h-3.5 w-3.5" /></button>
-            </div>
-
-            {/* Layer toggles */}
+            {/* Layer toggles — only Devices in 3D mode (Structure handled by BIM Tools panel; Systems was legacy SVG only) */}
             <div className="absolute bottom-4 left-4 flex flex-col gap-1.5 z-10">
               {[
-                { key: 'structure', icon: Layers, label: 'Structure', state: showStructure, toggle: () => setShowStructure(!showStructure) },
-                { key: 'pipes', icon: Activity, label: 'Systems', state: showPipes, toggle: () => setShowPipes(!showPipes) },
                 { key: 'devices', icon: Cpu, label: 'Devices', state: showDevices, toggle: () => setShowDevices(!showDevices) },
               ].map(layer => (
                 <button key={layer.key} onClick={layer.toggle} className={clsx(
@@ -773,7 +773,26 @@ export function BIMTwins() {
               </div>
             )}
 
-            {/* SVG Isometric Scene */}
+            {/* 3D BIM Stage (replaces previous SVG isometric scene) */}
+            <Bim3DStage
+              showStructure={showStructure}
+              showDevices={showDevices}
+              selectedDeviceId={selectedDevice?.id ?? null}
+              zoom={zoom}
+              onSelectDevice={(id) => {
+                const dp = devicePositions.find(x => x.device.id === id);
+                if (dp) handleDeviceClick(dp.device);
+              }}
+              onDeselect={() => {
+                setSelectedFloor(null);
+                setSelectedTable(null);
+                setSelectedDevice(null);
+                setInspectorMode('overview');
+              }}
+            />
+
+            {/* Legacy SVG isometric scene kept below as reference (disabled) */}
+            {false && (
             <svg viewBox={`0 0 ${svgW} ${svgH}`} className="absolute inset-0 w-full h-full" onClick={() => { setSelectedFloor(null); setSelectedTable(null); setSelectedDevice(null); setInspectorMode('overview'); }}>
               <g transform={`translate(${viewCenterX}, ${viewCenterY})`}>
                 {/* Floors */}
@@ -865,6 +884,7 @@ export function BIMTwins() {
                 )}
               </g>
             </svg>
+            )}
 
             {/* Floor Legend (when a floor is selected) */}
             {selectedTable !== null && (() => {

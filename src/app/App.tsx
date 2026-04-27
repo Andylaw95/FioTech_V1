@@ -22,6 +22,7 @@ const NoiseDashboard = React.lazy(() => import('@/app/pages/NoiseDashboard').the
 const DustDashboard = React.lazy(() => import('@/app/pages/DustDashboard').then(m => ({ default: m.DustDashboard })));
 const EnvironmentalMonitoring = React.lazy(() => import('@/app/pages/EnvironmentalMonitoring').then(m => ({ default: m.EnvironmentalMonitoring })));
 const DigitalTwinPortfolio = React.lazy(() => import('@/app/pages/DigitalTwin/Portfolio').then(m => ({ default: m.Portfolio })));
+const BIM3DDemo = React.lazy(() => import('@/app/pages/demo/BIM3DDemo').then(m => ({ default: m.BIM3DDemo })));
 
 import { ProfileProvider } from '@/app/utils/ProfileContext';
 import { AuthProvider, useAuth } from '@/app/utils/AuthContext';
@@ -29,6 +30,35 @@ import { ThemeProvider } from '@/app/utils/ThemeContext';
 import { Loader2 } from 'lucide-react';
 import { warmupServer, resetWarmup } from '@/app/utils/api';
 import { SpeedInsights } from '@vercel/speed-insights/react';
+
+class AppErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[AppErrorBoundary] caught', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+          <div className="max-w-2xl w-full rounded-xl border border-rose-200 bg-white p-6 shadow-lg">
+            <h1 className="text-lg font-semibold text-rose-600 mb-2">App crashed</h1>
+            <p className="text-sm text-slate-600 mb-3">{this.state.error.message}</p>
+            <pre className="text-xs bg-slate-900 text-slate-100 p-3 rounded overflow-auto max-h-72 whitespace-pre-wrap">{this.state.error.stack}</pre>
+            <button
+              onClick={() => { this.setState({ error: null }); location.reload(); }}
+              className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+            >Reload</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -206,55 +236,58 @@ function ServerWarmupGate({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AuthGate>
-        <ServerWarmupGate>
-          <ThemeProvider>
-            <ProfileProvider>
-              <BrowserRouter>
-                <React.Suspense fallback={
-                  <div className="flex h-screen items-center justify-center bg-slate-50">
-                    <div className="flex flex-col items-center gap-3">
-                      <img src={fiotechLogo} alt="FioTec" className="h-12 object-contain" />
-                      <div className="flex items-center gap-2 text-slate-500">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-sm font-medium">Loading...</span>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <AuthGate>
+          <ServerWarmupGate>
+            <ThemeProvider>
+              <ProfileProvider>
+                <BrowserRouter>
+                  <React.Suspense fallback={
+                    <div className="flex h-screen items-center justify-center bg-slate-50">
+                      <div className="flex flex-col items-center gap-3">
+                        <img src={fiotechLogo} alt="FioTec" className="h-12 object-contain" />
+                        <div className="flex items-center gap-2 text-slate-500">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="text-sm font-medium">Loading...</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                }>
-                <Routes>
-                  <Route path="/" element={<Layout />}>
-                    <Route index element={<Dashboard />} />
-
-                    <Route path="buildings" element={<Buildings />} />
-                    <Route path="buildings/:id" element={<BuildingDetails />} />
-                    <Route path="devices" element={<Devices />} />
-                    <Route path="gateways" element={<Gateways />} />
-                    <Route path="alarms" element={<Alarms />} />
-                    <Route path="alarms/water" element={<WaterAlarms />} />
-                    <Route path="alarms/fire" element={<FireAlarms />} />
-                    <Route path="alarms/smoke" element={<SmokeAlarms />} />
-                    <Route path="noise" element={<NoiseDashboard />} />
-                    <Route path="dust" element={<DustDashboard />} />
-                    <Route path="environment" element={<EnvironmentalMonitoring />} />
-                    <Route path="environment/noise" element={<NoiseDashboard />} />
-                    <Route path="environment/dust" element={<DustDashboard />} />
-                    <Route path="bim" element={<BIMTwins />} />
-                    <Route path="digital-twin-v2" element={<DigitalTwinPortfolio />} />
-                    <Route path="digital-twin-v2/:propertyId" element={<DigitalTwinPortfolio />} />
-                    <Route path="settings" element={<Settings />} />
-                    <Route path="admin" element={<AdminPanel />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Route>
-                </Routes>
-                </React.Suspense>
-              </BrowserRouter>
-              <SpeedInsights />
-            </ProfileProvider>
-          </ThemeProvider>
-        </ServerWarmupGate>
-      </AuthGate>
-    </AuthProvider>
+                  }>
+                    <Routes>
+                      <Route path="/" element={<Layout />}>
+                        <Route index element={<Dashboard />} />
+                        <Route path="buildings" element={<Buildings />} />
+                        <Route path="buildings/:id" element={<BuildingDetails />} />
+                        <Route path="devices" element={<Devices />} />
+                        <Route path="gateways" element={<Gateways />} />
+                        <Route path="alarms" element={<Alarms />} />
+                        <Route path="alarms/water" element={<WaterAlarms />} />
+                        <Route path="alarms/fire" element={<FireAlarms />} />
+                        <Route path="alarms/smoke" element={<SmokeAlarms />} />
+                        <Route path="noise" element={<NoiseDashboard />} />
+                        <Route path="dust" element={<DustDashboard />} />
+                        <Route path="environment" element={<EnvironmentalMonitoring />} />
+                        <Route path="environment/noise" element={<NoiseDashboard />} />
+                        <Route path="environment/dust" element={<DustDashboard />} />
+                        <Route path="bim" element={<BIMTwins />} />
+                        <Route path="bim-legacy" element={<BIMTwins />} />
+                        <Route path="digital-twin-v2" element={<DigitalTwinPortfolio />} />
+                        <Route path="digital-twin-v2/:propertyId" element={<BIM3DDemo />} />
+                        <Route path="demo/bim-3d" element={<BIM3DDemo />} />
+                        <Route path="settings" element={<Settings />} />
+                        <Route path="admin" element={<AdminPanel />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Route>
+                    </Routes>
+                  </React.Suspense>
+                </BrowserRouter>
+                <SpeedInsights />
+              </ProfileProvider>
+            </ThemeProvider>
+          </ServerWarmupGate>
+        </AuthGate>
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }
