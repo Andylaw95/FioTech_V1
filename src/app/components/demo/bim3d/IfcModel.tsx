@@ -312,11 +312,14 @@ export async function getIfcInfoFromIntersection(intersection: THREE.Intersectio
 
 async function ensureThatOpenLoader(): Promise<OBC.IfcLoader> {
   if (ifcLoader) return ifcLoader;
+  console.log('[IfcModel] initializing @thatopen components…');
+  const tInit = performance.now();
   components = new OBC.Components();
   const fragmentsManager = components.get(OBC.FragmentsManager);
   try {
     const workerURL = '/wasm/fragments-worker.mjs';
     await fragmentsManager.init(workerURL);
+    console.log(`[IfcModel] fragments worker ready in ${Math.round(performance.now() - tInit)}ms`);
   } catch (e) {
     console.warn('[IfcModel] local fragments worker failed, falling back to unpkg', e);
     const workerURL = await OBC.FragmentsManager.getWorker();
@@ -327,6 +330,7 @@ async function ensureThatOpenLoader(): Promise<OBC.IfcLoader> {
     autoSetWasm: false,
     wasm: { path: '/wasm/v77/', absolute: true },
   } as any);
+  console.log(`[IfcModel] IfcLoader setup complete in ${Math.round(performance.now() - tInit)}ms`);
   return ifcLoader;
 }
 
@@ -343,7 +347,9 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     const t0 = performance.now();
 
     const loader = await ensureThatOpenLoader();
+    console.log(`[IfcModel] loader ready in ${Math.round(performance.now() - t0)}ms`);
 
+    const tFetch = performance.now();
     const resp = await fetch(url, { cache: 'no-store' });
     if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${url}`);
     const ct = resp.headers.get('content-type') || '';
@@ -359,11 +365,12 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     if (!head.startsWith('ISO-10303')) {
       throw new Error(`${url} is not an IFC (header="${head}")`);
     }
-    console.log(`[IfcModel] fetched ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB in ${Math.round(performance.now() - t0)}ms`);
+    console.log(`[IfcModel] fetched ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB in ${Math.round(performance.now() - tFetch)}ms`);
 
+    const tParse = performance.now();
     const fragModel: any = await loader.load(buf, true, 'main');
     cachedFragModel = fragModel;
-    console.log(`[IfcModel] parsed in ${Math.round(performance.now() - t0)}ms`);
+    console.log(`[IfcModel] parsed in ${Math.round(performance.now() - tParse)}ms (total ${Math.round(performance.now() - t0)}ms)`);
 
     // FragmentsModel exposes its rendered Object3D via `.object`
     const obj: THREE.Object3D = (fragModel.object ?? fragModel) as THREE.Object3D;
