@@ -439,19 +439,26 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     console.log(`[IfcModel] loader ready in ${Math.round(performance.now() - t0)}ms`);
 
     let fragModel: any = null;
-    const cacheKey = `frag::${url}`;
+    const cacheKey = `frag::v2::${url}`;
 
     // Fast path: try IndexedDB-cached Fragments binary first.
+    // Wrapped in a 5s timeout so a corrupt cache can't hang the loader.
     try {
       const cachedFrag = await getCachedFrag(cacheKey);
       if (cachedFrag && cachedFrag.byteLength > 1024) {
         const tHydrate = performance.now();
-        fragModel = await fragsManager.core.load(cachedFrag.buffer, { modelId: 'main' } as any);
+        const loadPromise = fragsManager.core.load(cachedFrag.buffer, { modelId: 'main' });
+        const timeout = new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error('hydrate timeout')), 5000),
+        );
+        fragModel = await Promise.race([loadPromise, timeout]);
         console.log(`[IfcModel] hydrated from IndexedDB cache (${(cachedFrag.byteLength / 1024 / 1024).toFixed(1)} MB) in ${Math.round(performance.now() - tHydrate)}ms`);
       }
     } catch (e) {
       console.warn('[IfcModel] frag cache hydrate failed, falling back to IFC', e);
       fragModel = null;
+      // Drop the bad cache entry.
+      try { await putCachedFrag(cacheKey, new Uint8Array(0)); } catch {}
     }
 
     if (!fragModel) {
@@ -479,10 +486,12 @@ async function loadIfc(url: string): Promise<THREE.Group> {
 
       // Persist parsed Fragments binary so future loads skip the parse.
       try {
-        const exported: ArrayBuffer | Uint8Array = await fragsManager.core.export(fragModel);
+        const exported = await fragModel.getBuffer(false);
         const bytes = exported instanceof Uint8Array ? exported : new Uint8Array(exported);
-        await putCachedFrag(cacheKey, bytes);
-        console.log(`[IfcModel] cached fragments (${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB) to IndexedDB`);
+        if (bytes.byteLength > 1024) {
+          await putCachedFrag(cacheKey, bytes);
+          console.log(`[IfcModel] cached fragments (${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB) to IndexedDB`);
+        }
       } catch (e) {
         console.warn('[IfcModel] could not persist fragments cache', e);
       }
