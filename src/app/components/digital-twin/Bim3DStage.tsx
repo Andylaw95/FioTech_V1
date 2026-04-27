@@ -524,7 +524,6 @@ export function Bim3DStage({
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.05,
           localClippingEnabled: true,
-          logarithmicDepthBuffer: true,
           alpha: true,
         }}
         onCreated={({ gl }) => {

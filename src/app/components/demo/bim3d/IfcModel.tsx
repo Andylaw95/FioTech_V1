@@ -644,8 +644,8 @@ export function IfcModel({
     // Streaming auto-fit: once the bbox stabilises, rescale + recenter the
     // wrapper and frame the camera. The IFC arrives at real-world scale and
     // origin (often hundreds of meters from 0,0,0) — without this you stare
-    // into empty space.
-    if (fittedRef.current) return;
+    // into empty space. After the initial fit we keep watching for any
+    // significant bbox growth (e.g. a late floor slab tile) and re-fit.
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
     const box = new THREE.Box3().setFromObject(wrapper);
@@ -653,6 +653,21 @@ export function IfcModel({
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
     if (maxDim <= 0) return;
+
+    if (fittedRef.current) {
+      // Already fitted. Watch for >5% bbox growth and re-fit if so.
+      const grewRatio = maxDim / Math.max(0.0001, lastBoxSizeRef.current);
+      if (grewRatio > 1.05 || grewRatio < 0.95) {
+        fittedRef.current = false;
+        stableFramesRef.current = 0;
+        lastBoxSizeRef.current = maxDim;
+        // Reset wrapper transform so next pass measures un-scaled bbox.
+        wrapper.scale.setScalar(1);
+        wrapper.position.set(0, 0, 0);
+        wrapper.updateMatrixWorld(true);
+      }
+      return;
+    }
 
     if (Math.abs(maxDim - lastBoxSizeRef.current) < 0.01) {
       stableFramesRef.current++;
@@ -683,10 +698,13 @@ export function IfcModel({
       (controls.target as THREE.Vector3).copy(fCenter);
       controls.update?.();
     }
-    (camera as any).near = Math.max(0.1, radius / 100);
-    (camera as any).far = radius * 100;
+    // Tight near/far for max depth precision (fixes z-fighting on coplanar walls).
+    (camera as any).near = Math.max(0.05, radius / 50);
+    (camera as any).far = radius * 20;
     (camera as any).updateProjectionMatrix?.();
     fittedRef.current = true;
+    // Remember post-fit bbox size so the growth check runs in scaled units.
+    lastBoxSizeRef.current = Math.max(fSize.x, fSize.y, fSize.z);
     console.log('[IfcModel] fitted to bbox', { size: fSize.toArray(), center: fCenter.toArray() });
   });
 
