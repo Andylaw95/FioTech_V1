@@ -3,6 +3,65 @@ import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import * as OBC from '@thatopen/components';
 
+// IndexedDB cache for parsed Fragments binary so re-loads on the same device
+// skip the 5-7s web-ifc parse. Keyed by URL + a schema-version tag.
+const FRAG_CACHE_DB = 'fiotec-bim-frag-cache';
+const FRAG_CACHE_STORE = 'frags';
+const FRAG_CACHE_VERSION = 1;
+
+function openFragCache(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(FRAG_CACHE_DB, FRAG_CACHE_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(FRAG_CACHE_STORE)) {
+          db.createObjectStore(FRAG_CACHE_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function getCachedFrag(key: string): Promise<Uint8Array | null> {
+  const db = await openFragCache();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(FRAG_CACHE_STORE, 'readonly');
+      const req = tx.objectStore(FRAG_CACHE_STORE).get(key);
+      req.onsuccess = () => {
+        const v = req.result;
+        if (v instanceof Uint8Array) resolve(v);
+        else if (v instanceof ArrayBuffer) resolve(new Uint8Array(v));
+        else resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function putCachedFrag(key: string, bytes: Uint8Array): Promise<void> {
+  const db = await openFragCache();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(FRAG_CACHE_STORE, 'readwrite');
+      tx.objectStore(FRAG_CACHE_STORE).put(bytes, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
 // Module-level cache (single model, keyed by URL)
 let cached: THREE.Group | null = null;
 let cachedUrl: string | null = null;
@@ -376,28 +435,59 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     const t0 = performance.now();
 
     const loader = await ensureThatOpenLoader();
+    const fragsManager = components!.get(OBC.FragmentsManager);
     console.log(`[IfcModel] loader ready in ${Math.round(performance.now() - t0)}ms`);
 
-    const tFetch = performance.now();
-    const resp = await fetch(url, { cache: 'no-store' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${url}`);
-    const ct = resp.headers.get('content-type') || '';
-    if (ct.includes('text/html')) {
-      throw new Error(`${url} returned HTML (${ct}) — file likely missing on the server`);
-    }
-    const buf = new Uint8Array(await resp.arrayBuffer());
-    if (buf.byteLength < 1024) {
-      throw new Error(`${url} too small (${buf.byteLength} bytes) — not a valid IFC`);
-    }
-    // IFC files always start with "ISO-10303-21" (STEP file header)
-    const head = new TextDecoder().decode(buf.subarray(0, 16));
-    if (!head.startsWith('ISO-10303')) {
-      throw new Error(`${url} is not an IFC (header="${head}")`);
-    }
-    console.log(`[IfcModel] fetched ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB in ${Math.round(performance.now() - tFetch)}ms`);
+    let fragModel: any = null;
+    const cacheKey = `frag::${url}`;
 
-    const tParse = performance.now();
-    const fragModel: any = await loader.load(buf, true, 'main');
+    // Fast path: try IndexedDB-cached Fragments binary first.
+    try {
+      const cachedFrag = await getCachedFrag(cacheKey);
+      if (cachedFrag && cachedFrag.byteLength > 1024) {
+        const tHydrate = performance.now();
+        fragModel = await fragsManager.core.load(cachedFrag.buffer, { modelId: 'main' } as any);
+        console.log(`[IfcModel] hydrated from IndexedDB cache (${(cachedFrag.byteLength / 1024 / 1024).toFixed(1)} MB) in ${Math.round(performance.now() - tHydrate)}ms`);
+      }
+    } catch (e) {
+      console.warn('[IfcModel] frag cache hydrate failed, falling back to IFC', e);
+      fragModel = null;
+    }
+
+    if (!fragModel) {
+      // Slow path: download IFC and parse via web-ifc.
+      const tFetch = performance.now();
+      const resp = await fetch(url, { cache: 'force-cache' });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${url}`);
+      const ct = resp.headers.get('content-type') || '';
+      if (ct.includes('text/html')) {
+        throw new Error(`${url} returned HTML (${ct}) — file likely missing on the server`);
+      }
+      const buf = new Uint8Array(await resp.arrayBuffer());
+      if (buf.byteLength < 1024) {
+        throw new Error(`${url} too small (${buf.byteLength} bytes) — not a valid IFC`);
+      }
+      const head = new TextDecoder().decode(buf.subarray(0, 16));
+      if (!head.startsWith('ISO-10303')) {
+        throw new Error(`${url} is not an IFC (header="${head}")`);
+      }
+      console.log(`[IfcModel] fetched ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB in ${Math.round(performance.now() - tFetch)}ms`);
+
+      const tParse = performance.now();
+      fragModel = await loader.load(buf, true, 'main');
+      console.log(`[IfcModel] parsed in ${Math.round(performance.now() - tParse)}ms (total ${Math.round(performance.now() - t0)}ms)`);
+
+      // Persist parsed Fragments binary so future loads skip the parse.
+      try {
+        const exported: ArrayBuffer | Uint8Array = await fragsManager.core.export(fragModel);
+        const bytes = exported instanceof Uint8Array ? exported : new Uint8Array(exported);
+        await putCachedFrag(cacheKey, bytes);
+        console.log(`[IfcModel] cached fragments (${(bytes.byteLength / 1024 / 1024).toFixed(1)} MB) to IndexedDB`);
+      } catch (e) {
+        console.warn('[IfcModel] could not persist fragments cache', e);
+      }
+    }
+
     cachedFragModel = fragModel;
     cachedModelId = fragModel?.modelId ?? 'main';
     // Wire shared clipping plane into the FragmentsModel pipeline so the
@@ -405,7 +495,6 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     try {
       fragModel.getClippingPlanesEvent = () => [clipPlane];
     } catch {}
-    console.log(`[IfcModel] parsed in ${Math.round(performance.now() - tParse)}ms (total ${Math.round(performance.now() - t0)}ms)`);
 
     // FragmentsModel exposes its rendered Object3D via `.object`
     const obj: THREE.Object3D = (fragModel.object ?? fragModel) as THREE.Object3D;
