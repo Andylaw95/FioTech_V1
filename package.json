@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "prebuild": "node -e \"const fs=require('fs');fs.mkdirSync('public/wasm',{recursive:true});for(const f of ['web-ifc.wasm','web-ifc-mt.wasm'])fs.copyFileSync('node_modules/web-ifc/'+f,'public/wasm/'+f);console.log('synced web-ifc wasm');\"",
+    "prebuild": "node scripts/sync-web-ifc-wasm.cjs",
     "build": "vite build",
     "dev": "vite"
   },
@@ -40,7 +40,7 @@
     "tailwind-merge": "3.2.0",
     "three": "^0.184.0",
     "tw-animate-css": "1.3.8",
-    "web-ifc": "^0.0.46",
+    "web-ifc": "0.0.44",
     "web-ifc-three": "^0.0.125",
     "xlsx": "^0.18.5"
   },
