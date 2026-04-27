@@ -527,6 +527,26 @@ export function IfcModel({
       mgr.core?.update?.();
     } catch {}
 
+    // Apply polygonOffset to streamed Fragment materials to combat z-fighting
+    // on coplanar IFC walls (architectural + structural overlap is common).
+    // Streamed tile materials arrive AFTER parse so the one-shot pass at load
+    // time misses them — patch them once on first sight.
+    const wrapperForPatch = wrapperRef.current;
+    if (wrapperForPatch) {
+      wrapperForPatch.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!(mesh as any).isMesh) return;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) {
+          if (!m || (m as any).__zfixed) continue;
+          (m as any).polygonOffset = true;
+          (m as any).polygonOffsetFactor = 1;
+          (m as any).polygonOffsetUnits = 1;
+          (m as any).__zfixed = true;
+        }
+      });
+    }
+
     // Streaming auto-fit: once the bbox stabilises, rescale + recenter the
     // wrapper and frame the camera. The IFC arrives at real-world scale and
     // origin (often hundreds of meters from 0,0,0) — without this you stare
