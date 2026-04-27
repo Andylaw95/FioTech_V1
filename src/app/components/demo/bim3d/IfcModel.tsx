@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import * as THREE from 'three';
-import { IFCLoader } from 'web-ifc-three/IFCLoader';
+import * as OBC from '@thatopen/components';
 import {
   IFCWALL, IFCWALLSTANDARDCASE, IFCSLAB, IFCROOF, IFCWINDOW, IFCDOOR,
   IFCSTAIR, IFCSTAIRFLIGHT, IFCRAILING, IFCCOLUMN, IFCBEAM,
@@ -12,8 +12,16 @@ import {
 // Module-level cache (single model, keyed by URL)
 let cached: THREE.Group | null = null;
 let cachedUrl: string | null = null;
+// Legacy web-ifc-three handles — kept null when the @thatopen loader is used
+// so the old subset-based APIs (highlight / isolate / ghost / category filter)
+// no-op gracefully via their existing `if (!cachedLoader || cachedModelID === null) return;` guards.
 let cachedLoader: any = null;
 let cachedModelID: number | null = null;
+// @thatopen handles
+let components: OBC.Components | null = null;
+let ifcLoader: OBC.IfcLoader | null = null;
+let cachedFragModel: any = null;
+
 let loadingPromise: Promise<THREE.Group> | null = null;
 let loadingUrl: string | null = null;
 let originalMeshes: THREE.Mesh[] = [];
@@ -39,6 +47,10 @@ function disposeCachedModel() {
     try { cachedLoader.ifcManager.removeSubset(cachedModelID, GHOST_MAT, SUBSET_GHOST); } catch {}
     try { cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_ISOLATE); } catch {}
     try { cachedLoader.ifcManager.dispose?.(); } catch {}
+  }
+  if (cachedFragModel) {
+    try { cachedFragModel.dispose?.(); } catch {}
+    cachedFragModel = null;
   }
   originalMeshes.forEach((m) => {
     m.geometry?.dispose?.();
@@ -297,6 +309,26 @@ export async function getIfcInfoFromIntersection(intersection: THREE.Intersectio
   }
 }
 
+async function ensureThatOpenLoader(): Promise<OBC.IfcLoader> {
+  if (ifcLoader) return ifcLoader;
+  components = new OBC.Components();
+  const fragmentsManager = components.get(OBC.FragmentsManager);
+  try {
+    const workerURL = '/wasm/fragments-worker.mjs';
+    await fragmentsManager.init(workerURL);
+  } catch (e) {
+    console.warn('[IfcModel] local fragments worker failed, falling back to unpkg', e);
+    const workerURL = await OBC.FragmentsManager.getWorker();
+    await fragmentsManager.init(workerURL);
+  }
+  ifcLoader = components.get(OBC.IfcLoader);
+  await ifcLoader.setup({
+    autoSetWasm: false,
+    wasm: { path: '/wasm/v77/', absolute: true },
+  } as any);
+  return ifcLoader;
+}
+
 async function loadIfc(url: string): Promise<THREE.Group> {
   if (cached && cachedUrl === url) return cached;
   if (loadingPromise && loadingUrl === url) return loadingPromise;
@@ -308,42 +340,25 @@ async function loadIfc(url: string): Promise<THREE.Group> {
   loadingPromise = (async () => {
     console.log('[IfcModel] loading', url);
     const t0 = performance.now();
-    const loader = new IFCLoader();
-    await loader.ifcManager.setWasmPath('/wasm/');
-    // Tune web-ifc for large models (48MB+ IFC files OOM with defaults).
-    try {
-      loader.ifcManager.applyWebIfcConfig({
-        COORDINATE_TO_ORIGIN: true,
-        USE_FAST_BOOLS: true,
-        OPTIMIZE_PROFILES: true,
-        // Higher initial WASM heap so big buildings don't crash on parse.
-        MEMORY_LIMIT: 2 * 1024 * 1024 * 1024,
-      } as any);
-    } catch (e) {
-      console.warn('[IfcModel] applyWebIfcConfig failed', e);
-    }
 
-    const model: any = await new Promise((resolve, reject) => {
-      loader.load(
-        url,
-        resolve,
-        (p) => {
-          if (p.lengthComputable) {
-            const pct = Math.round((p.loaded / p.total) * 100);
-            if (pct % 20 === 0) console.log(`[IfcModel] download ${pct}%`);
-          }
-        },
-        (err: any) => {
-          console.error('[IfcModel] load failed url=', url, 'err=', err);
-          reject(err);
-        },
-      );
-    });
+    const loader = await ensureThatOpenLoader();
 
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${url}`);
+    const buf = new Uint8Array(await resp.arrayBuffer());
+    console.log(`[IfcModel] fetched ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB in ${Math.round(performance.now() - t0)}ms`);
+
+    const fragModel: any = await loader.load(buf, true, 'main');
+    cachedFragModel = fragModel;
     console.log(`[IfcModel] parsed in ${Math.round(performance.now() - t0)}ms`);
-    const group: THREE.Group = model;
-    cachedLoader = loader;
-    cachedModelID = (model as any).modelID ?? 0;
+
+    // FragmentsModel exposes its rendered Object3D via `.object`
+    const obj: THREE.Object3D = (fragModel.object ?? fragModel) as THREE.Object3D;
+    const group = new THREE.Group();
+    group.add(obj);
+    // Legacy manager handles unavailable on @thatopen path
+    cachedLoader = null;
+    cachedModelID = null;
 
     group.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(group);
@@ -399,21 +414,11 @@ async function loadIfc(url: string): Promise<THREE.Group> {
       }
     });
 
-    // Index categories by IFC type
-    for (const [key, group_] of Object.entries(CATEGORY_GROUPS)) {
-      const ids: number[] = [];
-      for (const t of group_.types) {
-        try {
-          const list = await loader.ifcManager.getAllItemsOfType(cachedModelID!, t, false);
-          ids.push(...list);
-        } catch {}
-      }
-      categoryIds[key] = ids;
-    }
-    allIfcIds = Array.from(new Set(Object.values(categoryIds).flat()));
-    console.log('[IfcModel] indexed categories:', Object.fromEntries(
-      Object.entries(categoryIds).map(([k, v]) => [k, v.length])
-    ));
+    // Index categories by IFC type — TODO: re-implement with @thatopen IfcRelationsIndexer.
+    // For now leave categoryIds empty so category filter is a no-op.
+    for (const key of Object.keys(CATEGORY_GROUPS)) categoryIds[key] = [];
+    allIfcIds = [];
+    console.log('[IfcModel] categories indexing skipped (pending @thatopen rewrite)');
 
     cached = group;
     cachedUrl = url;
