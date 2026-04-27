@@ -347,11 +347,12 @@ export function useLiveDeviceStream(options: Options = {}) {
         });
       } catch (err) {
         if (cancelled) return;
-        // First failure → start mock fallback so demo stays alive
-        if (mode !== 'mock') {
-          console.warn('[useLiveDeviceStream] live fetch failed, falling back to mock:', err);
+        console.warn('[useLiveDeviceStream] live fetch failed:', err);
+        if (enableMock) {
+          startMock();
+        } else {
+          setMode('connecting');
         }
-        startMock();
       } finally {
         if (!cancelled) timer = setTimeout(tick, pollMs);
       }

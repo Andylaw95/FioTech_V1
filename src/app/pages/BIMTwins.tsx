@@ -11,12 +11,7 @@ import { api, type Property, type PropertyDetails, type Device, type PropertyTel
 import { BMSPanel } from '@/app/components/digital-twin/BMSPanel';
 import { DeviceInspector } from '@/app/components/digital-twin/DeviceInspector';
 import { Bim3DStage } from '@/app/components/digital-twin/Bim3DStage';
-import {
-  DEMO_PROPERTY,
-  buildDemoPropertyDetails,
-  buildDemoPropertyTelemetry,
-  buildDemoTelemetryMap,
-} from '@/app/components/digital-twin/demoFallback';
+
 
 // ═══════════════════════════════════════════════════════
 // Digital Twin Adapter Interface
@@ -44,19 +39,7 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
 
     let cancelled = false;
 
-    const isDemo = propertyId === DEMO_PROPERTY.id;
-
-    const applyDemo = () => {
-      if (cancelled) return;
-      setPropertyTelemetry(buildDemoPropertyTelemetry());
-      setTelemetry(buildDemoTelemetryMap());
-    };
-
     const fetchRealTelemetry = async () => {
-      if (isDemo) {
-        applyDemo();
-        return;
-      }
       try {
         const data = await api.getPropertyTelemetry(propertyId);
         if (cancelled) return;
@@ -99,15 +82,18 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
           setTelemetry(newTelemetry);
         }
       } catch (err) {
-        console.debug('BIMTwins telemetry fetch failed (using demo fallback):', err);
-        applyDemo();
+        console.debug('BIMTwins telemetry fetch failed:', err);
+        if (!cancelled) {
+          setPropertyTelemetry(null);
+          setTelemetry({});
+        }
       }
     };
 
     fetchRealTelemetry();
     const interval = setInterval(() => {
       if (!document.hidden) fetchRealTelemetry();
-    }, isDemo ? 4000 : 15000);
+    }, 15000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [connected, devices, propertyId]);
 
@@ -458,18 +444,12 @@ export function BIMTwins() {
   // --- Data Fetching ---
   useEffect(() => {
     api.getProperties().then(data => {
-      if (data.length > 0) {
-        setProperties(data);
-        setSelectedPropertyId(data[0].id);
-      } else {
-        // Backend reachable but no properties yet → drop into demo mode
-        setProperties([DEMO_PROPERTY]);
-        setSelectedPropertyId(DEMO_PROPERTY.id);
-      }
+      setProperties(data);
+      setSelectedPropertyId(data.length > 0 ? data[0].id : null);
     }).catch(err => {
-      console.debug('Digital Twin: Failed to load properties (using demo fallback):', err);
-      setProperties([DEMO_PROPERTY]);
-      setSelectedPropertyId(DEMO_PROPERTY.id);
+      console.warn('Digital Twin: Failed to load properties:', err);
+      setProperties([]);
+      setSelectedPropertyId(null);
     }).finally(() => setLoadingProps(false));
   }, []);
 
@@ -480,17 +460,11 @@ export function BIMTwins() {
     setSelectedDevice(null);
     setSelectedTable(null);
     setInspectorMode('overview');
-    // Demo property → skip API and use mock data immediately
-    if (selectedPropertyId === DEMO_PROPERTY.id) {
-      setPropertyDetails(buildDemoPropertyDetails());
-      setLoadingDetails(false);
-      return;
-    }
     api.getProperty(selectedPropertyId).then(data => {
       setPropertyDetails(data);
     }).catch(err => {
-      console.debug('Digital Twin: getProperty failed (using demo fallback):', err);
-      setPropertyDetails(buildDemoPropertyDetails());
+      console.warn('Digital Twin: getProperty failed:', err);
+      setPropertyDetails(null);
     }).finally(() => setLoadingDetails(false));
   }, [selectedPropertyId]);
 
@@ -498,10 +472,6 @@ export function BIMTwins() {
   useEffect(() => {
     if (!active || !selectedPropertyId) {
       setConnectionStatus('disconnected');
-      return;
-    }
-    if (selectedPropertyId === DEMO_PROPERTY.id) {
-      setConnectionStatus('connected');
       return;
     }
     setConnectionStatus('connecting');

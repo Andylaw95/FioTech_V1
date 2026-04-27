@@ -316,7 +316,7 @@ export function Bim3DStage({
   }, [autoOn]);
 
   // Live device telemetry — readings always flow; "Auto" only gates random alarm spawns + camera rotate
-  const { alarms, readings } = useLiveDeviceStream({ enableAlarmSpawn: autoOn });
+  const { alarms, readings } = useLiveDeviceStream({ enableAlarmSpawn: false, enableMock: false });
   // Sensor positions with localStorage overrides (drag-to-place fallback)
   const { sensors: liveSensors, overrides: positionOverrides } = useSensorPositions();
   // Zone-label-driven clustering
