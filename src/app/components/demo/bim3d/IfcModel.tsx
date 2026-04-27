@@ -625,11 +625,12 @@ export function IfcModel({
       mgr.core?.update?.();
     } catch {}
 
-    // Apply polygonOffset + DoubleSide + explicit clipPlane to streamed
-    // Fragment materials. Streamed tiles arrive AFTER parse so the one-shot
-    // pass at load time misses them. Without DoubleSide the floor slab can
-    // disappear when its normal points away from the camera. Without an
-    // explicit clippingPlanes assignment, tiles may ignore the section cut.
+    // Apply polygonOffset + explicit clipPlane to streamed Fragment materials
+    // to combat z-fighting on coplanar IFC walls (architectural + structural
+    // overlap is common). NOTE: do NOT force DoubleSide here — the streamed
+    // Fragments already have correct face winding, and forcing DoubleSide on
+    // thin walls causes the front/back faces to fight each other at nearly
+    // the same depth (visible as stippled noise on white surfaces).
     const wrapperForPatch = wrapperRef.current;
     if (wrapperForPatch) {
       wrapperForPatch.traverse((obj) => {
@@ -641,7 +642,6 @@ export function IfcModel({
           (m as any).polygonOffset = true;
           (m as any).polygonOffsetFactor = 1;
           (m as any).polygonOffsetUnits = 1;
-          (m as any).side = THREE.DoubleSide;
           (m as any).clippingPlanes = [clipPlane];
           (m as any).clipShadows = true;
           (m as any).needsUpdate = true;
