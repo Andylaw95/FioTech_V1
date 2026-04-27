@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { CATEGORY_GROUPS } from './IfcModel';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CATEGORY_GROUPS, DISCIPLINES, CATEGORIES_BY_DISCIPLINE, type Discipline } from './IfcModel';
 
 export interface BimToolsState {
   visibleCats: Set<string>;
@@ -87,6 +87,30 @@ export function BimToolsPanel({
 
   const allOn = () => setState({ ...state, visibleCats: new Set(Object.keys(CATEGORY_GROUPS)) });
   const allOff = () => setState({ ...state, visibleCats: new Set() });
+
+  // Discipline toggles flip every category under that discipline at once.
+  // Modeled on DDC's discipline-based grouping (Architectural / Structural /
+  // MEP). Hiding Architectural removes IFCCOVERING which is the duplicate of
+  // the structural IFCSLAB — eliminating coplanar slab z-fighting at the
+  // source instead of relying on polygonOffset hacks.
+  const disciplineState: Record<Discipline, 'all' | 'some' | 'none'> = useMemo(() => {
+    const r: Record<Discipline, 'all' | 'some' | 'none'> = { architectural: 'none', structural: 'none', mep: 'none', common: 'none' };
+    for (const d of Object.keys(DISCIPLINES) as Discipline[]) {
+      const cats = CATEGORIES_BY_DISCIPLINE[d];
+      const visible = cats.filter(c => state.visibleCats.has(c)).length;
+      r[d] = visible === 0 ? 'none' : visible === cats.length ? 'all' : 'some';
+    }
+    return r;
+  }, [state.visibleCats]);
+
+  const toggleDiscipline = (d: Discipline) => {
+    const cats = CATEGORIES_BY_DISCIPLINE[d];
+    const next = new Set(state.visibleCats);
+    const allOnNow = cats.every(c => next.has(c));
+    if (allOnNow) cats.forEach(c => next.delete(c));
+    else cats.forEach(c => next.add(c));
+    setState({ ...state, visibleCats: next });
+  };
 
   if (collapsed) {
     return (
@@ -226,33 +250,67 @@ export function BimToolsPanel({
         </div>
       )}
 
-      {/* CATEGORIES TAB */}
+      {/* CATEGORIES TAB — grouped by discipline (DDC pattern) */}
       {section === 'cats' && (
         <div className="p-3 space-y-2">
           <div className="flex gap-1.5">
             <button onClick={allOn} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10">All On</button>
             <button onClick={allOff} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10">All Off</button>
           </div>
-          <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
-            {Object.entries(CATEGORY_GROUPS).map(([key, group]) => {
-              const count = categoryCounts[key] ?? 0;
-              const on = state.visibleCats.has(key);
+          <div className="text-[10px] text-white/40 leading-tight px-0.5">
+            Hide a discipline to remove duplicate-overlapping geometry (e.g. arch floor finish vs structural slab).
+          </div>
+          <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
+            {(Object.keys(DISCIPLINES) as Discipline[]).map((d) => {
+              const meta = DISCIPLINES[d];
+              const cats = CATEGORIES_BY_DISCIPLINE[d];
+              const cnt = cats.reduce((sum, c) => sum + (categoryCounts[c] ?? 0), 0);
+              if (cnt === 0) return null;
+              const ds = disciplineState[d];
               return (
-                <label
-                  key={key}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition ${on ? 'bg-white/5 hover:bg-white/10' : 'opacity-50 hover:opacity-80'}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={() => toggleCat(key)}
-                    disabled={count === 0}
-                    className="accent-cyan-400 w-3.5 h-3.5"
-                  />
-                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: group.color ?? '#94a3b8' }} />
-                  <span className="text-[11px] flex-1">{group.label}</span>
-                  <span className="text-[10px] font-mono text-white/40">{count}</span>
-                </label>
+                <div key={d} className="rounded border border-white/5 bg-white/[0.02]">
+                  <button
+                    onClick={() => toggleDiscipline(d)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-white/5 transition"
+                  >
+                    <span
+                      className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center text-[9px] ${
+                        ds === 'all' ? 'bg-cyan-500 border-cyan-400 text-slate-900' :
+                        ds === 'some' ? 'bg-cyan-500/40 border-cyan-400/60 text-white' :
+                        'bg-transparent border-white/30'
+                      }`}
+                    >
+                      {ds === 'all' ? '✓' : ds === 'some' ? '–' : ''}
+                    </span>
+                    <span className="w-2.5 h-2.5 rounded-sm" style={{ background: meta.color }} />
+                    <span className="text-[11px] font-semibold flex-1 text-left">{meta.label}</span>
+                    <span className="text-[10px] font-mono text-white/40">{cnt}</span>
+                  </button>
+                  <div className="border-t border-white/5">
+                    {cats.map((key) => {
+                      const group = CATEGORY_GROUPS[key];
+                      const count = categoryCounts[key] ?? 0;
+                      if (count === 0) return null;
+                      const on = state.visibleCats.has(key);
+                      return (
+                        <label
+                          key={key}
+                          className={`flex items-center gap-2 pl-7 pr-2 py-1 cursor-pointer transition ${on ? 'hover:bg-white/5' : 'opacity-50 hover:opacity-80'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() => toggleCat(key)}
+                            className="accent-cyan-400 w-3 h-3"
+                          />
+                          <span className="w-2 h-2 rounded-sm" style={{ background: group.color ?? '#94a3b8' }} />
+                          <span className="text-[10.5px] flex-1">{group.label}</span>
+                          <span className="text-[10px] font-mono text-white/40">{count}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </div>

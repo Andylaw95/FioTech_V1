@@ -204,19 +204,47 @@ export function getExpressIdBoundingBox(expressId: number): THREE.Box3 | null {
 // Categories (display name → IFC type string regexes grouped together).
 // Switched from numeric web-ifc IFC* constants to string regexes because
 // FragmentsModel.getItemsOfCategories returns category names, not IDs.
-export const CATEGORY_GROUPS: Record<string, { label: string; types: RegExp[]; color?: string }> = {
-  walls:     { label: 'Walls',     types: [/^IFCWALL/, /^IFCCURTAINWALL/, /^IFCMEMBER/, /^IFCPLATE/], color: '#94a3b8' },
-  slabs:     { label: 'Floors',    types: [/^IFCSLAB/, /^IFCCOVERING/], color: '#cbd5e1' },
-  roof:      { label: 'Roof',      types: [/^IFCROOF/], color: '#fbbf24' },
-  doors:     { label: 'Doors',     types: [/^IFCDOOR/], color: '#a78bfa' },
-  windows:   { label: 'Windows',   types: [/^IFCWINDOW/], color: '#7dd3fc' },
-  stairs:    { label: 'Stairs',    types: [/^IFCSTAIR/, /^IFCSTAIRFLIGHT/, /^IFCRAILING/], color: '#fb923c' },
-  structure: { label: 'Structure', types: [/^IFCCOLUMN/, /^IFCBEAM/], color: '#64748b' },
-  furniture: { label: 'Furniture', types: [/^IFCFURNISHINGELEMENT/], color: '#34d399' },
-  mep:       { label: 'MEP',       types: [/^IFCFLOWSEGMENT/, /^IFCFLOWFITTING/, /^IFCFLOWTERMINAL/, /^IFCDISTRIBUTIONELEMENT/], color: '#22d3ee' },
-  spaces:    { label: 'Spaces',    types: [/^IFCSPACE/], color: '#facc15' },
-  other:     { label: 'Other',     types: [/^IFCBUILDINGELEMENTPROXY/], color: '#f472b6' },
+//
+// Each category is tagged with a `discipline` (architectural / structural /
+// mep / common) following DDC's discipline-based BIM grouping. The discipline
+// filter in the UI lets users hide e.g. structural to remove duplicate-slab
+// z-fighting at the source. Carefully:
+//  - IFCSLAB → structural (the concrete deck) — keep visible when user wants
+//    a clean floor surface
+//  - IFCCOVERING → architectural (floor finish, ceiling tiles) — the duplicate
+//    that fights with the slab; toggling architectural off removes the fight
+//  - IFCMEMBER / IFCPLATE → structural
+//  - IFCWALL family → architectural
+export type Discipline = 'architectural' | 'structural' | 'mep' | 'common';
+export const DISCIPLINES: Record<Discipline, { label: string; color: string }> = {
+  architectural: { label: 'Architectural', color: '#a78bfa' },
+  structural:    { label: 'Structural',    color: '#64748b' },
+  mep:           { label: 'MEP',           color: '#22d3ee' },
+  common:        { label: 'Common',        color: '#facc15' },
 };
+
+export const CATEGORY_GROUPS: Record<string, { label: string; types: RegExp[]; color?: string; discipline: Discipline }> = {
+  walls:     { label: 'Walls',        types: [/^IFCWALL/, /^IFCCURTAINWALL/],                                            color: '#94a3b8', discipline: 'architectural' },
+  coverings: { label: 'Floor Finish', types: [/^IFCCOVERING/],                                                            color: '#cbd5e1', discipline: 'architectural' },
+  slabs:     { label: 'Floor Slab',   types: [/^IFCSLAB/],                                                                color: '#9ca3af', discipline: 'structural' },
+  roof:      { label: 'Roof',         types: [/^IFCROOF/],                                                                color: '#fbbf24', discipline: 'architectural' },
+  doors:     { label: 'Doors',        types: [/^IFCDOOR/],                                                                color: '#a78bfa', discipline: 'architectural' },
+  windows:   { label: 'Windows',      types: [/^IFCWINDOW/],                                                              color: '#7dd3fc', discipline: 'architectural' },
+  stairs:    { label: 'Stairs',       types: [/^IFCSTAIR/, /^IFCSTAIRFLIGHT/, /^IFCRAILING/],                             color: '#fb923c', discipline: 'architectural' },
+  structure: { label: 'Cols/Beams',   types: [/^IFCCOLUMN/, /^IFCBEAM/, /^IFCFOOTING/, /^IFCPILE/],                       color: '#475569', discipline: 'structural' },
+  members:   { label: 'Struct Members', types: [/^IFCMEMBER/, /^IFCPLATE/],                                               color: '#52525b', discipline: 'structural' },
+  furniture: { label: 'Furniture',    types: [/^IFCFURNISHINGELEMENT/],                                                   color: '#34d399', discipline: 'architectural' },
+  mep:       { label: 'MEP',          types: [/^IFCFLOWSEGMENT/, /^IFCFLOWFITTING/, /^IFCFLOWTERMINAL/, /^IFCDISTRIBUTIONELEMENT/], color: '#22d3ee', discipline: 'mep' },
+  spaces:    { label: 'Spaces',       types: [/^IFCSPACE/],                                                               color: '#facc15', discipline: 'common' },
+  other:     { label: 'Other',        types: [/^IFCBUILDINGELEMENTPROXY/],                                                color: '#f472b6', discipline: 'common' },
+};
+
+// Lookup: discipline → list of category keys (for batch toggles).
+export const CATEGORIES_BY_DISCIPLINE: Record<Discipline, string[]> = (() => {
+  const m: Record<Discipline, string[]> = { architectural: [], structural: [], mep: [], common: [] };
+  for (const [key, g] of Object.entries(CATEGORY_GROUPS)) m[g.discipline].push(key);
+  return m;
+})();
 
 let categoryIds: Record<string, number[]> = {};
 
