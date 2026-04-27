@@ -636,16 +636,27 @@ export function IfcModel({
       wrapperForPatch.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (!(mesh as any).isMesh) return;
+        // Disable shadow on streamed tiles — shadow sampling on near-coplanar
+        // IFC slabs (architectural + structural overlap) amplifies z-fighting
+        // into the shattered triangulated noise visible on floor surfaces.
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const m of mats) {
-          if (!m || (m as any).__zfixed) continue;
+          if (!m) continue;
+          // Per-mesh stable jitter on polygonOffsetUnits breaks the depth tie
+          // between two perfectly coplanar surfaces. With a single shared
+          // offset, both surfaces still fight; with different offsets one
+          // wins consistently.
+          const jitter = 1 + ((mesh.id & 7));
+          if ((m as any).__zPatchVer === 2 && (m as any).polygonOffsetUnits === jitter) continue;
           (m as any).polygonOffset = true;
-          (m as any).polygonOffsetFactor = 1;
-          (m as any).polygonOffsetUnits = 1;
+          (m as any).polygonOffsetFactor = 4;
+          (m as any).polygonOffsetUnits = jitter;
           (m as any).clippingPlanes = [clipPlane];
           (m as any).clipShadows = true;
           (m as any).needsUpdate = true;
-          (m as any).__zfixed = true;
+          (m as any).__zPatchVer = 2;
         }
       });
     }
