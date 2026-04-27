@@ -585,10 +585,16 @@ export function Bim3DStage({
               onStatus={(s, m) => setIfcStatus({ state: s, msg: m })}
               onMetrics={(m) => {
                 setCategoryCounts(m.categoryCounts);
+                // CCC 17F is a single-storey floor plate — cap the clip slider
+                // to 0–2m so the user can sweep through ceiling height only.
+                const isCcc = (ifcUrl ?? '').includes('ccc-17f');
+                const cappedMax = isCcc ? Math.min(2, m.height) : m.height;
                 setTools(prev => ({
                   ...prev,
-                  maxHeight: m.height,
-                  clipHeight: prev.maxHeight === 100 ? Math.min(1.0, m.height) : prev.clipHeight,
+                  maxHeight: cappedMax,
+                  clipHeight: prev.maxHeight === 100
+                    ? Math.min(isCcc ? 2 : 1.0, cappedMax)
+                    : Math.min(prev.clipHeight, cappedMax + 0.5),
                 }));
               }}
             />
