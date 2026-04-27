@@ -2,26 +2,15 @@ import { useEffect, useState, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import * as OBC from '@thatopen/components';
-import {
-  IFCWALL, IFCWALLSTANDARDCASE, IFCSLAB, IFCROOF, IFCWINDOW, IFCDOOR,
-  IFCSTAIR, IFCSTAIRFLIGHT, IFCRAILING, IFCCOLUMN, IFCBEAM,
-  IFCFURNISHINGELEMENT, IFCSPACE, IFCCOVERING,
-  IFCFLOWSEGMENT, IFCFLOWFITTING, IFCFLOWTERMINAL, IFCDISTRIBUTIONELEMENT,
-  IFCBUILDINGELEMENTPROXY, IFCPLATE, IFCMEMBER, IFCCURTAINWALL,
-} from 'web-ifc';
 
 // Module-level cache (single model, keyed by URL)
 let cached: THREE.Group | null = null;
 let cachedUrl: string | null = null;
-// Legacy web-ifc-three handles — kept null when the @thatopen loader is used
-// so the old subset-based APIs (highlight / isolate / ghost / category filter)
-// no-op gracefully via their existing `if (!cachedLoader || cachedModelID === null) return;` guards.
-let cachedLoader: any = null;
-let cachedModelID: number | null = null;
 // @thatopen handles
 let components: OBC.Components | null = null;
 let ifcLoader: OBC.IfcLoader | null = null;
 let cachedFragModel: any = null;
+let cachedModelId: string | null = null;
 
 let loadingPromise: Promise<THREE.Group> | null = null;
 let loadingUrl: string | null = null;
@@ -30,6 +19,7 @@ let edgeLines: THREE.LineSegments[] = [];
 let edgesEnabled = true;
 let allIfcIds: number[] = [];
 let isolated = false;
+let ghostOn = false;
 let cachedSpatialFlat: Map<number, string | null> | null = null;
 let initialClipApplied = false;
 
@@ -42,13 +32,6 @@ function disposeCachedModel() {
     l.parent?.remove(l);
   });
   edgeLines = [];
-  if (cachedLoader && cachedModelID !== null) {
-    try { cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE); } catch {}
-    try { cachedLoader.ifcManager.removeSubset(cachedModelID, HIGHLIGHT_MAT, SUBSET_HIGHLIGHT); } catch {}
-    try { cachedLoader.ifcManager.removeSubset(cachedModelID, GHOST_MAT, SUBSET_GHOST); } catch {}
-    try { cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_ISOLATE); } catch {}
-    try { cachedLoader.ifcManager.dispose?.(); } catch {}
-  }
   if (cachedFragModel) {
     try { cachedFragModel.dispose?.(); } catch {}
     cachedFragModel = null;
@@ -61,13 +44,14 @@ function disposeCachedModel() {
   originalMeshes = [];
   allIfcIds = [];
   categoryIds = {};
+  bboxCache.clear();
   cachedSpatialFlat = null;
   cached = null;
   cachedUrl = null;
-  cachedLoader = null;
-  cachedModelID = null;
+  cachedModelId = null;
   initialClipApplied = false;
   isolated = false;
+  ghostOn = false;
 }
 
 export function setEdgesVisible(on: boolean) {
@@ -79,37 +63,89 @@ export function getModelGroup(): THREE.Group | null {
   return cached;
 }
 
-export function getExpressIdBoundingBox(expressId: number): THREE.Box3 | null {
-  if (!cached || !cachedLoader || cachedModelID === null) return null;
+/** Picker helper: raycasts the FragmentsModel at the given mouse coords and returns
+ *  a synthetic THREE.Intersection-like object with `userData.localId` set. PickerOverlay
+ *  uses this to bridge the new streaming raycaster into our existing intersection-based
+ *  pick info pipeline (`getIfcInfoFromIntersection`). */
+export async function pickFragmentsAtMouse(
+  camera: THREE.PerspectiveCamera | THREE.OrthographicCamera,
+  mouse: THREE.Vector2,
+  dom: HTMLCanvasElement,
+): Promise<THREE.Intersection | null> {
+  if (!cachedFragModel || !components) return null;
   try {
-    const subset = cachedLoader.ifcManager.createSubset({
-      modelID: cachedModelID,
-      ids: [expressId],
-      scene: cached,
-      removePrevious: true,
-      customID: '__bbox-tmp',
-    });
-    const box = new THREE.Box3().setFromObject(subset);
-    cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, '__bbox-tmp');
-    return box;
-  } catch {
+    const mgr = components.get(OBC.FragmentsManager);
+    const result: any = await mgr.raycast({ camera, mouse, dom });
+    if (!result || typeof result.localId !== 'number') return null;
+    // Pre-warm bbox cache so the subsequent isolate-zoom in Bim3DStage has data.
+    void fetchAndCacheBox(result.localId);
+    const stub = new THREE.Object3D();
+    stub.userData.localId = result.localId;
+    return {
+      object: stub,
+      point: result.point,
+      distance: result.distance ?? 0,
+    } as unknown as THREE.Intersection;
+  } catch (e) {
+    console.warn('[IfcModel] pickFragmentsAtMouse failed', e);
     return null;
   }
 }
 
-// Categories (display name → IFC type IDs grouped together)
-export const CATEGORY_GROUPS: Record<string, { label: string; types: number[]; color?: string }> = {
-  walls:     { label: 'Walls',     types: [IFCWALL, IFCWALLSTANDARDCASE, IFCCURTAINWALL, IFCMEMBER, IFCPLATE], color: '#94a3b8' },
-  slabs:     { label: 'Floors',    types: [IFCSLAB, IFCCOVERING],          color: '#cbd5e1' },
-  roof:      { label: 'Roof',      types: [IFCROOF],                       color: '#fbbf24' },
-  doors:     { label: 'Doors',     types: [IFCDOOR],                       color: '#a78bfa' },
-  windows:   { label: 'Windows',   types: [IFCWINDOW],                     color: '#7dd3fc' },
-  stairs:    { label: 'Stairs',    types: [IFCSTAIR, IFCSTAIRFLIGHT, IFCRAILING], color: '#fb923c' },
-  structure: { label: 'Structure', types: [IFCCOLUMN, IFCBEAM],            color: '#64748b' },
-  furniture: { label: 'Furniture', types: [IFCFURNISHINGELEMENT],          color: '#34d399' },
-  mep:       { label: 'MEP',       types: [IFCFLOWSEGMENT, IFCFLOWFITTING, IFCFLOWTERMINAL, IFCDISTRIBUTIONELEMENT], color: '#22d3ee' },
-  spaces:    { label: 'Spaces',    types: [IFCSPACE],                      color: '#facc15' },
-  other:     { label: 'Other',     types: [IFCBUILDINGELEMENTPROXY],       color: '#f472b6' },
+// Cache of expressId → merged bbox (in fragmentsModel local coords). Populated by
+// highlightExpressId / pickFragmentsAtMouse so the sync getExpressIdBoundingBox
+// caller (Bim3DStage CameraFlyTo) has data ready when isolate fires.
+const bboxCache = new Map<number, THREE.Box3>();
+
+async function fetchAndCacheBox(expressId: number): Promise<THREE.Box3 | null> {
+  if (!cachedFragModel) return null;
+  try {
+    const box: THREE.Box3 = await cachedFragModel.getMergedBox([expressId]);
+    if (box && !box.isEmpty()) {
+      // FragmentsModel.getMergedBox returns coords in the model's local space.
+      // The wrapper <group> applies scale/translation/rotation in IfcModel auto-fit;
+      // bake those into the box so the camera fly-to lands on the element.
+      const obj = cachedFragModel.object as THREE.Object3D | undefined;
+      const wrapper = obj?.parent ?? obj;
+      if (wrapper) {
+        wrapper.updateMatrixWorld(true);
+        box.applyMatrix4(wrapper.matrixWorld);
+      }
+      bboxCache.set(expressId, box);
+      return box;
+    }
+  } catch (e) {
+    console.warn('[IfcModel] getMergedBox failed', e);
+  }
+  return null;
+}
+
+export function getExpressIdBoundingBox(expressId: number): THREE.Box3 | null {
+  if (!cachedFragModel) return null;
+  const cachedBox = bboxCache.get(expressId);
+  if (cachedBox) return cachedBox.clone();
+  // Kick off async fetch for next-time use; callers that need an immediate fit
+  // (Bim3DStage isolate-zoom) will get null on the very first click and a valid
+  // box on subsequent ones — acceptable degradation.
+  void fetchAndCacheBox(expressId);
+  return null;
+}
+
+// Categories (display name → IFC type string regexes grouped together).
+// Switched from numeric web-ifc IFC* constants to string regexes because
+// FragmentsModel.getItemsOfCategories returns category names, not IDs.
+export const CATEGORY_GROUPS: Record<string, { label: string; types: RegExp[]; color?: string }> = {
+  walls:     { label: 'Walls',     types: [/^IFCWALL/, /^IFCCURTAINWALL/, /^IFCMEMBER/, /^IFCPLATE/], color: '#94a3b8' },
+  slabs:     { label: 'Floors',    types: [/^IFCSLAB/, /^IFCCOVERING/], color: '#cbd5e1' },
+  roof:      { label: 'Roof',      types: [/^IFCROOF/], color: '#fbbf24' },
+  doors:     { label: 'Doors',     types: [/^IFCDOOR/], color: '#a78bfa' },
+  windows:   { label: 'Windows',   types: [/^IFCWINDOW/], color: '#7dd3fc' },
+  stairs:    { label: 'Stairs',    types: [/^IFCSTAIR/, /^IFCSTAIRFLIGHT/, /^IFCRAILING/], color: '#fb923c' },
+  structure: { label: 'Structure', types: [/^IFCCOLUMN/, /^IFCBEAM/], color: '#64748b' },
+  furniture: { label: 'Furniture', types: [/^IFCFURNISHINGELEMENT/], color: '#34d399' },
+  mep:       { label: 'MEP',       types: [/^IFCFLOWSEGMENT/, /^IFCFLOWFITTING/, /^IFCFLOWTERMINAL/, /^IFCDISTRIBUTIONELEMENT/], color: '#22d3ee' },
+  spaces:    { label: 'Spaces',    types: [/^IFCSPACE/], color: '#facc15' },
+  other:     { label: 'Other',     types: [/^IFCBUILDINGELEMENTPROXY/], color: '#f472b6' },
 };
 
 let categoryIds: Record<string, number[]> = {};
@@ -131,170 +167,152 @@ export function setWireframe(on: boolean) {
   });
 }
 
-const HIGHLIGHT_MAT = new THREE.MeshBasicMaterial({
-  color: 0xfbbf24, depthTest: false, transparent: true, opacity: 0.85, side: THREE.DoubleSide,
-});
-HIGHLIGHT_MAT.clippingPlanes = [clipPlane];
+const HIGHLIGHT_COLOR = new THREE.Color(0xfbbf24);
 
-const GHOST_MAT = new THREE.MeshLambertMaterial({
-  color: 0x94a3b8,
-  transparent: true,
-  opacity: 0.15,
-  depthWrite: false,
-  side: THREE.DoubleSide,
-});
-GHOST_MAT.clippingPlanes = [clipPlane];
-
-const SUBSET_VISIBLE = 'visible-cats';
-const SUBSET_HIGHLIGHT = 'highlight-pick';
-const SUBSET_GHOST = 'ghost-all';
-const SUBSET_ISOLATE = 'isolated';
-
-function patchSubsetMaterials(mesh: THREE.Object3D | undefined) {
-  if (!mesh) return;
-  mesh.traverse((obj: any) => {
-    if (obj.isMesh && obj.material) {
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      mats.forEach((m: any) => {
-        m.clippingPlanes = [clipPlane];
-        m.clipShadows = true;
-        m.polygonOffset = true;
-        m.polygonOffsetFactor = 1;
-        m.polygonOffsetUnits = 1;
-        m.needsUpdate = true;
-      });
-      obj.castShadow = true;
-      obj.receiveShadow = true;
-    }
-  });
+function modelIdMap(ids: number[]): Record<string, Set<number>> {
+  if (!cachedModelId) return {};
+  return { [cachedModelId]: new Set(ids) };
 }
 
 export async function setVisibleCategories(active: Set<string>) {
-  if (!cachedLoader || cachedModelID === null || !cached) return;
+  if (!cachedFragModel || !components || !cachedModelId) return;
   const allActive = active.size === Object.keys(CATEGORY_GROUPS).length;
 
-  if (allActive) {
-    originalMeshes.forEach((m) => { m.visible = true; });
-    cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE);
-    return;
+  try {
+    const hider = components.get(OBC.Hider);
+    if (allActive) {
+      await hider.set(true);
+      return;
+    }
+    // Hide everything first
+    await hider.set(false);
+    const ids: number[] = [];
+    active.forEach((cat) => {
+      const list = categoryIds[cat];
+      if (list) ids.push(...list);
+    });
+    if (ids.length === 0) return;
+    await hider.set(true, modelIdMap(ids));
+  } catch (e) {
+    console.warn('[IfcModel] setVisibleCategories failed', e);
   }
-
-  // Hide each original mesh individually (so subset which is a child of `cached` stays visible)
-  originalMeshes.forEach((m) => { m.visible = false; });
-
-  const ids: number[] = [];
-  active.forEach((cat) => {
-    const list = categoryIds[cat];
-    if (list) ids.push(...list);
-  });
-
-  cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE);
-  if (ids.length === 0) return;
-
-  const subset = cachedLoader.ifcManager.createSubset({
-    modelID: cachedModelID,
-    ids,
-    scene: cached, // parent = the IFC group itself → inherits all wrapper transforms
-    removePrevious: true,
-    customID: SUBSET_VISIBLE,
-  });
-  patchSubsetMaterials(subset);
 }
 
 export function highlightExpressId(expressId: number | null) {
-  if (!cachedLoader || cachedModelID === null || !cached) return;
-  cachedLoader.ifcManager.removeSubset(cachedModelID, HIGHLIGHT_MAT, SUBSET_HIGHLIGHT);
-  if (expressId == null) return;
-  cachedLoader.ifcManager.createSubset({
-    modelID: cachedModelID,
-    ids: [expressId],
-    scene: cached, // parent = IFC group → inherits transforms
-    removePrevious: true,
-    material: HIGHLIGHT_MAT,
-    customID: SUBSET_HIGHLIGHT,
-  });
+  if (!cachedFragModel) return;
+  (async () => {
+    try {
+      if (expressId == null) {
+        await cachedFragModel.resetHighlight();
+      } else {
+        await cachedFragModel.highlight([expressId], {
+          color: HIGHLIGHT_COLOR,
+          opacity: 1,
+          transparent: false,
+          renderedFaces: 0,
+        });
+      }
+      await components?.get(OBC.FragmentsManager).core?.update?.(true);
+    } catch (e) {
+      console.warn('[IfcModel] highlight failed', e);
+    }
+  })();
 }
 
-/** Ghost mode: dim everything to translucent grey so highlighted/picked element pops. */
+/** Ghost mode: dim everything to translucent so highlighted/picked element pops. */
 export function setGhostMode(on: boolean) {
-  if (!cachedLoader || cachedModelID === null || !cached) return;
-  cachedLoader.ifcManager.removeSubset(cachedModelID, GHOST_MAT, SUBSET_GHOST);
-  if (!on || allIfcIds.length === 0 || isolated) {
-    if (!isolated) originalMeshes.forEach((m) => { m.visible = true; });
-    return;
-  }
-  originalMeshes.forEach((m) => { m.visible = false; });
-  cachedLoader.ifcManager.createSubset({
-    modelID: cachedModelID,
-    ids: allIfcIds,
-    scene: cached,
-    removePrevious: true,
-    material: GHOST_MAT,
-    customID: SUBSET_GHOST,
-  });
+  if (!cachedFragModel) return;
+  ghostOn = on;
+  (async () => {
+    try {
+      if (on) {
+        await cachedFragModel.setOpacity(undefined, 0.15);
+      } else {
+        await cachedFragModel.resetOpacity(undefined);
+      }
+      await components?.get(OBC.FragmentsManager).core?.update?.(true);
+    } catch (e) {
+      console.warn('[IfcModel] ghost mode toggle failed', e);
+    }
+  })();
 }
 
 /** True isolate: hide everything except the given expressIds. */
 export function isolateExpressIds(ids: number[] | null) {
-  if (!cachedLoader || cachedModelID === null || !cached) return;
-  cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_ISOLATE);
-  cachedLoader.ifcManager.removeSubset(cachedModelID, GHOST_MAT, SUBSET_GHOST);
-  if (!ids || ids.length === 0) {
-    isolated = false;
-    originalMeshes.forEach((m) => { m.visible = true; });
-    return;
-  }
-  isolated = true;
-  originalMeshes.forEach((m) => { m.visible = false; });
-  const subset = cachedLoader.ifcManager.createSubset({
-    modelID: cachedModelID,
-    ids,
-    scene: cached,
-    removePrevious: true,
-    customID: SUBSET_ISOLATE,
-  });
-  patchSubsetMaterials(subset);
+  if (!cachedFragModel || !components || !cachedModelId) return;
+  (async () => {
+    try {
+      const hider = components!.get(OBC.Hider);
+      if (!ids || ids.length === 0) {
+        isolated = false;
+        await hider.set(true);
+      } else {
+        isolated = true;
+        await hider.isolate(modelIdMap(ids));
+      }
+      await components!.get(OBC.FragmentsManager).core?.update?.(true);
+    } catch (e) {
+      console.warn('[IfcModel] isolate failed', e);
+    }
+  })();
 }
 
-/** Restore everything: clears isolate, ghost, highlight, category subset; shows all originals. */
+/** Restore everything: clears isolate, ghost, highlight; shows all originals. */
 export function showAll() {
-  if (!cachedLoader || cachedModelID === null || !cached) return;
-  cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_ISOLATE);
-  cachedLoader.ifcManager.removeSubset(cachedModelID, GHOST_MAT, SUBSET_GHOST);
-  cachedLoader.ifcManager.removeSubset(cachedModelID, HIGHLIGHT_MAT, SUBSET_HIGHLIGHT);
-  cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE);
-  isolated = false;
-  originalMeshes.forEach((m) => { m.visible = true; });
+  if (!cachedFragModel || !components) return;
+  (async () => {
+    try {
+      const hider = components!.get(OBC.Hider);
+      await hider.set(true);
+      await cachedFragModel.resetHighlight();
+      if (ghostOn) {
+        await cachedFragModel.resetOpacity(undefined);
+        ghostOn = false;
+      }
+      isolated = false;
+      await components!.get(OBC.FragmentsManager).core?.update?.(true);
+    } catch (e) {
+      console.warn('[IfcModel] showAll failed', e);
+    }
+  })();
 }
 
-/** Look up the IFC ExpressID + property name for a Three.js intersection on the IFC model. */
+/** Look up the IFC ExpressID + property name for a Three.js intersection on the IFC model.
+ *  PickerOverlay attaches `userData.localId` (and optionally `userData.fragmentsModel`) to a
+ *  synthetic intersection.object after running `FragmentsManager.raycast`. We read it back here.
+ */
 export async function getIfcInfoFromIntersection(intersection: THREE.Intersection): Promise<{
   expressId: number;
   ifcType: string;
   name: string | null;
   storey: string | null;
 } | null> {
-  if (!cachedLoader || cachedModelID === null) return null;
-  const faceIndex = intersection.faceIndex;
-  const geometry = (intersection.object as THREE.Mesh).geometry;
-  if (faceIndex == null || !geometry) return null;
+  if (!cachedFragModel) return null;
+  const ud: any = (intersection.object as any)?.userData ?? {};
+  const expressId: number | undefined = ud.localId;
+  if (expressId == null) return null;
   try {
-    const expressId = cachedLoader.ifcManager.getExpressId(geometry, faceIndex);
-    const props: any = await cachedLoader.ifcManager.getItemProperties(cachedModelID, expressId, false);
-    const ifcType = (await cachedLoader.ifcManager.getIfcType(cachedModelID, expressId)) || 'unknown';
-    const name = props?.Name?.value ?? props?.LongName?.value ?? null;
+    const item = cachedFragModel.getItem(expressId);
+    const ifcType = (await item.getCategory()) || 'unknown';
+    let name: string | null = null;
+    try {
+      const dataArr = await cachedFragModel.getItemsData([expressId]);
+      const d = dataArr?.[0] ?? {};
+      name = (d.Name?.value as string) ?? (d.LongName?.value as string) ?? null;
+    } catch {}
     let storey: string | null = null;
     try {
       if (!cachedSpatialFlat) {
-        // Build flat expressId → storey lookup once (heavy call, do it lazily on first pick)
-        const struct = await cachedLoader.ifcManager.getSpatialStructure(cachedModelID, false);
+        const struct: any = await cachedFragModel.getSpatialStructure();
         const flat = new Map<number, string | null>();
         const walk = (node: any, currentStorey: string | null) => {
-          const ns = node.type === 'IFCBUILDINGSTOREY'
-            ? (node.Name?.value ?? `Storey ${node.expressID}`)
+          const cat = node?.category ?? node?.type;
+          const ns = cat === 'IFCBUILDINGSTOREY'
+            ? (node?.name ?? node?.Name?.value ?? `Storey ${node?.localId ?? node?.expressID}`)
             : currentStorey;
-          flat.set(node.expressID, ns);
-          for (const c of node.children ?? []) walk(c, ns);
+          const id = node?.localId ?? node?.expressID;
+          if (typeof id === 'number') flat.set(id, ns);
+          for (const c of node?.children ?? []) walk(c, ns);
         };
         walk(struct, null);
         cachedSpatialFlat = flat;
@@ -370,22 +388,27 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     const tParse = performance.now();
     const fragModel: any = await loader.load(buf, true, 'main');
     cachedFragModel = fragModel;
+    cachedModelId = fragModel?.modelId ?? 'main';
+    // Wire shared clipping plane into the FragmentsModel pipeline so the
+    // streaming tile materials respect setClipHeight() like the legacy meshes did.
+    try {
+      fragModel.getClippingPlanesEvent = () => [clipPlane];
+    } catch {}
     console.log(`[IfcModel] parsed in ${Math.round(performance.now() - tParse)}ms (total ${Math.round(performance.now() - t0)}ms)`);
 
     // FragmentsModel exposes its rendered Object3D via `.object`
     const obj: THREE.Object3D = (fragModel.object ?? fragModel) as THREE.Object3D;
     const group = new THREE.Group();
     group.add(obj);
-    // Legacy manager handles unavailable on @thatopen path
-    cachedLoader = null;
-    cachedModelID = null;
 
     group.updateMatrixWorld(true);
     // Note: do NOT compute bbox/scale here — @thatopen streams geometry in
     // tiles, so at parse time fragModel.object has no children yet. The
     // per-frame auto-fit in IfcModel handles scaling once tiles arrive.
 
-    // Apply shared clipping plane + soft shadows to all materials, capture original meshes
+    // Apply shared clipping plane + soft shadows to all materials, capture original meshes.
+    // NOTE: tiles stream in over time, so this only catches what's already mounted; the
+    // FragmentsModel's internal materials honour `getClippingPlanesEvent` instead.
     originalMeshes = [];
     edgeLines = [];
     group.traverse((obj: any) => {
@@ -409,30 +432,42 @@ async function loadIfc(url: string): Promise<THREE.Group> {
             m.needsUpdate = true;
           });
         }
-        // Generate crisp edge lines (Autodesk-style outline) per mesh
-        try {
-          const edgeGeo = new THREE.EdgesGeometry(obj.geometry, 30);
-          const edgeMat = new THREE.LineBasicMaterial({
-            color: 0x1e293b,
-            transparent: true,
-            opacity: 0.55,
-            clippingPlanes: [clipPlane],
-          });
-          const lines = new THREE.LineSegments(edgeGeo, edgeMat);
-          lines.visible = edgesEnabled;
-          obj.add(lines);
-          edgeLines.push(lines);
-        } catch (e) {
-          console.warn('[IfcModel] edge generation failed for mesh', obj.name, e);
-        }
+        // Edge generation skipped for streaming Fragments tiles — the geometry
+        // is instanced LOD and EdgesGeometry on it produces nothing useful, plus
+        // tiles mount/unmount continuously. setEdgesVisible() becomes a no-op.
       }
     });
 
-    // Index categories by IFC type — TODO: re-implement with @thatopen IfcRelationsIndexer.
-    // For now leave categoryIds empty so category filter is a no-op.
-    for (const key of Object.keys(CATEGORY_GROUPS)) categoryIds[key] = [];
-    allIfcIds = [];
-    console.log('[IfcModel] categories indexing skipped (pending @thatopen rewrite)');
+    // Index categories by IFC type via FragmentsModel.getItemsOfCategories.
+    // Done lazily after streaming so the worker has the data ready. Fire and forget.
+    (async () => {
+      try {
+        const allRegexes: RegExp[] = [];
+        for (const key of Object.keys(CATEGORY_GROUPS)) {
+          allRegexes.push(...CATEGORY_GROUPS[key].types);
+        }
+        const byCat: Record<string, number[]> = await fragModel.getItemsOfCategories(allRegexes);
+        const next: Record<string, number[]> = {};
+        const accAll = new Set<number>();
+        for (const key of Object.keys(CATEGORY_GROUPS)) {
+          const ids: number[] = [];
+          for (const [cat, list] of Object.entries(byCat)) {
+            if (CATEGORY_GROUPS[key].types.some((re) => re.test(cat))) {
+              ids.push(...list);
+            }
+          }
+          next[key] = ids;
+          ids.forEach((i) => accAll.add(i));
+        }
+        categoryIds = next;
+        allIfcIds = Array.from(accAll);
+        console.log('[IfcModel] categories indexed', Object.fromEntries(Object.entries(next).map(([k, v]) => [k, v.length])));
+      } catch (e) {
+        console.warn('[IfcModel] category indexing failed', e);
+        for (const key of Object.keys(CATEGORY_GROUPS)) categoryIds[key] = [];
+        allIfcIds = [];
+      }
+    })();
 
     cached = group;
     cachedUrl = url;
@@ -535,7 +570,7 @@ export function IfcModel({
     // On (re)mount: reset cross-mount UI state. Module globals like `isolated`
     // survive React unmounts; without this reset, reopening the viewer with
     // a stale isolate selection leaves the building partially hidden.
-    if (cached && cachedLoader && cachedModelID !== null && isolated) {
+    if (cached && cachedFragModel && isolated) {
       try { showAll(); } catch {}
     }
     loadIfc(url)

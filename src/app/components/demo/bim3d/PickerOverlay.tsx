@@ -1,18 +1,16 @@
 import { useEffect } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
-import { getModelGroup, getIfcInfoFromIntersection } from './IfcModel';
+import { getModelGroup, getIfcInfoFromIntersection, pickFragmentsAtMouse } from './IfcModel';
 import type { PickedInfo } from './PickedElementCard';
 
 /**
  * Reliable picker that bypasses r3f's event system.
  * - Listens for pointerdown/up on the Canvas DOM element
  * - Distinguishes click from drag (5px threshold)
- * - Manually raycasts against the IFC model group
- *
- * This avoids issues where IFCMesh children don't bubble r3f events
- * cleanly to wrapper groups, and where OrbitControls' tiny drags
- * suppress the click event.
+ * - Delegates the actual hit-test to the @thatopen FragmentsManager raycaster
+ *   (which understands streaming LOD tiles), then surfaces a synthetic
+ *   THREE.Intersection so the existing pick-info plumbing keeps working.
  */
 export function PickerOverlay({
   enabled,
@@ -41,28 +39,19 @@ export function PickerOverlay({
       const dy = e.clientY - downY;
       if (Math.hypot(dx, dy) > 5) return; // drag, not click
       if (performance.now() - downT > 600) return; // too slow
-      const grp = getModelGroup();
-      if (!grp) return;
+      if (!getModelGroup()) return;
       const rect = dom.getBoundingClientRect();
       const ndc = new THREE.Vector2(
         ((e.clientX - rect.left) / rect.width) * 2 - 1,
         -((e.clientY - rect.top) / rect.height) * 2 + 1,
       );
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(ndc, camera);
-      const hits = ray.intersectObject(grp, true);
-      // Only consider Mesh hits with valid IFC geometry; skip edge LineSegments
-      const hit = hits.find((h) => {
-        const obj = h.object as any;
-        if (!obj?.isMesh) return false;
-        if (h.faceIndex == null) return false;
-        const geom = obj.geometry;
-        // IFC subset meshes have an `expressID` attribute; edge meshes don't
-        if (!geom?.attributes?.expressID && !geom?.index) return false;
-        return true;
-      });
+      const hit = await pickFragmentsAtMouse(
+        camera as THREE.PerspectiveCamera | THREE.OrthographicCamera,
+        ndc,
+        dom as HTMLCanvasElement,
+      );
       if (!hit) {
-        console.log('[PickerOverlay] no IFC hit', { hitCount: hits.length });
+        console.log('[PickerOverlay] no IFC hit');
         return;
       }
       let info;
