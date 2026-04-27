@@ -280,6 +280,19 @@ export function Bim3DStage({
   useEffect(() => { setGhostMode(tools.ghost); }, [tools.ghost]);
   useEffect(() => { setClipHeight(tools.clipHeight); }, [tools.clipHeight]);
 
+  // Single-storey CCC 17F floor plate: hard-cap the clip slider to 0–2m so
+  // the user can sweep through ceiling height. Applied immediately on URL
+  // change (doesn't wait for streaming bbox / onMetrics).
+  useEffect(() => {
+    const isCcc = (ifcUrl ?? '').includes('ccc-17f');
+    if (!isCcc) return;
+    setTools(prev => ({
+      ...prev,
+      maxHeight: 2,
+      clipHeight: Math.min(prev.clipHeight, 2),
+    }));
+  }, [ifcUrl]);
+
   // IFC element picking — for editing zone labels
   const [pickMode, setPickMode] = useState(false);
   const [picked, setPicked] = useState<PickedInfo | null>(null);
@@ -585,16 +598,15 @@ export function Bim3DStage({
               onStatus={(s, m) => setIfcStatus({ state: s, msg: m })}
               onMetrics={(m) => {
                 setCategoryCounts(m.categoryCounts);
-                // CCC 17F is a single-storey floor plate — cap the clip slider
-                // to 0–2m so the user can sweep through ceiling height only.
                 const isCcc = (ifcUrl ?? '').includes('ccc-17f');
-                const cappedMax = isCcc ? Math.min(2, m.height) : m.height;
+                // CCC 17F is a single-storey floor plate — hard-cap to 2m.
+                const cappedMax = isCcc ? 2 : m.height;
                 setTools(prev => ({
                   ...prev,
                   maxHeight: cappedMax,
                   clipHeight: prev.maxHeight === 100
                     ? Math.min(isCcc ? 2 : 1.0, cappedMax)
-                    : Math.min(prev.clipHeight, cappedMax + 0.5),
+                    : Math.min(prev.clipHeight, cappedMax),
                 }));
               }}
             />

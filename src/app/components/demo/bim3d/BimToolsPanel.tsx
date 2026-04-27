@@ -168,14 +168,14 @@ export function BimToolsPanel({
             <input
               type="range"
               min={0}
-              max={state.maxHeight + 0.5}
+              max={state.maxHeight}
               step={0.1}
               value={state.clipHeight}
               onChange={(e) => setState({ ...state, clipHeight: parseFloat(e.target.value) })}
               className="w-full accent-cyan-400"
             />
             <div className="flex gap-1 mt-1">
-              <button onClick={() => setState({ ...state, clipHeight: state.maxHeight + 0.5 })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="Show entire model">All</button>
+              <button onClick={() => setState({ ...state, clipHeight: state.maxHeight })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="Show entire model">All</button>
               <button onClick={() => setState({ ...state, clipHeight: 1.0 })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="Architectural floor-plan view (1.0 m)">Roof</button>
               <button onClick={() => setState({ ...state, clipHeight: 1.4 })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="MEP service-level view (1.4 m)">Pipe&amp;Wire</button>
             </div>
