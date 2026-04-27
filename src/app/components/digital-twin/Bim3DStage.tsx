@@ -503,7 +503,7 @@ export function Bim3DStage({
       {/* "Auto" toggle moved into the top-left stack below Pick (above). */}
 
       <Canvas
-        shadows="soft"
+        shadows="basic"
         dpr={[1, 2]}
         className="absolute inset-0"
         gl={{
