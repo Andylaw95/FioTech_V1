@@ -4,6 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
+    "prebuild": "node -e \"const fs=require('fs');fs.mkdirSync('public/wasm',{recursive:true});for(const f of ['web-ifc.wasm','web-ifc-mt.wasm'])fs.copyFileSync('node_modules/web-ifc/'+f,'public/wasm/'+f);console.log('synced web-ifc wasm');\"",
     "build": "vite build",
     "dev": "vite"
   },
