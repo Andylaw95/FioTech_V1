@@ -322,7 +322,22 @@ export async function resolveIfcUrl(
   bundledFallback: string,
 ): Promise<string> {
   assertSafeId('propertyId', propertyId);
+
+  const trySign = async (key: string): Promise<string | null> => {
+    if (/^https?:\/\//i.test(key)) return key;
+    const { data: signed, error: signErr } = await supabase
+      .storage
+      .from('bim-models')
+      .createSignedUrl(key, 3600);
+    if (signErr || !signed?.signedUrl) {
+      console.warn('[resolveIfcUrl] sign failed for', key, signErr);
+      return null;
+    }
+    return signed.signedUrl;
+  };
+
   try {
+    // 1. Property-scoped default model
     const { data, error } = await supabase
       .from('bim_models')
       .select('ifc_url, frag_url')
@@ -333,21 +348,31 @@ export async function resolveIfcUrl(
     if (error) throw error;
 
     const candidate = data?.frag_url || data?.ifc_url;
-    if (!candidate) return bundledFallback;
+    if (candidate) {
+      const signed = await trySign(candidate);
+      if (signed) return signed;
+    }
 
-    // External / already-signed URL → return verbatim.
-    if (/^https?:\/\//i.test(candidate)) return candidate;
-
-    // Storage key → mint a 1-hour signed URL.
-    const { data: signed, error: signErr } = await supabase
-      .storage
-      .from('bim-models')
-      .createSignedUrl(candidate, 3600);
-    if (signErr || !signed?.signedUrl) throw signErr ?? new Error('no signed url');
-    return signed.signedUrl;
-  } catch {
-    return bundledFallback;
+    // 2. Fallback: ANY default model (covers the case where the property
+    // has no model registered yet but the deployment ships a single shared
+    // BIM, e.g. the seeded ccc-17f model).
+    const { data: anyDefault } = await supabase
+      .from('bim_models')
+      .select('ifc_url, frag_url')
+      .eq('is_default', true)
+      .limit(1)
+      .maybeSingle();
+    const anyKey = anyDefault?.frag_url || anyDefault?.ifc_url;
+    if (anyKey) {
+      const signed = await trySign(anyKey);
+      if (signed) return signed;
+    }
+  } catch (err) {
+    console.warn('[resolveIfcUrl] lookup failed', err);
   }
+
+  // 3. Bundled asset fallback (only if it's a real path the loader can fetch).
+  return bundledFallback;
 }
 
 /**
