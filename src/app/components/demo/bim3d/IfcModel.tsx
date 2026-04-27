@@ -52,6 +52,17 @@ function disposeCachedModel() {
   initialClipApplied = false;
   isolated = false;
   ghostOn = false;
+  // Tear down the @thatopen Components container too — it owns the
+  // FragmentsManager worker and is bound to the previous WebGL context.
+  // Without this, navigating away and back leaves stale GPU buffers that
+  // crash three.js render with "byteLength of undefined".
+  if (components) {
+    try { components.dispose?.(); } catch {}
+    components = null as any;
+  }
+  ifcLoader = null as any;
+  loadingPromise = null;
+  loadingUrl = null;
 }
 
 export function setEdgesVisible(on: boolean) {
@@ -595,7 +606,19 @@ export function IfcModel({
         setError(err);
         onError?.(err);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      // The cached FragmentsModel + meshes are tied to this Canvas's WebGL
+      // context. When the user navigates away, the renderer is destroyed
+      // and the GPU buffers become invalid — leaving them in the module
+      // cache makes the next mount crash with "byteLength of undefined" in
+      // three.js render. Dispose everything so the next mount loads clean.
+      try { disposeCachedModel(); } catch {}
+      cameraBoundRef.current = false;
+      fittedRef.current = false;
+      stableFramesRef.current = 0;
+      lastBoxSizeRef.current = 0;
+    };
   }, [url]);
 
   // Re-center every time rotation changes; expose height via onMetrics.
