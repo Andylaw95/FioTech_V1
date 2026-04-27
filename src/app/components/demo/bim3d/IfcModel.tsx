@@ -426,6 +426,111 @@ export async function getIfcInfoFromIntersection(intersection: THREE.Intersectio
   }
 }
 
+/**
+ * Dev tool: dump the currently-loaded model as `<basename>.frag` + `<basename>.meta.json`.
+ * One-time pre-processing: call this in DevTools after the model has finished
+ * loading, then commit the downloaded files to `public/bim/` to skip the
+ * web-ifc parse on first load for every future visitor.
+ *
+ * Usage in DevTools console:
+ *   await window.__fiotech_dumpBim()
+ *   // → triggers download of ccc-17f.frag (~2-5 MB) + ccc-17f.meta.json (~5 KB)
+ */
+async function dumpFragments(filenameHint?: string): Promise<{ fragSize: number; meta: any } | null> {
+  if (!cachedFragModel) {
+    console.warn('[dumpFragments] no model loaded yet');
+    return null;
+  }
+  const base = (() => {
+    if (filenameHint) return filenameHint.replace(/\.(ifc|frag)$/i, '');
+    if (cachedUrl) {
+      const m = cachedUrl.match(/\/([^/]+?)\.ifc$/i);
+      if (m) return m[1];
+    }
+    return 'model';
+  })();
+
+  // 1. Export the parsed Fragments binary (was previously in IndexedDB cache).
+  console.log('[dumpFragments] serialising fragments…');
+  const tFrag = performance.now();
+  const exported = await cachedFragModel.getBuffer(false);
+  const fragBytes: Uint8Array = exported instanceof Uint8Array ? exported : new Uint8Array(exported);
+  console.log(`[dumpFragments] fragments serialised: ${(fragBytes.byteLength / 1024 / 1024).toFixed(1)} MB in ${Math.round(performance.now() - tFrag)}ms`);
+
+  // 2. Build sidecar meta.json: bbox, levels, category counts, total triangles.
+  //    Lets the dashboard show summary metadata without loading geometry.
+  const tMeta = performance.now();
+  const meta: any = {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    sourceFile: cachedUrl,
+    fragmentsBytes: fragBytes.byteLength,
+    bbox: null as null | { min: [number, number, number]; max: [number, number, number] },
+    levels: [] as Array<{ name: string; expressId: number }>,
+    categories: {} as Record<string, number>,
+  };
+  try {
+    const box: THREE.Box3 = await cachedFragModel.getMergedBox(undefined);
+    if (box && !box.isEmpty()) {
+      meta.bbox = {
+        min: [box.min.x, box.min.y, box.min.z],
+        max: [box.max.x, box.max.y, box.max.z],
+      };
+    }
+  } catch (e) {
+    console.warn('[dumpFragments] bbox lookup failed', e);
+  }
+  try {
+    const struct: any = await cachedFragModel.getSpatialStructure();
+    const walk = (node: any) => {
+      const cat = node?.category ?? node?.type;
+      if (cat === 'IFCBUILDINGSTOREY') {
+        meta.levels.push({
+          name: node?.name ?? `Storey ${node?.localId}`,
+          expressId: node?.localId ?? node?.expressID,
+        });
+      }
+      for (const c of node?.children ?? []) walk(c);
+    };
+    walk(struct);
+  } catch (e) {
+    console.warn('[dumpFragments] spatial structure lookup failed', e);
+  }
+  try {
+    const allRegexes: RegExp[] = [];
+    for (const k of Object.keys(CATEGORY_GROUPS)) allRegexes.push(...CATEGORY_GROUPS[k].types);
+    const byCat: Record<string, number[]> = await cachedFragModel.getItemsOfCategories(allRegexes);
+    for (const [cat, ids] of Object.entries(byCat)) meta.categories[cat] = ids.length;
+  } catch (e) {
+    console.warn('[dumpFragments] category counts failed', e);
+  }
+  console.log(`[dumpFragments] meta built in ${Math.round(performance.now() - tMeta)}ms`, meta);
+
+  // 3. Trigger downloads.
+  const dl = (filename: string, blob: Blob) => {
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(u);
+    }, 1000);
+  };
+  dl(`${base}.frag`, new Blob([fragBytes], { type: 'application/octet-stream' }));
+  dl(`${base}.meta.json`, new Blob([JSON.stringify(meta, null, 2)], { type: 'application/json' }));
+
+  console.log(`[dumpFragments] ✅ downloaded ${base}.frag (${(fragBytes.byteLength / 1024 / 1024).toFixed(1)} MB) + ${base}.meta.json`);
+  console.log(`[dumpFragments] commit both to public/bim/ then the next visitor will skip the web-ifc parse.`);
+  return { fragSize: fragBytes.byteLength, meta };
+}
+
+if (typeof window !== 'undefined') {
+  (window as any).__fiotech_dumpBim = dumpFragments;
+}
+
 async function ensureThatOpenLoader(): Promise<OBC.IfcLoader> {
   if (ifcLoader) return ifcLoader;
   console.log('[IfcModel] initializing @thatopen components…');
@@ -487,6 +592,36 @@ async function loadIfc(url: string): Promise<THREE.Group> {
       fragModel = null;
       // Drop the bad cache entry.
       try { await putCachedFrag(cacheKey, new Uint8Array(0)); } catch {}
+    }
+
+    if (!fragModel) {
+      // Medium path: try a server-side prebuilt .frag sidecar first.
+      // DDC-pattern: pre-parse the IFC once (via window.__fiotech_dumpBim) and
+      // commit `<basename>.frag` next to the .ifc. New visitors then skip the
+      // 5-7s web-ifc parse on first load entirely.
+      const fragUrl = url.replace(/\.ifc$/i, '.frag');
+      if (fragUrl !== url) {
+        try {
+          const tFragFetch = performance.now();
+          const fragResp = await fetch(fragUrl, { cache: 'force-cache' });
+          if (fragResp.ok) {
+            const fragCt = fragResp.headers.get('content-type') || '';
+            if (!fragCt.includes('text/html')) {
+              const fragBuf = new Uint8Array(await fragResp.arrayBuffer());
+              if (fragBuf.byteLength > 1024) {
+                console.log(`[IfcModel] prebuilt fragments fetched ${(fragBuf.byteLength / 1024 / 1024).toFixed(1)} MB in ${Math.round(performance.now() - tFragFetch)}ms`);
+                const tHydrate = performance.now();
+                fragModel = await fragsManager.core.load(fragBuf.buffer, { modelId: 'main' });
+                console.log(`[IfcModel] hydrated prebuilt fragments in ${Math.round(performance.now() - tHydrate)}ms (total ${Math.round(performance.now() - t0)}ms)`);
+                try { await putCachedFrag(cacheKey, fragBuf); } catch {}
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[IfcModel] prebuilt .frag load failed, falling back to .ifc parse', e);
+          fragModel = null;
+        }
+      }
     }
 
     if (!fragModel) {
