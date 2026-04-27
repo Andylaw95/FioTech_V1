@@ -516,7 +516,7 @@ export function Bim3DStage({
       {/* "Auto" toggle moved into the top-left stack below Pick (above). */}
 
       <Canvas
-        shadows="basic"
+        shadows={{ enabled: true, type: THREE.PCFShadowMap }}
         dpr={[1, 2]}
         className="absolute inset-0"
         gl={{
@@ -526,6 +526,23 @@ export function Bim3DStage({
           localClippingEnabled: true,
           logarithmicDepthBuffer: true,
           alpha: true,
+        }}
+        onCreated={({ gl }) => {
+          // Force a non-deprecated shadow map type and prevent any later
+          // override (some libs set PCFSoftShadowMap on the renderer).
+          gl.shadowMap.enabled = true;
+          gl.shadowMap.type = THREE.PCFShadowMap;
+          const desc = Object.getOwnPropertyDescriptor(gl.shadowMap, 'type');
+          if (desc?.configurable !== false) {
+            let _type: THREE.ShadowMapType = THREE.PCFShadowMap;
+            Object.defineProperty(gl.shadowMap, 'type', {
+              get: () => _type,
+              set: (v: THREE.ShadowMapType) => {
+                _type = v === THREE.PCFSoftShadowMap ? THREE.PCFShadowMap : v;
+              },
+              configurable: true,
+            });
+          }
         }}
         style={{ background: 'transparent' }}
         onPointerMissed={onDeselect}
