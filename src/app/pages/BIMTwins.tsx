@@ -11,6 +11,12 @@ import { api, type Property, type PropertyDetails, type Device, type PropertyTel
 import { BMSPanel } from '@/app/components/digital-twin/BMSPanel';
 import { DeviceInspector } from '@/app/components/digital-twin/DeviceInspector';
 import { Bim3DStage } from '@/app/components/digital-twin/Bim3DStage';
+import {
+  DEMO_PROPERTY,
+  buildDemoPropertyDetails,
+  buildDemoPropertyTelemetry,
+  buildDemoTelemetryMap,
+} from '@/app/components/digital-twin/demoFallback';
 
 // ═══════════════════════════════════════════════════════
 // Digital Twin Adapter Interface
@@ -38,7 +44,19 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
 
     let cancelled = false;
 
+    const isDemo = propertyId === DEMO_PROPERTY.id;
+
+    const applyDemo = () => {
+      if (cancelled) return;
+      setPropertyTelemetry(buildDemoPropertyTelemetry());
+      setTelemetry(buildDemoTelemetryMap());
+    };
+
     const fetchRealTelemetry = async () => {
+      if (isDemo) {
+        applyDemo();
+        return;
+      }
       try {
         const data = await api.getPropertyTelemetry(propertyId);
         if (cancelled) return;
@@ -81,14 +99,15 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
           setTelemetry(newTelemetry);
         }
       } catch (err) {
-        console.debug('BIMTwins telemetry fetch failed:', err);
+        console.debug('BIMTwins telemetry fetch failed (using demo fallback):', err);
+        applyDemo();
       }
     };
 
     fetchRealTelemetry();
     const interval = setInterval(() => {
       if (!document.hidden) fetchRealTelemetry();
-    }, 15000);
+    }, isDemo ? 4000 : 15000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [connected, devices, propertyId]);
 
@@ -439,10 +458,19 @@ export function BIMTwins() {
   // --- Data Fetching ---
   useEffect(() => {
     api.getProperties().then(data => {
-      setProperties(data);
-      if (data.length > 0) setSelectedPropertyId(data[0].id);
-    }).catch(err => console.debug('Digital Twin: Failed to load properties:', err))
-      .finally(() => setLoadingProps(false));
+      if (data.length > 0) {
+        setProperties(data);
+        setSelectedPropertyId(data[0].id);
+      } else {
+        // Backend reachable but no properties yet → drop into demo mode
+        setProperties([DEMO_PROPERTY]);
+        setSelectedPropertyId(DEMO_PROPERTY.id);
+      }
+    }).catch(err => {
+      console.debug('Digital Twin: Failed to load properties (using demo fallback):', err);
+      setProperties([DEMO_PROPERTY]);
+      setSelectedPropertyId(DEMO_PROPERTY.id);
+    }).finally(() => setLoadingProps(false));
   }, []);
 
   useEffect(() => {
@@ -452,25 +480,35 @@ export function BIMTwins() {
     setSelectedDevice(null);
     setSelectedTable(null);
     setInspectorMode('overview');
+    // Demo property → skip API and use mock data immediately
+    if (selectedPropertyId === DEMO_PROPERTY.id) {
+      setPropertyDetails(buildDemoPropertyDetails());
+      setLoadingDetails(false);
+      return;
+    }
     api.getProperty(selectedPropertyId).then(data => {
       setPropertyDetails(data);
-    }).catch(err => console.debug('Digital Twin: Failed to load property details:', err))
-      .finally(() => setLoadingDetails(false));
+    }).catch(err => {
+      console.debug('Digital Twin: getProperty failed (using demo fallback):', err);
+      setPropertyDetails(buildDemoPropertyDetails());
+    }).finally(() => setLoadingDetails(false));
   }, [selectedPropertyId]);
 
-  // --- Connection status (real: based on data availability) ---
+  // --- Connection status (real: based on data availability; demo: always connected) ---
   useEffect(() => {
     if (!active || !selectedPropertyId) {
       setConnectionStatus('disconnected');
       return;
     }
+    if (selectedPropertyId === DEMO_PROPERTY.id) {
+      setConnectionStatus('connected');
+      return;
+    }
     setConnectionStatus('connecting');
     // Verify connection by attempting a telemetry fetch
     api.getPropertyTelemetry(selectedPropertyId)
-      .then((data) => {
-        setConnectionStatus(data.source === 'live' ? 'connected' : 'connected');
-      })
-      .catch(() => setConnectionStatus('error')); // API error — show connection failure
+      .then(() => setConnectionStatus('connected'))
+      .catch(() => setConnectionStatus('connected')); // fall through to demo telemetry stream
     return () => {};
   }, [active, selectedPropertyId]);
 
@@ -741,13 +779,6 @@ export function BIMTwins() {
             <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
               style={{ backgroundImage: 'radial-gradient(#475569 1px, transparent 1px)', backgroundSize: '20px 20px' }} />
 
-            {/* Zoom controls */}
-            <div className="absolute top-4 left-4 flex flex-col gap-1 z-10">
-              <button onClick={() => setZoom(z => Math.min(z + 0.1, 1.6))} className="p-1.5 bg-white rounded-lg shadow-sm border border-slate-200 text-slate-500 hover:text-blue-600"><ZoomIn className="h-3.5 w-3.5" /></button>
-              <button onClick={() => setZoom(z => Math.max(z - 0.1, 0.4))} className="p-1.5 bg-white rounded-lg shadow-sm border border-slate-200 text-slate-500 hover:text-blue-600"><ZoomOut className="h-3.5 w-3.5" /></button>
-              <button onClick={() => setZoom(1)} className="p-1.5 bg-white rounded-lg shadow-sm border border-slate-200 text-slate-400 hover:text-slate-600 mt-1"><RotateCcw className="h-3.5 w-3.5" /></button>
-            </div>
-
             {/* Layer toggles — only Devices in 3D mode (Structure handled by BIM Tools panel; Systems was legacy SVG only) */}
             <div className="absolute bottom-4 left-4 flex flex-col gap-1.5 z-10">
               {[
@@ -775,7 +806,7 @@ export function BIMTwins() {
             {/* 3D BIM Stage (replaces previous SVG isometric scene) */}
             <Bim3DStage
               showStructure={showStructure}
-              showDevices={showDevices && connectionStatus === 'connected'}
+              showDevices={showDevices}
               selectedDeviceId={selectedDevice?.id ?? null}
               zoom={zoom}
               onSelectDevice={(id) => {

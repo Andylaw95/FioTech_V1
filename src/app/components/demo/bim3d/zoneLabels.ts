@@ -89,9 +89,28 @@ function loadAll(modelKey: string): LabelMap {
 function saveAll(modelKey: string, map: LabelMap) {
   try {
     window.localStorage.setItem(storageKey(modelKey), JSON.stringify(map));
+    // Notify same-tab listeners (storage event only fires across tabs)
+    try { window.dispatchEvent(new CustomEvent('fiotech.zone-labels-changed')); } catch {}
   } catch (err) {
     console.warn('[zoneLabels] save failed', err);
   }
+}
+
+/**
+ * Optional cloud sync hook. Bim3DStage installs handlers in a useEffect
+ * tied to (propertyId, modelKey). Every local mutation calls these
+ * fire-and-forget — local writes stay instant + offline-safe, the cloud
+ * just trails. Setting handler to `null` (component unmount, sign-out)
+ * disables push without dropping local writes.
+ */
+export interface CloudSyncHandlers {
+  create: (label: ZoneLabel) => void;
+  update: (id: string, label: ZoneLabel) => void;
+  delete: (id: string) => void;
+}
+let cloudHandlers: CloudSyncHandlers | null = null;
+export function setCloudSyncHandler(h: CloudSyncHandlers | null) {
+  cloudHandlers = h;
 }
 
 export function getLabelById(modelKey: string, id: string): ZoneLabel | null {
@@ -129,10 +148,9 @@ export function createLabel(
   };
   map[id] = next;
   saveAll(modelKey, map);
+  try { cloudHandlers?.create(next); } catch (err) { console.warn('[zoneLabels] cloud create failed', err); }
   return next;
 }
-
-/** Update an existing label by id. */
 export function updateLabel(
   modelKey: string,
   id: string,
@@ -144,11 +162,30 @@ export function updateLabel(
   const next: ZoneLabel = { ...existing, ...patch, id, updatedAt: new Date().toISOString() };
   map[id] = next;
   saveAll(modelKey, map);
+  try { cloudHandlers?.update(id, next); } catch (err) { console.warn('[zoneLabels] cloud update failed', err); }
   return next;
 }
 
 export function deleteLabelById(modelKey: string, id: string) {
   const map = loadAll(modelKey);
+  delete map[id];
+  saveAll(modelKey, map);
+  try { cloudHandlers?.delete(id); } catch (err) { console.warn('[zoneLabels] cloud delete failed', err); }
+}
+
+/**
+ * Local-only upsert used by the cloud → local hydration path. Skips the
+ * cloud sync handler so a hydrate (server → client) doesn't echo back as
+ * a write (client → server) and cause an infinite loop / spurious updates.
+ */
+export function _localUpsert(modelKey: string, label: ZoneLabel) {
+  const map = loadAll(modelKey);
+  map[label.id] = label;
+  saveAll(modelKey, map);
+}
+export function _localDelete(modelKey: string, id: string) {
+  const map = loadAll(modelKey);
+  if (!(id in map)) return;
   delete map[id];
   saveAll(modelKey, map);
 }
@@ -161,7 +198,38 @@ export function exportLabels(modelKey: string): string {
   return JSON.stringify(loadAll(modelKey), null, 2);
 }
 
+/**
+ * Import a JSON blob produced by `exportLabels`. The input is treated as
+ * UNTRUSTED — we validate every row before persisting so a hand-crafted
+ * payload can't pollute localStorage with arbitrary fields.
+ */
 export function importLabels(modelKey: string, json: string) {
-  const parsed = JSON.parse(json) as LabelMap;
-  saveAll(modelKey, parsed);
+  const parsed = JSON.parse(json);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('importLabels: payload must be an object map');
+  }
+  const allowedZoneTypes = new Set(['room', 'area', 'zone', 'asset', 'other']);
+  const out: LabelMap = {};
+  for (const [k, raw] of Object.entries<any>(parsed)) {
+    if (!raw || typeof raw !== 'object') continue;
+    if (typeof raw.id !== 'string' || raw.id !== k) continue;
+    if (typeof raw.expressId !== 'number' || !Number.isFinite(raw.expressId)) continue;
+    const a = raw.anchor;
+    if (!a || typeof a.x !== 'number' || typeof a.y !== 'number' || typeof a.z !== 'number') continue;
+    out[raw.id] = {
+      id: raw.id,
+      expressId: raw.expressId,
+      customName: typeof raw.customName === 'string' ? raw.customName.slice(0, 200) : undefined,
+      customCode: typeof raw.customCode === 'string' ? raw.customCode.slice(0, 64)  : undefined,
+      zoneType:   allowedZoneTypes.has(raw.zoneType) ? raw.zoneType : undefined,
+      notes:      typeof raw.notes === 'string'      ? raw.notes.slice(0, 2000)     : undefined,
+      color:      typeof raw.color === 'string'      ? raw.color.slice(0, 32)       : undefined,
+      anchor:     { x: a.x, y: a.y, z: a.z },
+      assignedDeviceIds: Array.isArray(raw.assignedDeviceIds)
+        ? raw.assignedDeviceIds.filter((s: unknown) => typeof s === 'string').slice(0, 200)
+        : undefined,
+      updatedAt:  typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
+    };
+  }
+  saveAll(modelKey, out);
 }

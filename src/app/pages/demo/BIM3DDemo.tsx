@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, Suspense } from 'react';
+import { useMemo, useState, useRef, Suspense, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Grid, Stats } from '@react-three/drei';
@@ -9,7 +9,8 @@ import { SubsystemDock } from '@/app/components/demo/bim3d/SubsystemDock';
 import { DeviceDetailCard } from '@/app/components/demo/bim3d/DeviceDetailCard';
 import { ControlPanel } from '@/app/components/demo/bim3d/ControlPanel';
 import { CameraFlyTo } from '@/app/components/demo/bim3d/CameraFlyTo';
-import { useMockAlarmStream } from '@/app/components/demo/bim3d/useMockAlarmStream';
+import { useLiveDeviceStream } from '@/app/components/demo/bim3d/useLiveDeviceStream';
+import { LiveStatusBadge } from '@/app/components/demo/bim3d/LiveStatusBadge';
 import { MOCK_SENSORS, Alarm, Severity } from '@/app/components/demo/bim3d/mockData';
 import { Layers3, Activity, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -25,7 +26,7 @@ function resolveSensorSeverity(sensorId: string, alarms: Alarm[]): Severity {
 export function BIM3DDemo() {
   const { propertyId } = useParams<{ propertyId?: string }>();
   const navigate = useNavigate();
-  const { alarms, triggerAlarm, resolveAlarm } = useMockAlarmStream();
+  const { alarms, readings, mode, counts, lastFetch, triggerAlarm, resolveAlarm } = useLiveDeviceStream();
   const [selectedSensorId, setSelectedSensorId] = useState<string | null>(null);
   const [selectedAlarmId, setSelectedAlarmId] = useState<string | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -40,13 +41,31 @@ export function BIM3DDemo() {
   );
 
   const lastIdRef = useRef<string | null>(null);
-  if (alarms.length && alarms[0].id !== lastIdRef.current) {
-    lastIdRef.current = alarms[0].id;
-    if (alarms[0].severity === 'critical' || alarms[0].severity === 'warning') {
-      setTimeout(() => setToast(alarms[0]), 0);
-      setTimeout(() => setToast(null), 4000);
-    }
-  }
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Toast on new critical/warning alarms — driven from effect, not render
+  useEffect(() => {
+    if (!alarms.length) return;
+    const latest = alarms[0];
+    if (latest.id === lastIdRef.current) return;
+    lastIdRef.current = latest.id;
+    if (latest.severity !== 'critical' && latest.severity !== 'warning') return;
+    setToast(latest);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }, [alarms]);
+
+  // Cleanup any pending timers when the page unmounts
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    if (flyTimerRef.current) clearTimeout(flyTimerRef.current);
+  }, []);
+
+  const scheduleFlyClear = () => {
+    if (flyTimerRef.current) clearTimeout(flyTimerRef.current);
+    flyTimerRef.current = setTimeout(() => setFlyTarget(null), 1000);
+  };
 
   const handleSelectAlarm = (a: Alarm) => {
     setSelectedAlarmId(a.id);
@@ -54,7 +73,7 @@ export function BIM3DDemo() {
     if (sensor) {
       setSelectedSensorId(sensor.id);
       setFlyTarget([sensor.x, sensor.y, sensor.z]);
-      setTimeout(() => setFlyTarget(null), 1000);
+      scheduleFlyClear();
     }
   };
 
@@ -63,7 +82,7 @@ export function BIM3DDemo() {
     const s = MOCK_SENSORS.find(s => s.id === id);
     if (s) {
       setFlyTarget([s.x, s.y, s.z]);
-      setTimeout(() => setFlyTarget(null), 1000);
+      scheduleFlyClear();
     }
   };
 
@@ -71,7 +90,7 @@ export function BIM3DDemo() {
     setFlyTarget([0, 0, 0]);
     setSelectedSensorId(null);
     setSelectedRoomId(null);
-    setTimeout(() => setFlyTarget(null), 1000);
+    scheduleFlyClear();
   };
 
   const visibleSensors = filterSubsystem
@@ -125,11 +144,13 @@ export function BIM3DDemo() {
         <DeviceDetailCard
           sensor={selectedSensor}
           alarms={alarms}
+          reading={selectedSensor ? readings.get(selectedSensor.id) ?? null : null}
           onClose={() => setSelectedSensorId(null)}
         />
       </aside>
 
       <div className="flex-1 relative min-w-0">
+        <LiveStatusBadge mode={mode} counts={counts} lastFetch={lastFetch} />
         <AnimatePresence>
           {toast && (
             <motion.div
@@ -198,6 +219,11 @@ export function BIM3DDemo() {
                 severity={resolveSensorSeverity(sensor.id, alarms)}
                 selected={selectedSensorId === sensor.id}
                 onClick={handleSelectSensor}
+                online={readings.get(sensor.id)?.online ?? false}
+                valueLabel={(() => {
+                  const r = readings.get(sensor.id);
+                  return r?.primary ? `${r.primary.value.toFixed(1)} ${r.primary.unit}` : null;
+                })()}
               />
             ))}
 

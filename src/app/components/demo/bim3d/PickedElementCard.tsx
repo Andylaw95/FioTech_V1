@@ -39,6 +39,7 @@ export function PickedElementCard({
 }) {
   const [editing, setEditing] = useState<boolean>(!!picked.editLabelId);
   const [draft, setDraft] = useState<Partial<ZoneLabel>>(EMPTY_DRAFT);
+  const [saving, setSaving] = useState(false);
 
   // The label currently being edited (only when picked.editLabelId is set)
   const existingLabel = useMemo<ZoneLabel | null>(
@@ -64,6 +65,8 @@ export function PickedElementCard({
   }, [existingLabel]);
 
   function save() {
+    if (saving) return;
+    setSaving(true);
     const patch = {
       customName: draft.customName?.trim() || undefined,
       customCode: draft.customCode?.trim() || undefined,
@@ -73,15 +76,19 @@ export function PickedElementCard({
       assignedDeviceIds: draft.assignedDeviceIds,
     };
     let saved: ZoneLabel | null;
-    if (existingLabel) {
-      saved = updateLabel(modelKey, existingLabel.id, patch);
-    } else {
-      saved = createLabel(
-        modelKey,
-        picked.expressId,
-        { x: picked.point.x, y: picked.point.y, z: picked.point.z },
-        patch,
-      );
+    try {
+      if (existingLabel) {
+        saved = updateLabel(modelKey, existingLabel.id, patch);
+      } else {
+        saved = createLabel(
+          modelKey,
+          picked.expressId,
+          { x: picked.point.x, y: picked.point.y, z: picked.point.z },
+          patch,
+        );
+      }
+    } finally {
+      setSaving(false);
     }
     setEditing(false);
     onLabelChange?.(saved);
@@ -106,7 +113,7 @@ export function PickedElementCard({
   const isNew = !existingLabel;
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[480px] max-w-[92vw] rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-amber-400/50">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[400] w-[480px] max-w-[92vw] rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-amber-400/50">
       <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
         <div className="text-xs font-semibold text-amber-300 flex items-center gap-2">
           📌 {displayName}
@@ -230,9 +237,10 @@ export function PickedElementCard({
           <div className="flex gap-2 pt-1">
             <button
               onClick={save}
-              className="flex-1 text-xs bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold rounded px-3 py-1.5"
+              disabled={saving}
+              className="flex-1 text-xs bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-semibold rounded px-3 py-1.5"
             >
-              💾 {existingLabel ? 'Update label' : 'Save new label'}
+              💾 {saving ? 'Saving…' : existingLabel ? 'Update label' : 'Save new label'}
             </button>
             <button
               onClick={() => {

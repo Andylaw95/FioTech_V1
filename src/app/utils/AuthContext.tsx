@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { clearLocalLabelCache } from '@/app/lib/bim/zoneLabelsRepo';
 
 
 const supabaseUrl = `https://${projectId}.supabase.co`;
@@ -279,6 +280,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setAccessToken(null);
     setIsAdmin(false);
+    // Don't leak the previous tenant's BIM zone names / notes to the next
+    // user on shared kiosks. Cloud copy is preserved server-side.
+    clearLocalLabelCache();
   }, []);
 
   return (

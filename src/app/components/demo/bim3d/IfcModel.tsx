@@ -9,19 +9,53 @@ import {
   IFCBUILDINGELEMENTPROXY, IFCPLATE, IFCMEMBER, IFCCURTAINWALL,
 } from 'web-ifc';
 
-// Module-level cache (single model)
+// Module-level cache (single model, keyed by URL)
 let cached: THREE.Group | null = null;
+let cachedUrl: string | null = null;
 let cachedLoader: any = null;
 let cachedModelID: number | null = null;
-let cachedScene: THREE.Scene | null = null;
 let loadingPromise: Promise<THREE.Group> | null = null;
+let loadingUrl: string | null = null;
 let originalMeshes: THREE.Mesh[] = [];
 let edgeLines: THREE.LineSegments[] = [];
 let edgesEnabled = true;
 let allIfcIds: number[] = [];
 let isolated = false;
-let cachedSpatialStructure: any = null;
 let cachedSpatialFlat: Map<number, string | null> | null = null;
+let initialClipApplied = false;
+
+function disposeCachedModel() {
+  // Free GPU resources so reload / URL switch doesn't leak
+  edgeLines.forEach((l) => {
+    l.geometry?.dispose?.();
+    const mats = Array.isArray(l.material) ? l.material : [l.material];
+    mats.forEach((m: any) => m?.dispose?.());
+    l.parent?.remove(l);
+  });
+  edgeLines = [];
+  if (cachedLoader && cachedModelID !== null) {
+    try { cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_VISIBLE); } catch {}
+    try { cachedLoader.ifcManager.removeSubset(cachedModelID, HIGHLIGHT_MAT, SUBSET_HIGHLIGHT); } catch {}
+    try { cachedLoader.ifcManager.removeSubset(cachedModelID, GHOST_MAT, SUBSET_GHOST); } catch {}
+    try { cachedLoader.ifcManager.removeSubset(cachedModelID, undefined, SUBSET_ISOLATE); } catch {}
+    try { cachedLoader.ifcManager.dispose?.(); } catch {}
+  }
+  originalMeshes.forEach((m) => {
+    m.geometry?.dispose?.();
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    mats.forEach((mt: any) => mt?.dispose?.());
+  });
+  originalMeshes = [];
+  allIfcIds = [];
+  categoryIds = {};
+  cachedSpatialFlat = null;
+  cached = null;
+  cachedUrl = null;
+  cachedLoader = null;
+  cachedModelID = null;
+  initialClipApplied = false;
+  isolated = false;
+}
 
 export function setEdgesVisible(on: boolean) {
   edgesEnabled = on;
@@ -241,7 +275,6 @@ export async function getIfcInfoFromIntersection(intersection: THREE.Intersectio
       if (!cachedSpatialFlat) {
         // Build flat expressId → storey lookup once (heavy call, do it lazily on first pick)
         const struct = await cachedLoader.ifcManager.getSpatialStructure(cachedModelID, false);
-        cachedSpatialStructure = struct;
         const flat = new Map<number, string | null>();
         const walk = (node: any, currentStorey: string | null) => {
           const ns = node.type === 'IFCBUILDINGSTOREY'
@@ -265,9 +298,13 @@ export async function getIfcInfoFromIntersection(intersection: THREE.Intersectio
 }
 
 async function loadIfc(url: string): Promise<THREE.Group> {
-  if (cached) return cached;
-  if (loadingPromise) return loadingPromise;
+  if (cached && cachedUrl === url) return cached;
+  if (loadingPromise && loadingUrl === url) return loadingPromise;
 
+  // URL changed → drop the previous model and start fresh
+  if (cached || cachedUrl) disposeCachedModel();
+
+  loadingUrl = url;
   loadingPromise = (async () => {
     console.log('[IfcModel] loading', url);
     const t0 = performance.now();
@@ -341,7 +378,9 @@ async function loadIfc(url: string): Promise<THREE.Group> {
           lines.visible = edgesEnabled;
           obj.add(lines);
           edgeLines.push(lines);
-        } catch {}
+        } catch (e) {
+          console.warn('[IfcModel] edge generation failed for mesh', obj.name, e);
+        }
       }
     });
 
@@ -362,8 +401,15 @@ async function loadIfc(url: string): Promise<THREE.Group> {
     ));
 
     cached = group;
+    cachedUrl = url;
     return group;
   })();
+
+  // Reset loadingPromise on failure so the next attempt can retry from scratch
+  loadingPromise.catch(() => {
+    loadingPromise = null;
+    loadingUrl = null;
+  });
 
   return loadingPromise;
 }
@@ -388,6 +434,12 @@ export function IfcModel({
 
   useEffect(() => {
     let cancelled = false;
+    // On (re)mount: reset cross-mount UI state. Module globals like `isolated`
+    // survive React unmounts; without this reset, reopening the viewer with
+    // a stale isolate selection leaves the building partially hidden.
+    if (cached && cachedLoader && cachedModelID !== null && isolated) {
+      try { showAll(); } catch {}
+    }
     loadIfc(url)
       .then((g) => {
         if (cancelled) return;
@@ -408,7 +460,6 @@ export function IfcModel({
   useEffect(() => {
     if (!group || !wrapperRef.current) return;
     const wrapper = wrapperRef.current;
-    cachedScene = wrapper.parent as THREE.Scene | null;
     wrapper.rotation.set(rotationX, 0, 0);
     wrapper.position.set(0, 0, 0);
     wrapper.updateMatrixWorld(true);
@@ -420,8 +471,11 @@ export function IfcModel({
     wrapper.updateMatrixWorld(true);
     const finalBox = new THREE.Box3().setFromObject(wrapper);
     const height = finalBox.max.y - finalBox.min.y;
-    setClipHeight(height + 0.5);
-    // Reapply current visibility/highlight state in case wrapper transforms changed
+    // Only set the clip on first load — don't clobber user-driven slider on subsequent rotations
+    if (!initialClipApplied) {
+      setClipHeight(height + 0.5);
+      initialClipApplied = true;
+    }
     onMetrics?.({
       height,
       categoryCounts: Object.fromEntries(Object.entries(categoryIds).map(([k, v]) => [k, v.length])),

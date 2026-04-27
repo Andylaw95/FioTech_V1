@@ -37,3 +37,6 @@ supabase/.temp/
 # Large BIM models (load locally / from Supabase Storage in prod)
 public/bim/*.ifc
 public/bim/*.frag
+
+# Supabase CLI local state
+supabase/.temp/
