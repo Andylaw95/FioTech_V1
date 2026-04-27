@@ -35,8 +35,10 @@ SECURITY_AUDIT_REPORT*.md
 supabase/.temp/
 
 # Large BIM models (load locally / from Supabase Storage in prod)
-public/bim/*.ifc
+# Large BIM models — track ccc-17f.ifc explicitly so prod can serve it.
+# Other IFCs stay out of git; upload them to Supabase Storage instead.
 public/bim/*.frag
+!public/bim/ccc-17f.ifc
 
 # Supabase CLI local state
 supabase/.temp/
