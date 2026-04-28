@@ -13,7 +13,7 @@ const isProduction = !!Deno.env.get("DENO_DEPLOYMENT_ID");
 
 app.use("*", cors({
   origin: isProduction ? PROD_ORIGINS : DEV_ORIGINS,
-  allowHeaders: ["Content-Type", "Authorization", "x-client-info", "apikey", "Cache-Control", "x-user-token", "X-Webhook-Token"],
+  allowHeaders: ["Content-Type", "Authorization", "x-client-info", "apikey", "Cache-Control", "x-user-token", "X-Webhook-Token", "baggage", "sentry-trace"],
   allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   exposeHeaders: ["Content-Length", "X-Kuma-Revision"],
   maxAge: 600,
