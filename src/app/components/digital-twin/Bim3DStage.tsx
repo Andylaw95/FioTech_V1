@@ -332,21 +332,23 @@ export function Bim3DStage({
 
   // Live device telemetry — readings always flow; "Auto" only gates random alarm spawns + camera rotate
   const { alarms, readings } = useLiveDeviceStream({ enableAlarmSpawn: false, enableMock: false });
-  // Sensor positions with localStorage overrides (drag-to-place fallback)
-  const { sensors: liveSensors, overrides: positionOverrides } = useSensorPositions();
+  // Real property devices — replaces the previous MOCK_SENSORS feed.
+  // Position overrides (drag-to-place) still come from useSensorPositions.
+  const { overrides: positionOverrides } = useSensorPositions();
   const { devices: propertyDevices } = usePropertyDevices(propertyId ?? '');
   const { isAdmin, user } = useAuth();
-  // Zone-label-driven clustering
+  // Zone-label-driven clustering — must use the REAL devices so saved
+  // assignedDeviceIds (D1772093500001, etc) actually resolve.
   const { clusters, labelBySensorId } = useZoneSensorAssignments(
     modelKey,
     labelsVersion,
-    liveSensors,
+    propertyDevices,
     positionOverrides,
   );
   const SEV_RANK: Record<Severity, number> = { critical: 3, warning: 2, info: 1, normal: 0 };
   const severityById = useMemo(() => {
     const map = new Map<string, Severity>();
-    for (const s of liveSensors) {
+    for (const s of propertyDevices) {
       const r = readings.get(s.id);
       map.set(s.id, r?.primary?.severity ?? 'normal');
     }
@@ -359,8 +361,8 @@ export function Bim3DStage({
   }, [alarms, readings]);
 
   const internalSelectedSensor = useMemo(
-    () => liveSensors.find(s => s.id === (externalSelectedSensorId || selectedDeviceId)) ?? null,
-    [liveSensors, selectedDeviceId, externalSelectedSensorId],
+    () => propertyDevices.find(s => s.id === (externalSelectedSensorId || selectedDeviceId)) ?? null,
+    [propertyDevices, selectedDeviceId, externalSelectedSensorId],
   );
 
   /** World-space focus target for the camera when a device is selected.
