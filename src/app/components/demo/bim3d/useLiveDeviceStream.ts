@@ -317,11 +317,32 @@ export function useLiveDeviceStream(options: Options = {}) {
           const reading = readingFromDevice(sensor, device, now);
           if (reading.online) online++;
           newReadings.set(sensor.id, reading);
+          // Also publish under the real device id so consumers driven by
+          // real propertyDevices (zone clusters, picker overlay) can find
+          // the reading. The mock-keyed entry stays for legacy consumers.
+          if (device?.id && device.id !== sensor.id) {
+            newReadings.set(device.id, reading);
+          }
           const alarm = deriveAlarm(sensor, reading);
           if (alarm) {
             liveIdsThisTick.add(alarm.id);
             if (!resolvedRef.current.has(alarm.id)) derived.push(alarm);
           }
+        }
+
+        // Cover real devices that aren't in the MOCK_SENSORS list (e.g. the
+        // newly added HY108-1 unit). Synthesize a minimal reading from the
+        // device's own currentReading so zone cards still show a value.
+        for (const device of devices) {
+          if (newReadings.has(device.id)) continue;
+          const reading = readingFromDevice(
+            { id: device.id, name: device.name, type: 'Temp', subsystem: 'Environment', x: 0, y: 0, z: 0 } as any,
+            device,
+            now,
+          );
+          if (reading.online) online++;
+          matched++;
+          newReadings.set(device.id, reading);
         }
 
         // GC resolvedRef: once a `live_*` condition clears, free its entry so
