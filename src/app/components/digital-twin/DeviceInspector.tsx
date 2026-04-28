@@ -1,12 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, Wifi, WifiOff, Battery, BatteryLow, BatteryMedium, BatteryFull, BatteryWarning,
   Droplets, Wind, Thermometer, Flame, Volume2, Cpu, AlertTriangle, CheckCircle2, Clock, MapPin,
   ArrowLeft, History
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import type { Device } from '@/app/utils/api';
 import { MiniDeviceChart, DeviceHistoryChart } from '@/app/components/DeviceHistoryChart';
+import { normalizeMetrics, METRIC_LABEL, buildMetricSlides } from '@/app/components/demo/bim3d/metricUtils';
 
 // Device type → icon + color
 const DEVICE_META: Record<string, { icon: React.ElementType; color: string; bg: string; label: string }> = {
@@ -83,32 +85,50 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
     { value: '3d',  label: '3 Day' },
   ] as const;
 
-  // Use real live data if available, otherwise fall back to generated
-  const hasLiveData = liveSensorData && Object.keys(liveSensorData).length > 0;
-  
+  // Use real live data if available, otherwise fall back to generated.
+  // Normalize so Cayenne LPP suffixes (temperature_3, co2_7, pm2_5_11, ...) become
+  // canonical keys before any UI consumer touches them.
+  const normalizedLive = useMemo(
+    () => normalizeMetrics(liveSensorData ?? null),
+    [liveSensorData],
+  );
+  const hasLiveData = Object.keys(normalizedLive).length > 0;
+
+  // Pick the primary metric key per device type so the prominent block opens
+  // on the most relevant reading.
+  const primaryKey = useMemo<string | null>(() => {
+    const order: Record<string, string[]> = {
+      IAQ: ['co2', 'tvoc', 'pm2_5', 'temperature'],
+      Temperature: ['temperature'],
+      Leakage: ['humidity'],
+      Noise: ['sound_level_leq', 'sound_level_inst'],
+      'Sound Level Sensor': ['sound_level_leq', 'sound_level_inst'],
+      Smoke: ['pm2_5', 'pm10'],
+      Fire: ['temperature'],
+    };
+    const candidates = order[device.type] ?? Object.keys(normalizedLive);
+    return candidates.find(k => normalizedLive[k] != null) ?? null;
+  }, [device.type, normalizedLive]);
+
+  // Build slideshow of all live metrics, ordered with primaryKey first.
+  const slides = useMemo(
+    () => buildMetricSlides(normalizedLive, primaryKey),
+    [normalizedLive, primaryKey],
+  );
+
+  const [slideIdx, setSlideIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
+  useEffect(() => { setSlideIdx(0); }, [device.id]);
+  useEffect(() => {
+    if (paused || slides.length <= 1) return;
+    const t = setInterval(() => setSlideIdx(i => (i + 1) % slides.length), 5000);
+    return () => clearInterval(t);
+  }, [paused, slides.length]);
+
   const currentReading = useMemo(() => {
-    if (hasLiveData && liveSensorData) {
-      // Pick the most relevant metric based on device type
-      const typeMetrics: Record<string, { keys: string[]; unit: string; label: string }> = {
-        IAQ: { keys: ['co2', 'tvoc'], unit: 'ppm', label: 'CO₂ Level' },
-        Temperature: { keys: ['temperature'], unit: '°C', label: 'Temperature' },
-        Leakage: { keys: ['humidity', 'water_leak'], unit: '%', label: 'Humidity' },
-        Noise: { keys: ['sound_level_inst', 'sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_lcpeak'], unit: 'dB(A)', label: 'LAF' },
-        'Sound Level Sensor': { keys: ['sound_level_inst', 'sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_lcpeak'], unit: 'dB(A)', label: 'LAF' },
-        Smoke: { keys: ['pm2_5', 'pm10'], unit: 'μg/m³', label: 'PM2.5' },
-        Fire: { keys: ['temperature'], unit: '°C', label: 'Temperature' },
-      };
-      const config = typeMetrics[device.type] || { keys: Object.keys(liveSensorData).slice(0, 1), unit: '', label: 'Reading' };
-      for (const key of config.keys) {
-        if (liveSensorData[key] != null) {
-          return { value: liveSensorData[key], unit: config.unit, label: config.label, isLive: true };
-        }
-      }
-      // Fallback to first available metric
-      const firstKey = Object.keys(liveSensorData)[0];
-      if (firstKey) {
-        return { value: liveSensorData[firstKey], unit: '', label: firstKey.replace(/_/g, ' '), isLive: true };
-      }
+    if (slides.length > 0) {
+      const slide = slides[slideIdx % slides.length];
+      return { value: slide.value, unit: slide.unit, label: slide.label, isLive: true };
     }
     return {
       value: generatedTelemetry.points[generatedTelemetry.points.length - 1].value,
@@ -116,7 +136,7 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
       label: generatedTelemetry.label,
       isLive: false,
     };
-  }, [hasLiveData, liveSensorData, device.type, generatedTelemetry]);
+  }, [slides, slideIdx, generatedTelemetry]);
 
   // ─── HISTORY VIEW ─────────────────────────────────────
   if (showHistory) {
@@ -253,39 +273,90 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
         </div>
       </div>
 
-      {/* Current Reading */}
-      <div className="rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 p-3 text-white">
+      {/* Current Reading — auto-rotates every 5s when there are multiple metrics */}
+      <div
+        className="rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 p-3 text-white"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
         <div className="flex items-center justify-between mb-0.5">
-          <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">{currentReading.label}</span>
-          <span className={clsx('text-[10px] flex items-center gap-1', currentReading.isLive ? 'text-emerald-400' : 'text-slate-500')}>
+          <AnimatePresence mode="wait">
+            <motion.span
+              key={currentReading.label}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="text-[10px] font-semibold text-slate-200 uppercase tracking-wider"
+            >
+              {currentReading.label}
+            </motion.span>
+          </AnimatePresence>
+          <span className={clsx('text-[10px] flex items-center gap-1 font-semibold', currentReading.isLive ? 'text-emerald-400' : 'text-slate-400')}>
             <span className={clsx('h-1.5 w-1.5 rounded-full', currentReading.isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500')} />
             {currentReading.isLive ? 'Live' : 'Simulated'}
           </span>
         </div>
-        <div className="flex items-baseline gap-1">
-          <span className="text-2xl font-bold font-mono">{typeof currentReading.value === 'number' ? currentReading.value.toFixed(1) : currentReading.value}</span>
-          <span className="text-xs text-slate-400">{currentReading.unit}</span>
-        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentReading.label}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.25 }}
+            className="flex items-baseline gap-1"
+          >
+            <span className="text-2xl font-bold font-mono text-white">
+              {typeof currentReading.value === 'number' ? currentReading.value.toFixed(1) : currentReading.value}
+            </span>
+            <span className="text-xs text-slate-300 font-semibold">{currentReading.unit}</span>
+          </motion.div>
+        </AnimatePresence>
+        {slides.length > 1 && (
+          <div className="mt-2 flex items-center gap-2">
+            <div className="flex gap-1">
+              {slides.map((s, i) => (
+                <button
+                  key={s.key}
+                  onClick={() => { setSlideIdx(i); setPaused(true); }}
+                  title={s.label}
+                  className={clsx(
+                    'h-1.5 rounded-full transition-all',
+                    i === slideIdx ? 'w-4 bg-cyan-400' : 'w-1.5 bg-slate-600 hover:bg-slate-400'
+                  )}
+                />
+              ))}
+            </div>
+            <span className="ml-auto text-[9px] text-slate-300 font-mono font-semibold">
+              {paused ? 'paused' : `${slideIdx + 1}/${slides.length} · 5s`}
+            </span>
+          </div>
+        )}
         {liveDataTime && currentReading.isLive && (
-          <p className="text-[10px] text-slate-500 mt-0.5">
+          <p className="text-[10px] text-slate-300 mt-1 font-medium">
             Last received: {new Date(liveDataTime).toLocaleTimeString('en-GB', { timeZone: 'Asia/Hong_Kong' })}
           </p>
         )}
       </div>
 
       {/* Live Sensor Readings (all metrics) */}
-      {hasLiveData && liveSensorData && (
+      {hasLiveData && (
         <div>
           <p className="text-[10px] font-medium text-slate-500 uppercase mb-1.5">All Sensor Readings</p>
           <div className="space-y-1">
-            {Object.entries(liveSensorData).map(([key, val]) => (
-              <div key={key} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
-                <span className="text-[11px] text-slate-500 capitalize">{key.replace(/_/g, ' ')}</span>
-                <span className="text-xs font-semibold font-mono text-slate-900">
-                  {typeof val === 'number' ? val.toFixed(1) : String(val)}
-                </span>
-              </div>
-            ))}
+            {Object.entries(normalizedLive).map(([key, val]) => {
+              const meta = METRIC_LABEL[key];
+              const label = meta?.label ?? key.replace(/_/g, ' ');
+              const unit = meta?.unit ?? '';
+              return (
+                <div key={key} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                  <span className="text-[11px] text-slate-600 font-medium">{label}</span>
+                  <span className="text-xs font-semibold font-mono text-slate-900">
+                    {val.toFixed(1)}{unit && <span className="text-slate-500 ml-0.5">{unit}</span>}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

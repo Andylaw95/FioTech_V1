@@ -102,13 +102,6 @@ const METRIC_ALIASES: Record<string, string> = {
   lcpeak: 'sound_level_lcpeak',
 };
 
-/**
- * LoRa decoders (Cayenne LPP, ChirpStack JS codecs) suffix metric keys with
- * the channel id, e.g. `temperature_3`, `co2_7`, `pm2_5_11`. We normalize
- * to bare keys so downstream consumers (slideshow, threshold lookup,
- * METRIC_LABEL lookup) work uniformly across vendors. Also folds in common
- * aliases (relative_humidity → humidity, etc.).
- */
 function normalizeMetrics(raw: Record<string, unknown>): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [rawKey, rawVal] of Object.entries(raw ?? {})) {
