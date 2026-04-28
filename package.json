@@ -20,6 +20,7 @@
     "@react-google-maps/api": "^2.20.8",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
+    "@sentry/react": "^10.50.0",
     "@supabase/supabase-js": "^2.95.3",
     "@thatopen/components": "^3.4.2",
     "@thatopen/fragments": "^3.4.3",

@@ -144,8 +144,10 @@ export async function pickFragmentsAtMouse(
 ): Promise<THREE.Intersection | null> {
   if (!cachedFragModel || !components) return null;
   try {
-    const mgr = components.get(OBC.FragmentsManager);
-    const result: any = await mgr.raycast({ camera, mouse, dom });
+    // RaycastData{camera,mouse,dom} is the FragmentsModel API, NOT the
+    // FragmentsManager API (which takes ray/frustum/planes). Calling it on the
+    // manager silently returns null on every click.
+    const result: any = await cachedFragModel.raycast({ camera, mouse, dom });
     if (!result || typeof result.localId !== 'number') return null;
     // Pre-warm bbox cache so the subsequent isolate-zoom in Bim3DStage has data.
     void fetchAndCacheBox(result.localId);
