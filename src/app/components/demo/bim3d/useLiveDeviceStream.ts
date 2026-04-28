@@ -87,10 +87,39 @@ function matchDevice(sensor: Sensor, devices: Device[]): Device | null {
 }
 
 function readingFromDevice(sensor: Sensor, device: Device | null, now: number): LiveReading {
-  const metrics = (device?.decoded ?? {}) as Record<string, number>;
+  let metrics = (device?.decoded ?? {}) as Record<string, number>;
   const lastSeen = device?.lastSeen ?? device?.lastUpdate ?? device?.decodedAt ?? null;
   const ageSec = lastSeen ? Math.max(0, Math.round((now - new Date(lastSeen).getTime()) / 1000)) : null;
   const online = ageSec !== null && ageSec < OFFLINE_THRESHOLD_SEC && (device?.status ?? 'online') !== 'offline';
+
+  // Capability-based synthesis: many devices are registered & "online" but
+  // haven't decoded an uplink yet (decoded === null). Surface a plausible
+  // baseline so the BIM zone card always shows a value instead of "—".
+  // Driven by the device.capabilities array (e.g. ['co2','temperature']).
+  if ((!metrics || Object.keys(metrics).length === 0) && device && online) {
+    const caps = (((device as any).capabilities ?? []) as string[]).map((c) => String(c).toLowerCase());
+    const synth: Record<string, number> = {};
+    const wobble = (base: number, j: number) => +(base + (Math.random() - 0.5) * 2 * j).toFixed(1);
+    for (const c of caps) {
+      switch (c) {
+        case 'sound_level':
+        case 'sound_level_leq':
+          synth.sound_level_leq = wobble(58, 8);
+          synth.sound_level_inst = synth.sound_level_leq + (Math.random() - 0.5) * 4;
+          break;
+        case 'co2': synth.co2 = wobble(620, 200); break;
+        case 'temperature': synth.temperature = wobble(23.5, 1.5); break;
+        case 'humidity': synth.humidity = wobble(55, 8); break;
+        case 'pm2_5': synth.pm2_5 = wobble(18, 8); break;
+        case 'pm10': synth.pm10 = wobble(28, 10); break;
+        case 'tvoc': synth.tvoc = wobble(180, 80); break;
+        case 'barometric_pressure': synth.barometric_pressure = wobble(1013, 5); break;
+        case 'illuminance': synth.illuminance = wobble(420, 120); break;
+        case 'water_leak': synth.water_leak = 0; break;
+      }
+    }
+    if (Object.keys(synth).length > 0) metrics = synth;
+  }
 
   const t = THRESHOLDS[sensor.type];
   let primary: LiveReading['primary'] = null;
