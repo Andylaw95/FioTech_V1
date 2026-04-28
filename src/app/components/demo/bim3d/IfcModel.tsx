@@ -76,6 +76,8 @@ let loadingUrl: string | null = null;
 let originalMeshes: THREE.Mesh[] = [];
 let edgeLines: THREE.LineSegments[] = [];
 let edgesEnabled = true;
+let wireframeEnabled = false;
+const attachedEdgesPerMesh = new WeakSet<THREE.Mesh>();
 let allIfcIds: number[] = [];
 let isolated = false;
 let ghostOn = false;
@@ -127,6 +129,17 @@ function disposeCachedModel() {
 export function setEdgesVisible(on: boolean) {
   edgesEnabled = on;
   edgeLines.forEach((l) => { l.visible = on; });
+}
+
+export function setWireframe(on: boolean) {
+  wireframeEnabled = on;
+  if (!cached) return;
+  cached.traverse((obj: any) => {
+    if (obj.isMesh && obj.material) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      mats.forEach((m: any) => { m.wireframe = on; m.needsUpdate = true; });
+    }
+  });
 }
 
 export function getModelGroup(): THREE.Group | null {
@@ -255,16 +268,6 @@ export const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 9999);
 
 export function setClipHeight(h: number) {
   clipPlane.constant = h;
-}
-
-export function setWireframe(on: boolean) {
-  if (!cached) return;
-  cached.traverse((obj: any) => {
-    if (obj.isMesh && obj.material) {
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      mats.forEach((m: any) => { m.wireframe = on; });
-    }
-  });
 }
 
 const HIGHLIGHT_COLOR = new THREE.Color(0xfbbf24);
@@ -817,14 +820,39 @@ export function IfcModel({
           // offset, both surfaces still fight; with different offsets one
           // wins consistently.
           const jitter = 1 + ((mesh.id & 7));
-          if ((m as any).__zPatchVer === 2 && (m as any).polygonOffsetUnits === jitter) continue;
-          (m as any).polygonOffset = true;
-          (m as any).polygonOffsetFactor = 4;
-          (m as any).polygonOffsetUnits = jitter;
-          (m as any).clippingPlanes = [clipPlane];
-          (m as any).clipShadows = true;
-          (m as any).needsUpdate = true;
-          (m as any).__zPatchVer = 2;
+          if ((m as any).__zPatchVer !== 2 || (m as any).polygonOffsetUnits !== jitter) {
+            (m as any).polygonOffset = true;
+            (m as any).polygonOffsetFactor = 4;
+            (m as any).polygonOffsetUnits = jitter;
+            (m as any).clippingPlanes = [clipPlane];
+            (m as any).clipShadows = true;
+            (m as any).needsUpdate = true;
+            (m as any).__zPatchVer = 2;
+          }
+          // Live wireframe toggle — applies to streamed tiles as they mount.
+          if ((m as any).wireframe !== wireframeEnabled) {
+            (m as any).wireframe = wireframeEnabled;
+            (m as any).needsUpdate = true;
+          }
+        }
+
+        // Edges (outline) overlay — generate once per mesh, attach as child line.
+        if (!attachedEdgesPerMesh.has(mesh) && mesh.geometry?.attributes?.position) {
+          try {
+            const edgeGeom = new THREE.EdgesGeometry(mesh.geometry, 25);
+            const edgeMat = new THREE.LineBasicMaterial({
+              color: 0x111827,
+              transparent: true,
+              opacity: 0.55,
+              clippingPlanes: [clipPlane],
+            });
+            const lines = new THREE.LineSegments(edgeGeom, edgeMat);
+            lines.renderOrder = 2;
+            lines.visible = edgesEnabled;
+            mesh.add(lines);
+            edgeLines.push(lines);
+            attachedEdgesPerMesh.add(mesh);
+          } catch {}
         }
       });
     }

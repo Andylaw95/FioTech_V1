@@ -20,6 +20,7 @@ import { Severity } from '@/app/components/demo/bim3d/mockData';
 import { useSensorPositions } from '@/app/components/demo/bim3d/useSensorPositions';
 import { useZoneSensorAssignments } from '@/app/components/demo/bim3d/useZoneSensorAssignments';
 import { useLiveDeviceStream } from '@/app/components/demo/bim3d/useLiveDeviceStream';
+import { usePropertyDevices } from '@/app/components/demo/bim3d/usePropertyDevices';
 import { ZoneLabels3D } from '@/app/components/demo/bim3d/ZoneLabels3D';
 import { BimToolsPanel, BimToolsState } from '@/app/components/demo/bim3d/BimToolsPanel';
 import { PickerOverlay } from '@/app/components/demo/bim3d/PickerOverlay';
@@ -332,6 +333,7 @@ export function Bim3DStage({
   const { alarms, readings } = useLiveDeviceStream({ enableAlarmSpawn: false, enableMock: false });
   // Sensor positions with localStorage overrides (drag-to-place fallback)
   const { sensors: liveSensors, overrides: positionOverrides } = useSensorPositions();
+  const { devices: propertyDevices } = usePropertyDevices(propertyId ?? '');
   // Zone-label-driven clustering
   const { clusters, labelBySensorId } = useZoneSensorAssignments(
     modelKey,
@@ -508,7 +510,7 @@ export function Bim3DStage({
         <PickedElementCard
           picked={picked}
           modelKey={modelKey}
-          devices={liveSensors}
+          devices={propertyDevices}
           onClose={() => { setPicked(null); highlightExpressId(null); }}
           onLabelChange={() => setLabelsVersion(v => v + 1)}
         />

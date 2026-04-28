@@ -8,7 +8,7 @@ import {
   updateLabel,
   deleteLabelById,
 } from './zoneLabels';
-import { MOCK_SENSORS, Sensor } from './mockData';
+import { Sensor } from './mockData';
 
 export interface PickedInfo {
   expressId: number;
@@ -37,7 +37,7 @@ export function PickedElementCard({
   modelKey: string;
   onClose: () => void;
   onLabelChange?: (label: ZoneLabel | null) => void;
-  /** Real property devices. Falls back to MOCK_SENSORS if not provided. */
+  /** Real property devices (live, scoped to current property). */
   devices?: Sensor[];
 }) {
   const [editing, setEditing] = useState<boolean>(!!picked.editLabelId);
@@ -222,7 +222,7 @@ export function PickedElementCard({
             </span>
             <div className="mt-1 max-h-32 overflow-y-auto rounded bg-slate-800/60 border border-white/10 divide-y divide-white/5">
               {(() => {
-                const list = (devices && devices.length > 0) ? devices : MOCK_SENSORS;
+                const list = devices ?? [];
                 if (list.length === 0) {
                   return (
                     <div className="px-2 py-3 text-[11px] text-white/40 text-center">

@@ -200,8 +200,8 @@ export function BimToolsPanel({
             />
             <div className="flex gap-1 mt-1">
               <button onClick={() => setState({ ...state, clipHeight: state.maxHeight })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="Show entire model">All</button>
-              <button onClick={() => setState({ ...state, clipHeight: 1.0 })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="Architectural floor-plan view (1.0 m)">Roof</button>
-              <button onClick={() => setState({ ...state, clipHeight: 1.4 })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="MEP service-level view (1.4 m)">Pipe&amp;Wire</button>
+              <button onClick={() => setState({ ...state, clipHeight: 0.9 })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="Architectural floor-plan view (0.9 m)">Roof</button>
+              <button onClick={() => setState({ ...state, clipHeight: 1.3 })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="MEP service-level view (1.3 m)">Pipe&amp;Wire</button>
             </div>
           </div>
 
