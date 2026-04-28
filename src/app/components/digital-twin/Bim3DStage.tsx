@@ -410,7 +410,7 @@ export function Bim3DStage({
       )}
 
       {/* Top-left: tiny toggle pills for tools / zones */}
-      <div className="absolute top-3 left-3 z-30 flex flex-col gap-1.5 pointer-events-auto">
+      <div className="absolute top-3 left-3 z-30 flex flex-col max-sm:flex-row max-sm:flex-wrap gap-1.5 pointer-events-auto max-sm:max-w-[calc(100vw-1.5rem)]">
         <button
           onClick={() => setShowTools(v => !v)}
           title="Layers, wireframe, edges, ghost mode, clip slider, fit/reset/isolate view"

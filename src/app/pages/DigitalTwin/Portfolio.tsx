@@ -70,6 +70,8 @@ export function Portfolio() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>();
   const stream = usePortfolioStream();
+  // Phone: bottom-sheet alarms collapsed by default; desktop: always shown.
+  const [alarmsOpen, setAlarmsOpen] = useState(false);
 
   const loadProperties = async () => {
     try {
@@ -109,13 +111,13 @@ export function Portfolio() {
 
   return (
     <div className="relative h-[calc(100vh-5rem)] w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-950">
-      <div className="absolute left-0 right-0 top-0 z-[500] flex items-center justify-between gap-4 bg-gradient-to-b from-slate-950/95 to-transparent px-5 py-3">
-        <div>
-          <h1 className="text-lg font-semibold text-white">Intelligent Operations Centre</h1>
-          <p className="text-xs text-slate-400">
-            Portfolio View · {properties.length} properties · {stream.globalPending} pending safety alarms
+      <div className="absolute left-0 right-0 top-0 z-[500] flex items-center justify-between gap-2 sm:gap-4 bg-gradient-to-b from-slate-950/95 to-transparent px-3 sm:px-5 py-2 sm:py-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-sm sm:text-lg font-semibold text-white truncate">Intelligent Operations Centre</h1>
+          <p className="text-[10px] sm:text-xs text-slate-400 truncate">
+            {properties.length} properties · {stream.globalPending} pending
             {stream.globalCritical > 0 && (
-              <span className="ml-2 rounded bg-red-600/20 px-2 py-0.5 text-red-400">
+              <span className="ml-1.5 rounded bg-red-600/20 px-1.5 py-0.5 text-red-400">
                 {stream.globalCritical} critical
               </span>
             )}
@@ -126,9 +128,9 @@ export function Portfolio() {
             loadProperties();
             stream.refresh();
           }}
-          className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800"
+          className="flex items-center gap-1 rounded-md border border-slate-700 bg-slate-900/60 px-2 sm:px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-800 shrink-0"
         >
-          <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          <RefreshCw className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
 
@@ -173,14 +175,23 @@ export function Portfolio() {
         ))}
       </MapContainer>
 
-      <div className="absolute right-4 top-16 z-[500] w-[320px]">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/80 backdrop-blur-sm shadow-lg">
-          <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-2">
+      {/* Alarms panel: floating right card on desktop, collapsible bottom sheet on phone */}
+      <div className="absolute z-[500]
+        right-4 top-16 w-[320px]
+        max-sm:left-2 max-sm:right-2 max-sm:top-auto max-sm:bottom-2 max-sm:w-auto">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/90 backdrop-blur-sm shadow-lg">
+          <button
+            onClick={() => setAlarmsOpen(o => !o)}
+            className="flex w-full items-center gap-2 border-b border-slate-800 px-3 sm:px-4 py-2 text-left sm:cursor-default"
+          >
             <Activity className="h-4 w-4 text-emerald-400" />
             <span className="text-xs font-semibold text-white">Live Safety Alarms</span>
-            {stream.loading && <span className="ml-auto text-[10px] text-slate-500">loading…</span>}
-          </div>
-          <div className="max-h-[50vh] overflow-y-auto divide-y divide-slate-800">
+            <span className="ml-auto flex items-center gap-2 text-[10px] text-slate-500">
+              {stream.loading && <span>loading…</span>}
+              <span className="sm:hidden">{alarmsOpen ? '▾' : '▸'}</span>
+            </span>
+          </button>
+          <div className={`max-h-[50vh] max-sm:max-h-[35vh] overflow-y-auto divide-y divide-slate-800 ${alarmsOpen ? '' : 'hidden sm:block'}`}>
             {feed.length === 0 && (
               <div className="px-4 py-6 text-center text-xs text-slate-500">
                 No safety alarms — all clear ✓
@@ -194,7 +205,7 @@ export function Portfolio() {
                     `/digital-twin-v2/${encodeURIComponent(a.property_id)}?alarm=${a.id}`,
                   )
                 }
-                className="w-full px-4 py-2 text-left hover:bg-slate-800/60"
+                className="w-full px-3 sm:px-4 py-2 text-left hover:bg-slate-800/60"
               >
                 <div className="flex items-start gap-2">
                   <AlarmIcon

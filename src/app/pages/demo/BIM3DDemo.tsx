@@ -12,7 +12,7 @@ import { CameraFlyTo } from '@/app/components/demo/bim3d/CameraFlyTo';
 import { useLiveDeviceStream } from '@/app/components/demo/bim3d/useLiveDeviceStream';
 import { LiveStatusBadge } from '@/app/components/demo/bim3d/LiveStatusBadge';
 import { MOCK_SENSORS, Alarm, Severity } from '@/app/components/demo/bim3d/mockData';
-import { Layers3, Activity, ArrowLeft } from 'lucide-react';
+import { Layers3, Activity, ArrowLeft, Menu } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 function resolveSensorSeverity(sensorId: string, alarms: Alarm[]): Severity {
@@ -34,6 +34,8 @@ export function BIM3DDemo() {
   const [showWalls, setShowWalls] = useState(true);
   const [flyTarget, setFlyTarget] = useState<[number, number, number] | null>(null);
   const [toast, setToast] = useState<Alarm | null>(null);
+  // Phone: control/alarm aside is a left drawer toggled from header.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const selectedSensor = useMemo(
     () => MOCK_SENSORS.find(s => s.id === selectedSensorId) ?? null,
@@ -98,8 +100,18 @@ export function BIM3DDemo() {
     : MOCK_SENSORS;
 
   return (
-    <div className="flex bg-slate-950 text-white -m-3 sm:-m-4 lg:-m-6 h-[calc(100vh-4rem)] overflow-hidden">
-      <aside className="w-96 flex-shrink-0 flex flex-col border-r border-slate-700 bg-slate-900/95">
+    <div className="flex bg-slate-950 text-white -m-3 sm:-m-4 lg:-m-6 h-[calc(100vh-4rem)] overflow-hidden relative">
+      {/* Mobile drawer backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      <aside className={`flex flex-col border-r border-slate-700 bg-slate-900/95 transition-transform duration-300
+        max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50 max-lg:w-[88vw] max-lg:max-w-sm
+        lg:w-96 lg:flex-shrink-0
+        ${sidebarOpen ? 'translate-x-0' : 'max-lg:-translate-x-full'}`}>
         <div className="px-4 py-3 border-b border-slate-700 bg-gradient-to-r from-slate-900 to-slate-800">
           <div className="flex items-center gap-2">
             {propertyId && (
@@ -150,6 +162,14 @@ export function BIM3DDemo() {
       </aside>
 
       <div className="flex-1 relative min-w-0">
+        {/* Phone-only: drawer toggle */}
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="absolute top-3 left-3 z-30 lg:hidden p-2 rounded-md bg-slate-900/85 hover:bg-slate-900 border border-slate-700 text-slate-100 shadow-lg backdrop-blur"
+          title="Show controls & alarms"
+        >
+          <Menu size={16} />
+        </button>
         <LiveStatusBadge mode={mode} counts={counts} lastFetch={lastFetch} />
         <AnimatePresence>
           {toast && (
