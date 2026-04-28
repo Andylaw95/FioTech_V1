@@ -218,7 +218,7 @@ export function SensorClusterPin({
                       display: 'flex',
                       alignItems: 'center',
                       gap: 7,
-                      opacity: online ? 1 : 0.55,
+                      opacity: 1,
                       transition: 'background 0.15s',
                     }}
                     onMouseEnter={(e) => {

@@ -77,7 +77,7 @@ export function SensorPin({ sensor, severity, selected, onClick, showLabel = tru
             pointerEvents: 'none',
             fontFamily: 'system-ui, sans-serif',
             fontWeight: 600,
-            opacity: online ? 1 : 0.55,
+            opacity: 1,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',

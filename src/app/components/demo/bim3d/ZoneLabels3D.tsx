@@ -208,7 +208,7 @@ export function ZoneLabels3D({
                         style={{
                           borderLeft: `3px solid ${isSel ? '#22d3ee' : 'transparent'}`,
                           background: isSel ? 'rgba(34,211,238,0.16)' : 'transparent',
-                          opacity: online ? 1 : 0.5,
+                          opacity: 1,
                         }}
                       >
                         <span style={{ fontSize: 13, lineHeight: 1, flexShrink: 0 }}>{iconFor(s)}</span>
