@@ -508,6 +508,7 @@ export function Bim3DStage({
         <PickedElementCard
           picked={picked}
           modelKey={modelKey}
+          devices={liveSensors}
           onClose={() => { setPicked(null); highlightExpressId(null); }}
           onLabelChange={() => setLabelsVersion(v => v + 1)}
         />

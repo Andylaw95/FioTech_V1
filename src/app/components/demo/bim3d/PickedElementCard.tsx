@@ -8,7 +8,7 @@ import {
   updateLabel,
   deleteLabelById,
 } from './zoneLabels';
-import { MOCK_SENSORS } from './mockData';
+import { MOCK_SENSORS, Sensor } from './mockData';
 
 export interface PickedInfo {
   expressId: number;
@@ -31,11 +31,14 @@ export function PickedElementCard({
   modelKey,
   onClose,
   onLabelChange,
+  devices,
 }: {
   picked: PickedInfo;
   modelKey: string;
   onClose: () => void;
   onLabelChange?: (label: ZoneLabel | null) => void;
+  /** Real property devices. Falls back to MOCK_SENSORS if not provided. */
+  devices?: Sensor[];
 }) {
   const [editing, setEditing] = useState<boolean>(!!picked.editLabelId);
   const [draft, setDraft] = useState<Partial<ZoneLabel>>(EMPTY_DRAFT);
@@ -212,26 +215,40 @@ export function PickedElementCard({
             />
           </label>
           <div>
-            <span className="text-white/60 text-[10px] uppercase tracking-wider">📡 Assign devices to this zone</span>
+            <span className="text-white/60 text-[10px] uppercase tracking-wider">
+              📡 Assign devices to this zone {devices && devices.length > 0 && (
+                <span className="text-white/40 normal-case">({devices.length} in property)</span>
+              )}
+            </span>
             <div className="mt-1 max-h-32 overflow-y-auto rounded bg-slate-800/60 border border-white/10 divide-y divide-white/5">
-              {MOCK_SENSORS.map((s) => {
-                const checked = draft.assignedDeviceIds?.includes(s.id) ?? false;
-                return (
-                  <label key={s.id} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-white/5">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleDevice(s.id)}
-                      className="accent-cyan-400"
-                    />
-                    <span className="flex-1 text-[11px] truncate">
-                      <span className="text-cyan-300 font-mono">{s.type}</span>
-                      <span className="text-white/70 ml-1.5">{s.name}</span>
-                    </span>
-                    <span className="text-[9px] text-white/40">{s.subsystem}</span>
-                  </label>
-                );
-              })}
+              {(() => {
+                const list = (devices && devices.length > 0) ? devices : MOCK_SENSORS;
+                if (list.length === 0) {
+                  return (
+                    <div className="px-2 py-3 text-[11px] text-white/40 text-center">
+                      No devices found in this property yet.
+                    </div>
+                  );
+                }
+                return list.map((s) => {
+                  const checked = draft.assignedDeviceIds?.includes(s.id) ?? false;
+                  return (
+                    <label key={s.id} className="flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-white/5">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleDevice(s.id)}
+                        className="accent-cyan-400"
+                      />
+                      <span className="flex-1 text-[11px] truncate">
+                        <span className="text-cyan-300 font-mono">{s.type}</span>
+                        <span className="text-white/70 ml-1.5">{s.name}</span>
+                      </span>
+                      <span className="text-[9px] text-white/40">{s.subsystem}</span>
+                    </label>
+                  );
+                });
+              })()}
             </div>
           </div>
           <div className="flex gap-2 pt-1">
