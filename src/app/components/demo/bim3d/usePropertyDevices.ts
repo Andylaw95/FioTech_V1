@@ -17,14 +17,23 @@ const BIM_SLUG_TO_PROPERTY_NAMES: Record<string, string[]> = {
 };
 
 function inferType(d: Device): Sensor['type'] {
+  const caps = ((d as any).capabilities ?? []).map((c: string) => String(c).toLowerCase());
   const hay = `${d.type ?? ''} ${d.model ?? ''} ${d.manufacturer ?? ''} ${d.name ?? ''}`.toLowerCase();
-  if (hay.includes('hy108') || hay.includes('noise') || hay.includes('sound')) return 'HY108-1';
-  if (hay.includes('ld-5r') || hay.includes('ld5r') || hay.includes('dust') || hay.includes('pm')) return 'LD-5R';
-  if (hay.includes('iaq') || hay.includes('co2')) return 'IAQ';
-  if (hay.includes('temp') || hay.includes('thermo')) return 'Temp';
+  // CCTV / Lift first (most specific)
   if (hay.includes('cctv') || hay.includes('camera')) return 'CCTV';
   if (hay.includes('lift') || hay.includes('elevator')) return 'Lift';
-  return 'Temp';
+  // Noise meters
+  if (hay.includes('hy108') || hay.includes('ws302') || hay.includes('noise') || hay.includes('sound') || hay.includes('decibel')) return 'HY108-1';
+  // Dust / particulate
+  if (hay.includes('ld-5r') || hay.includes('ld5r') || hay.includes('dust') || hay.includes('particulate')) return 'LD-5R';
+  if (caps.some((c: string) => c === 'pm2_5' || c === 'pm10' || c === 'tsp')) return 'LD-5R';
+  // Ambience / IAQ — AM308L, multi-gas, CO2 etc.
+  if (hay.includes('am308') || hay.includes('ambience') || hay.includes('ambient') || hay.includes('environment') || hay.includes('iaq') || hay.includes('co2') || hay.includes('air quality')) return 'IAQ';
+  if (caps.some((c: string) => c === 'co2' || c === 'tvoc' || c === 'hcho')) return 'IAQ';
+  // Pure temperature/thermo
+  if (hay.includes('thermo') || hay.includes('temperature')) return 'Temp';
+  // Default to ambience (closer to reality than Temp for this property)
+  return 'IAQ';
 }
 
 function inferSubsystem(t: Sensor['type']): Subsystem {

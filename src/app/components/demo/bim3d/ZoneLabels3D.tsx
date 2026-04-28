@@ -196,7 +196,7 @@ export function ZoneLabels3D({
                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}
                         >
-                          {s.type}
+                          {s.name || s.type}
                         </span>
                         <span
                           style={{

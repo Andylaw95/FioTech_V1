@@ -223,7 +223,7 @@ export function SensorClusterPin({
                         whiteSpace: 'nowrap',
                       }}
                     >
-                      {s.type}
+                      {s.name || s.type}
                     </span>
                     <span
                       style={{
