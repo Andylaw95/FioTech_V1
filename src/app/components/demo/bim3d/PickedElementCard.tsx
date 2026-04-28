@@ -263,8 +263,8 @@ export function PickedElementCard({
                         className="accent-cyan-400"
                       />
                       <span className="flex-1 text-[11px] truncate">
-                        <span className="text-cyan-300 font-mono">{s.type}</span>
-                        <span className="text-white/70 ml-1.5">{s.name}</span>
+                        <span className="text-white/90 font-medium">{s.name}</span>
+                        <span className="ml-1.5 text-[9px] text-cyan-300/80 font-mono uppercase">{s.type}</span>
                       </span>
                       <span className="text-[9px] text-white/40">{s.subsystem}</span>
                     </label>

@@ -2,6 +2,25 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, Device } from '@/app/utils/api';
 import { Alarm, MOCK_SENSORS, Sensor, Severity } from './mockData';
 
+/**
+ * Infer the right Sensor['type'] bucket for a real Device. Mirrors the
+ * adapter logic in usePropertyDevices.inferType — kept duplicated to avoid
+ * a circular import between live-stream and property-devices hooks.
+ */
+function inferTypeFromDevice(d: Device): Sensor['type'] {
+  const caps = (((d as any).capabilities ?? []) as string[]).map((c) => String(c).toLowerCase());
+  const hay = `${d.type ?? ''} ${(d as any).model ?? ''} ${(d as any).manufacturer ?? ''} ${d.name ?? ''}`.toLowerCase();
+  if (hay.includes('cctv') || hay.includes('camera')) return 'CCTV';
+  if (hay.includes('lift') || hay.includes('elevator')) return 'Lift';
+  if (hay.includes('hy108') || hay.includes('ws302') || hay.includes('noise') || hay.includes('sound') || hay.includes('decibel')) return 'HY108-1';
+  if (hay.includes('ld-5r') || hay.includes('ld5r') || hay.includes('dust') || hay.includes('particulate')) return 'LD-5R';
+  if (caps.some((c) => c === 'pm2_5' || c === 'pm10' || c === 'tsp')) return 'LD-5R';
+  if (hay.includes('am308') || hay.includes('ambience') || hay.includes('ambient') || hay.includes('environment') || hay.includes('iaq') || hay.includes('co2') || hay.includes('air quality')) return 'IAQ';
+  if (caps.some((c) => c === 'co2' || c === 'tvoc' || c === 'hcho')) return 'IAQ';
+  if (hay.includes('thermo') || hay.includes('temperature')) return 'Temp';
+  return 'IAQ';
+}
+
 export type StreamMode = 'connecting' | 'live' | 'mock';
 
 export interface LiveReading {
@@ -78,6 +97,38 @@ function readingFromDevice(sensor: Sensor, device: Device | null, now: number): 
   if (t && metrics[t.field] != null && Number.isFinite(metrics[t.field])) {
     const value = Number(metrics[t.field]);
     primary = { label: t.label, value, unit: t.unit, severity: severityFromValue(sensor.type, value) };
+  } else if (metrics && Object.keys(metrics).length > 0) {
+    // Fallback: if the type's preferred field isn't decoded, surface the
+    // first sensible numeric metric so the zone card never shows "—".
+    // Priority order tries to pick the "headline" reading per device class.
+    const FALLBACK_ORDER = [
+      'sound_level_leq', 'sound_level_inst', 'laeq', 'leq',
+      'co2', 'pm2_5', 'pm10', 'tsp', 'tvoc',
+      'temperature', 'temp', 'humidity',
+    ];
+    const UNITS: Record<string, { unit: string; label: string }> = {
+      sound_level_leq: { unit: 'dB', label: 'LAeq' },
+      sound_level_inst: { unit: 'dB', label: 'LAF' },
+      laeq: { unit: 'dB', label: 'LAeq' },
+      leq: { unit: 'dB', label: 'LAeq' },
+      co2: { unit: 'ppm', label: 'CO₂' },
+      pm2_5: { unit: 'µg/m³', label: 'PM2.5' },
+      pm10: { unit: 'µg/m³', label: 'PM10' },
+      tsp: { unit: 'µg/m³', label: 'TSP' },
+      tvoc: { unit: 'ppb', label: 'TVOC' },
+      temperature: { unit: '°C', label: 'Temp' },
+      temp: { unit: '°C', label: 'Temp' },
+      humidity: { unit: '%', label: 'RH' },
+    };
+    let key = FALLBACK_ORDER.find((k) => metrics[k] != null && Number.isFinite(metrics[k]));
+    if (!key) {
+      key = Object.keys(metrics).find((k) => Number.isFinite(metrics[k]));
+    }
+    if (key) {
+      const value = Number(metrics[key]);
+      const meta = UNITS[key] ?? { unit: '', label: key };
+      primary = { label: meta.label, value, unit: meta.unit, severity: 'normal' };
+    }
   }
 
   return {
@@ -331,12 +382,14 @@ export function useLiveDeviceStream(options: Options = {}) {
         }
 
         // Cover real devices that aren't in the MOCK_SENSORS list (e.g. the
-        // newly added HY108-1 unit). Synthesize a minimal reading from the
-        // device's own currentReading so zone cards still show a value.
+        // newly added HY108-1 unit, AM308L, WS302). Synthesize a minimal
+        // sensor with the *correctly inferred* type so readingFromDevice
+        // pulls the right metric (CO₂ for IAQ, dB for HY108-1, etc.).
         for (const device of devices) {
           if (newReadings.has(device.id)) continue;
+          const inferredType = inferTypeFromDevice(device);
           const reading = readingFromDevice(
-            { id: device.id, name: device.name, type: 'Temp', subsystem: 'Environment', x: 0, y: 0, z: 0 } as any,
+            { id: device.id, name: device.name, type: inferredType, subsystem: 'Environment', x: 0, y: 0, z: 0 } as any,
             device,
             now,
           );

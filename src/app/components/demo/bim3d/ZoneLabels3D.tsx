@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Html } from '@react-three/drei';
 import { getAllLabels, ZoneLabel } from './zoneLabels';
 import { type Sensor, type Severity, severityColor } from './mockData';
@@ -78,14 +78,19 @@ export function ZoneLabels3D({
 
   useEffect(() => { reload(); }, [reload, version]);
 
-  // Auto-expand the zone that owns the externally-selected sensor.
-  // Uses functional updates + idempotent toggle so stale closures don't cause loops.
+  // Auto-expand the zone that owns the externally-selected sensor — but
+  // ONLY when the selection actually changes. Without the prevRef guard,
+  // every render with the same selectedSensorId re-triggers the expand,
+  // which clobbers the user's manual collapse and makes the card seem
+  // un-collapsible.
+  const prevSelectedRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
+    if (prevSelectedRef.current === selectedSensorId) return;
+    prevSelectedRef.current = selectedSensorId;
     if (!selectedSensorId || !clusters) return;
     const owner = clusters.find((c) => c.sensors.some((s) => s.id === selectedSensorId));
     if (!owner) return;
     if (onToggleExpanded) {
-      // Parent owns the Set; only toggle if currently collapsed (idempotent).
       if (!expandedIds.has(owner.labelId)) onToggleExpanded(owner.labelId);
     } else {
       setInternalExpandedIds((prev) => {
