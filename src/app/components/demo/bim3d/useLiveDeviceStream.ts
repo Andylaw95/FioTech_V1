@@ -86,8 +86,43 @@ function matchDevice(sensor: Sensor, devices: Device[]): Device | null {
   }) ?? null;
 }
 
+const METRIC_ALIASES: Record<string, string> = {
+  relative_humidity: 'humidity',
+  rh: 'humidity',
+  barometric_pressure: 'pressure',
+  baro_pressure: 'pressure',
+  temp: 'temperature',
+  pm25: 'pm2_5',
+  pm_25: 'pm2_5',
+  laeq: 'sound_level_leq',
+  leq: 'sound_level_leq',
+  lafmax: 'sound_level_lmax',
+  lafmin: 'sound_level_lmin',
+  laf: 'sound_level_inst',
+  lcpeak: 'sound_level_lcpeak',
+};
+
+/**
+ * LoRa decoders (Cayenne LPP, ChirpStack JS codecs) suffix metric keys with
+ * the channel id, e.g. `temperature_3`, `co2_7`, `pm2_5_11`. We normalize
+ * to bare keys so downstream consumers (slideshow, threshold lookup,
+ * METRIC_LABEL lookup) work uniformly across vendors. Also folds in common
+ * aliases (relative_humidity → humidity, etc.).
+ */
+function normalizeMetrics(raw: Record<string, unknown>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [rawKey, rawVal] of Object.entries(raw ?? {})) {
+    const v = Number(rawVal);
+    if (!Number.isFinite(v)) continue;
+    const stripped = rawKey.replace(/_\d+$/, '').toLowerCase();
+    const key = METRIC_ALIASES[stripped] ?? stripped;
+    if (out[key] === undefined) out[key] = v;
+  }
+  return out;
+}
+
 function readingFromDevice(sensor: Sensor, device: Device | null, now: number): LiveReading {
-  const metrics = (device?.decoded ?? {}) as Record<string, number>;
+  const metrics = normalizeMetrics((device?.decoded ?? {}) as Record<string, unknown>);
   const lastSeen = device?.lastSeen ?? device?.lastUpdate ?? device?.decodedAt ?? null;
   const ageSec = lastSeen ? Math.max(0, Math.round((now - new Date(lastSeen).getTime()) / 1000)) : null;
   const online = ageSec !== null && ageSec < OFFLINE_THRESHOLD_SEC && (device?.status ?? 'online') !== 'offline';
