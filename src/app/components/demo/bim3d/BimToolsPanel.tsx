@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORY_GROUPS, DISCIPLINES, CATEGORIES_BY_DISCIPLINE, type Discipline } from './IfcModel';
+import { ClipPresets, loadClipPresets, saveClipPresets } from './clipPresets';
 
 export interface BimToolsState {
   visibleCats: Set<string>;
@@ -36,6 +37,18 @@ export function BimToolsPanel({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [section, setSection] = useState<'view' | 'cats' | 'orient'>('view');
+
+  // Editable Y-clip presets (persisted in localStorage). Lets the user dial
+  // in their own Roof / Pipe&Wire heights per their building's floor plate.
+  const [presets, setPresets] = useState<ClipPresets>(() => loadClipPresets());
+  const [editingPresets, setEditingPresets] = useState(false);
+  const updatePreset = (k: keyof ClipPresets, v: number) => {
+    if (!Number.isFinite(v)) return;
+    const clamped = Math.max(0, Math.min(state.maxHeight, v));
+    const next = { ...presets, [k]: +clamped.toFixed(2) };
+    setPresets(next);
+    saveClipPresets(next);
+  };
 
   // Draggable position (top-right by default; offset from right edge)
   const [pos, setPos] = useState<{ top: number; right: number }>(() => {
@@ -187,7 +200,16 @@ export function BimToolsPanel({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-[11px] text-white/70 font-semibold">Section (Y clip)</label>
-              <span className="text-[10px] font-mono text-cyan-300">{state.clipHeight.toFixed(1)}m</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono text-cyan-300">{state.clipHeight.toFixed(1)}m</span>
+                <button
+                  onClick={() => setEditingPresets(v => !v)}
+                  title={editingPresets ? 'Done editing presets' : 'Edit Roof / Pipe&Wire heights'}
+                  className={`text-[10px] px-1.5 py-0.5 rounded ${editingPresets ? 'bg-cyan-500/30 text-cyan-100' : 'bg-white/5 text-white/60 hover:bg-white/10'}`}
+                >
+                  {editingPresets ? '✓' : '✎'}
+                </button>
+              </div>
             </div>
             <input
               type="range"
@@ -198,10 +220,55 @@ export function BimToolsPanel({
               onChange={(e) => setState({ ...state, clipHeight: parseFloat(e.target.value) })}
               className="w-full accent-cyan-400"
             />
-            <div className="flex gap-1 mt-1">
-              <button onClick={() => setState({ ...state, clipHeight: state.maxHeight })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="Show entire model">All</button>
-              <button onClick={() => setState({ ...state, clipHeight: 0.9 })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="Architectural floor-plan view (0.9 m)">Roof</button>
-              <button onClick={() => setState({ ...state, clipHeight: 1.3 })} className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10" title="MEP service-level view (1.3 m)">Pipe&amp;Wire</button>
+            <div className="flex gap-1 mt-1 items-stretch">
+              <button
+                onClick={() => setState({ ...state, clipHeight: state.maxHeight })}
+                className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10"
+                title="Show entire model"
+              >
+                All
+              </button>
+              {(['roof', 'pipeWire'] as const).map((k) => {
+                const label = k === 'roof' ? 'Roof' : 'Pipe&Wire';
+                const tooltip = k === 'roof'
+                  ? 'Architectural floor-plan view'
+                  : 'MEP service-level view';
+                return editingPresets ? (
+                  <div
+                    key={k}
+                    className="flex-1 flex items-center gap-0.5 text-[10px] bg-white/5 rounded px-1 py-0.5"
+                    title={tooltip}
+                  >
+                    <span className="text-white/60 truncate">{label}</span>
+                    <input
+                      type="number"
+                      step={0.1}
+                      min={0}
+                      max={state.maxHeight}
+                      value={presets[k]}
+                      onChange={(e) => updatePreset(k, parseFloat(e.target.value))}
+                      className="w-full bg-transparent text-cyan-200 font-mono text-[10px] outline-none border border-white/10 rounded px-1"
+                    />
+                    <span className="text-white/40">m</span>
+                    <button
+                      onClick={() => updatePreset(k, state.clipHeight)}
+                      title="Save current slider value as this preset"
+                      className="text-cyan-300/70 hover:text-cyan-200 px-0.5"
+                    >
+                      ⤒
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    key={k}
+                    onClick={() => setState({ ...state, clipHeight: presets[k] })}
+                    className="flex-1 text-[10px] py-1 rounded bg-white/5 hover:bg-white/10"
+                    title={`${tooltip} (${presets[k]}m) — click ✎ to edit`}
+                  >
+                    {label} <span className="text-white/40 font-mono">{presets[k]}m</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

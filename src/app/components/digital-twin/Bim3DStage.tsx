@@ -24,6 +24,7 @@ import { usePropertyDevices } from '@/app/components/demo/bim3d/usePropertyDevic
 import { useAuth } from '@/app/utils/AuthContext';
 import { ZoneLabels3D } from '@/app/components/demo/bim3d/ZoneLabels3D';
 import { BimToolsPanel, BimToolsState } from '@/app/components/demo/bim3d/BimToolsPanel';
+import { loadClipPresets } from '@/app/components/demo/bim3d/clipPresets';
 import { PickerOverlay } from '@/app/components/demo/bim3d/PickerOverlay';
 import { PickedElementCard, PickedInfo } from '@/app/components/demo/bim3d/PickedElementCard';
 import { ZoneListSidebar } from '@/app/components/demo/bim3d/ZoneListSidebar';
@@ -284,14 +285,22 @@ export function Bim3DStage({
 
   // Single-storey CCC 17F floor plate: hard-cap the clip slider to 0–2m so
   // the user can sweep through ceiling height. Applied immediately on URL
-  // change (doesn't wait for streaming bbox / onMetrics).
+  // change (doesn't wait for streaming bbox / onMetrics). Default the view
+  // to the user's saved Roof preset so 其士商業大廈 opens at floor-plan level.
+  const cccDefaultedRef = useRef<string | null>(null);
   useEffect(() => {
-    const isCcc = (ifcUrl ?? '').includes('ccc-17f');
+    const url = ifcUrl ?? '';
+    const isCcc = url.includes('ccc-17f');
     if (!isCcc) return;
+    const presets = loadClipPresets();
+    const initialClip = cccDefaultedRef.current === url
+      ? undefined  // already initialized for this URL — let user-driven changes stand
+      : Math.min(presets.roof, 2);
+    cccDefaultedRef.current = url;
     setTools(prev => ({
       ...prev,
       maxHeight: 2,
-      clipHeight: Math.min(prev.clipHeight, 2),
+      clipHeight: initialClip ?? Math.min(prev.clipHeight, 2),
     }));
   }, [ifcUrl]);
 
