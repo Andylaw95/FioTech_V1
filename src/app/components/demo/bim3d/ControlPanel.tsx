@@ -1,4 +1,4 @@
-import { Zap, RotateCcw, Maximize2, Eye, EyeOff } from 'lucide-react';
+import { Zap, RotateCcw, Maximize2, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 
 interface Props {
   showWalls: boolean;
@@ -44,6 +44,15 @@ export function ControlPanel({
           {showWalls ? <EyeOff size={12} /> : <Eye size={12} />}
           {showWalls ? 'Hide Building Wireframe' : 'Show Building Wireframe'}
         </button>
+        {import.meta.env.DEV && (
+          <button
+            onClick={() => { throw new Error('Sentry test error from BIM panel'); }}
+            className="col-span-2 px-2 py-1.5 bg-violet-700 hover:bg-violet-600 text-white text-xs font-medium rounded flex items-center justify-center gap-1.5 transition-colors border border-violet-600"
+            title="Dev-only: test Sentry error tracking"
+          >
+            <AlertTriangle size={12} /> Test Sentry
+          </button>
+        )}
       </div>
     </div>
   );
