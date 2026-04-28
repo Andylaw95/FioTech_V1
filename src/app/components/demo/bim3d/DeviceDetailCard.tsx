@@ -85,25 +85,25 @@ export function DeviceDetailCard({ sensor, alarms, reading, onClose }: Props) {
                       className="mb-2 p-2 rounded bg-slate-800/80 border-l-2 flex items-baseline gap-2"
                       style={{ borderColor: severityColor(reading.primary.severity) }}
                     >
-                      <span className="text-[10px] text-slate-400 uppercase tracking-wider">{reading.primary.label}</span>
+                      <span className="text-[10px] text-slate-200 uppercase tracking-wider font-semibold">{reading.primary.label}</span>
                       <span className="text-2xl font-bold font-mono text-white">{reading.primary.value.toFixed(1)}</span>
-                      <span className="text-[11px] text-slate-400">{reading.primary.unit}</span>
+                      <span className="text-[11px] text-slate-300">{reading.primary.unit}</span>
                     </div>
                   )}
                   {liveMetrics.length > 0 && (
                     <div className="grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-[11px]">
                       {liveMetrics.map(([k, v]) => (
                         <div key={k} className="flex items-baseline justify-between bg-slate-800/40 rounded px-1.5 py-0.5">
-                          <span className="text-slate-500">{METRIC_LABEL[k].label}</span>
+                          <span className="text-slate-300 font-semibold">{METRIC_LABEL[k].label}</span>
                           <span className="text-cyan-300">
-                            {Number(v).toFixed(1)}<span className="text-slate-500 ml-0.5">{METRIC_LABEL[k].unit}</span>
+                            {Number(v).toFixed(1)}<span className="text-slate-300 ml-0.5">{METRIC_LABEL[k].unit}</span>
                           </span>
                         </div>
                       ))}
                     </div>
                   )}
                   {(reading.battery !== null || reading.signal !== null) && (
-                    <div className="mt-1.5 flex gap-3 text-[10px] text-slate-400">
+                    <div className="mt-1.5 flex gap-3 text-[10px] text-slate-200 font-medium">
                       {reading.battery !== null && (
                         <span className="flex items-center gap-1"><Battery size={10} />{reading.battery}%</span>
                       )}

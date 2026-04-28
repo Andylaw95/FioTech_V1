@@ -87,39 +87,10 @@ function matchDevice(sensor: Sensor, devices: Device[]): Device | null {
 }
 
 function readingFromDevice(sensor: Sensor, device: Device | null, now: number): LiveReading {
-  let metrics = (device?.decoded ?? {}) as Record<string, number>;
+  const metrics = (device?.decoded ?? {}) as Record<string, number>;
   const lastSeen = device?.lastSeen ?? device?.lastUpdate ?? device?.decodedAt ?? null;
   const ageSec = lastSeen ? Math.max(0, Math.round((now - new Date(lastSeen).getTime()) / 1000)) : null;
   const online = ageSec !== null && ageSec < OFFLINE_THRESHOLD_SEC && (device?.status ?? 'online') !== 'offline';
-
-  // Capability-based synthesis: many devices are registered & "online" but
-  // haven't decoded an uplink yet (decoded === null). Surface a plausible
-  // baseline so the BIM zone card always shows a value instead of "—".
-  // Driven by the device.capabilities array (e.g. ['co2','temperature']).
-  if ((!metrics || Object.keys(metrics).length === 0) && device && online) {
-    const caps = (((device as any).capabilities ?? []) as string[]).map((c) => String(c).toLowerCase());
-    const synth: Record<string, number> = {};
-    const wobble = (base: number, j: number) => +(base + (Math.random() - 0.5) * 2 * j).toFixed(1);
-    for (const c of caps) {
-      switch (c) {
-        case 'sound_level':
-        case 'sound_level_leq':
-          synth.sound_level_leq = wobble(58, 8);
-          synth.sound_level_inst = synth.sound_level_leq + (Math.random() - 0.5) * 4;
-          break;
-        case 'co2': synth.co2 = wobble(620, 200); break;
-        case 'temperature': synth.temperature = wobble(23.5, 1.5); break;
-        case 'humidity': synth.humidity = wobble(55, 8); break;
-        case 'pm2_5': synth.pm2_5 = wobble(18, 8); break;
-        case 'pm10': synth.pm10 = wobble(28, 10); break;
-        case 'tvoc': synth.tvoc = wobble(180, 80); break;
-        case 'barometric_pressure': synth.barometric_pressure = wobble(1013, 5); break;
-        case 'illuminance': synth.illuminance = wobble(420, 120); break;
-        case 'water_leak': synth.water_leak = 0; break;
-      }
-    }
-    if (Object.keys(synth).length > 0) metrics = synth;
-  }
 
   const t = THRESHOLDS[sensor.type];
   let primary: LiveReading['primary'] = null;
@@ -382,6 +353,53 @@ export function useLiveDeviceStream(options: Options = {}) {
       try {
         const devices = await api.getDevices();
         if (cancelled) return;
+
+        // Fetch real per-device readings from /properties/:id/telemetry
+        // and merge into device.decoded by devEUI. The telemetry endpoint
+        // exposes the actual sensor_data store (LoRa uplinks), keyed by
+        // devEUI — devices.decoded itself is often null even for online
+        // hardware because the cron device-record path doesn't always
+        // mirror every uplink. This is the source of truth used by the
+        // Devices and Building Details pages.
+        try {
+          const properties = await api.getProperties();
+          const telemetries = await Promise.all(
+            properties.map((p) =>
+              api.getPropertyTelemetry(p.id).catch(() => null),
+            ),
+          );
+          const euiToDecoded = new Map<string, { decoded: Record<string, number>; receivedAt: string }>();
+          for (const t of telemetries) {
+            if (!t || !t.deviceReadings) continue;
+            for (const [eui, rd] of Object.entries(t.deviceReadings)) {
+              const r = rd as { decoded?: Record<string, number>; receivedAt?: string };
+              if (!r?.decoded || Object.keys(r.decoded).length === 0) continue;
+              const key = eui.toLowerCase();
+              const existing = euiToDecoded.get(key);
+              const ts = r.receivedAt ? new Date(r.receivedAt).getTime() : 0;
+              const existingTs = existing ? new Date(existing.receivedAt).getTime() : 0;
+              if (!existing || ts > existingTs) {
+                euiToDecoded.set(key, { decoded: r.decoded, receivedAt: r.receivedAt ?? new Date().toISOString() });
+              }
+            }
+          }
+          for (const d of devices) {
+            const eui = d.devEui?.toLowerCase();
+            if (!eui) continue;
+            const live = euiToDecoded.get(eui);
+            if (!live) continue;
+            const haveLocal = d.decoded && Object.keys(d.decoded).length > 0;
+            const localTs = d.decodedAt ? new Date(d.decodedAt).getTime() : 0;
+            const liveTs = new Date(live.receivedAt).getTime();
+            if (!haveLocal || liveTs > localTs) {
+              (d as any).decoded = live.decoded;
+              (d as any).decodedAt = live.receivedAt;
+              (d as any).lastSeen = (d as any).lastSeen ?? live.receivedAt;
+            }
+          }
+        } catch (telemetryErr) {
+          console.warn('[useLiveDeviceStream] telemetry merge failed:', telemetryErr);
+        }
 
         stopMock();
         const now = Date.now();
