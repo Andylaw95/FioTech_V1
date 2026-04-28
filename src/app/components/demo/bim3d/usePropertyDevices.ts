@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, Device } from '@/app/utils/api';
+import { api, Device, Property } from '@/app/utils/api';
 import type { Sensor, Subsystem } from './mockData';
 
 const POLL_MS = 30_000;
@@ -31,16 +31,28 @@ function inferSubsystem(t: Sensor['type']): Subsystem {
   }
 }
 
-function deviceMatchesProperty(d: Device, propertyId: string): boolean {
-  if (!propertyId) return true;
-  const pid = propertyId.toLowerCase();
+/**
+ * Match a device against a property using every plausible signal:
+ *   • slug (`ccc-17f`) on `propertyId` / `property_id`
+ *   • property name (`其士商業大廈`) on `building` / `location`
+ * String comparison is case-insensitive and accepts substring matches so that
+ * "其士商業大廈 — 17/F" still resolves to "其士商業大廈".
+ */
+function deviceMatchesProperty(d: Device, propertyId: string, propertyName?: string): boolean {
+  if (!propertyId && !propertyName) return true;
+  const needles = [propertyId, propertyName]
+    .filter((s): s is string => Boolean(s))
+    .map((s) => s.toLowerCase().trim());
   const haystack = [
     d.building,
+    d.location,
     (d as any).propertyId,
     (d as any).property_id,
-    d.location,
-  ].filter(Boolean).map((s) => String(s).toLowerCase());
-  return haystack.some((h) => h === pid || h.includes(pid));
+    (d as any).property,
+  ]
+    .filter(Boolean)
+    .map((s) => String(s).toLowerCase().trim());
+  return haystack.some((h) => needles.some((n) => h === n || h.includes(n) || n.includes(h)));
 }
 
 function deviceToSensor(d: Device): Sensor {
@@ -70,9 +82,17 @@ export function usePropertyDevices(propertyId: string) {
 
     const tick = async () => {
       try {
+        // 1. Resolve human name for this property so we can match Device.building.
+        let propertyName: string | undefined;
+        try {
+          const props: Property[] = await api.getProperties();
+          propertyName = props.find((p) => p.id === propertyId)?.name;
+        } catch {
+          // non-fatal; continue with id-only matching
+        }
         const all = await api.getDevices();
         if (cancelled) return;
-        const filtered = all.filter((d) => deviceMatchesProperty(d, propertyId));
+        const filtered = all.filter((d) => deviceMatchesProperty(d, propertyId, propertyName));
         setDevices(filtered.map(deviceToSensor));
         setError(null);
       } catch (e: any) {
