@@ -71,6 +71,12 @@ DROP POLICY IF EXISTS bzl_select                    ON public.bim_zone_labels;
 DROP POLICY IF EXISTS bzl_insert                    ON public.bim_zone_labels;
 DROP POLICY IF EXISTS bzl_update                    ON public.bim_zone_labels;
 DROP POLICY IF EXISTS bzl_delete                    ON public.bim_zone_labels;
+-- Drop legacy property-scoped policies from the prior phase; they were OR'ed
+-- with the new scope policies, which made every label visible to every user.
+DROP POLICY IF EXISTS bim_zone_labels_read_scoped   ON public.bim_zone_labels;
+DROP POLICY IF EXISTS bim_zone_labels_insert_scoped ON public.bim_zone_labels;
+DROP POLICY IF EXISTS bim_zone_labels_update_scoped ON public.bim_zone_labels;
+DROP POLICY IF EXISTS bim_zone_labels_delete_scoped ON public.bim_zone_labels;
 
 CREATE POLICY bzl_select ON public.bim_zone_labels
   FOR SELECT TO authenticated
