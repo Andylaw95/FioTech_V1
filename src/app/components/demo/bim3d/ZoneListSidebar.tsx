@@ -181,7 +181,7 @@ export function ZoneListSidebar({
         onPointerCancel={onDragEnd}
         onClick={() => setOpen(true)}
         style={{ left: pos.x, top: pos.y }}
-        className="absolute z-20 bg-slate-900/90 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-md shadow-lg ring-1 ring-cyan-400/40 cursor-grab active:cursor-grabbing select-none touch-none max-sm:!left-auto max-sm:!right-2 max-sm:!top-3"
+        className="absolute z-20 bg-slate-900/90 hover:bg-slate-900 text-white text-xs px-3 py-1.5 rounded-md shadow-lg ring-1 ring-cyan-400/40 cursor-grab active:cursor-grabbing select-none touch-none"
       >
         🗂 Zones ({labels.length})
       </button>
@@ -192,7 +192,7 @@ export function ZoneListSidebar({
     <div
       ref={panelRef}
       style={{ left: pos.x, top: pos.y, maxHeight: `calc(100vh - ${pos.y + 24}px)` }}
-      className="absolute z-20 w-[280px] flex flex-col rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-cyan-400/30 max-sm:!w-[calc(100vw-1rem)] max-sm:!left-2 max-sm:!right-2 max-sm:!top-auto max-sm:!bottom-2 max-sm:!max-h-[60vh]"
+      className="absolute z-20 w-[280px] flex flex-col rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-cyan-400/30"
     >
       <div
         onPointerDown={onDragStart}

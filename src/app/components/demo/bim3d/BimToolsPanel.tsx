@@ -127,7 +127,7 @@ export function BimToolsPanel({
 
   if (collapsed) {
     return (
-      <div className="absolute z-20 flex flex-col gap-1.5 max-sm:!top-3 max-sm:!right-2" style={{ top: pos.top, right: pos.right }}>
+      <div className="absolute z-20 flex flex-col gap-1.5" style={{ top: pos.top, right: pos.right }}>
         <button
           onClick={() => setCollapsed(false)}
           className="px-3 py-1.5 rounded-md bg-slate-900/85 text-white text-xs font-semibold shadow-lg backdrop-blur-sm hover:bg-slate-800"
@@ -148,7 +148,7 @@ export function BimToolsPanel({
 
   return (
     <div
-      className="absolute z-20 w-64 max-sm:!w-[calc(100vw-1rem)] max-sm:!left-2 max-sm:!right-2 max-sm:!top-auto max-sm:!bottom-2 max-sm:!max-h-[55vh] max-sm:overflow-y-auto rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-white/10 overflow-hidden"
+      className="absolute z-20 w-64 rounded-lg bg-slate-900/95 text-white shadow-2xl backdrop-blur ring-1 ring-white/10 overflow-hidden"
       style={{ top: pos.top, right: pos.right }}
     >
       {/* Header — draggable */}

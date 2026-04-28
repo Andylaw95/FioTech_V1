@@ -894,7 +894,7 @@ export function BIMTwins() {
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="absolute bottom-4 right-4 z-10 bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-3 w-56 max-sm:left-2 max-sm:right-2 max-sm:w-auto max-sm:max-h-[40vh] max-sm:overflow-y-auto"
+                className="absolute bottom-4 right-4 z-10 bg-white/95 backdrop-blur rounded-xl border border-slate-200 shadow-lg p-3 w-56"
               >
                 <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: activeZone?.color || '#64748b' }}>
                   {activeZone?.label || selectedTable}
