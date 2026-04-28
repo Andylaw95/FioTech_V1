@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 import { type Sensor, type Severity, severityColor } from './mockData';
 import type { ZoneLabel } from './zoneLabels';
 import type { LiveReading } from './useLiveDeviceStream';
+import { buildMetricSlides } from './metricUtils';
 
 interface Props {
   label: ZoneLabel;
@@ -58,6 +59,14 @@ export function SensorClusterPin({
   const cardZ = z + offsetZ;
   const headerColor = severityColor(worstSeverity);
   const [expanded, setExpanded] = useState(false);
+
+  // 5s shared slideshow ticker for rotating multi-metric values per device row.
+  const [slideTick, setSlideTick] = useState(0);
+  useEffect(() => {
+    if (!expanded) return;
+    const id = setInterval(() => setSlideTick((t) => t + 1), 5000);
+    return () => clearInterval(id);
+  }, [expanded]);
 
   // Memoized stem geometry — a thin cylinder rotated/positioned to span (x,y,z) → (cardX,cardY,cardZ)
   const stem = useMemo(() => {
@@ -189,6 +198,14 @@ export function SensorClusterPin({
                 const r = readings.get(s.id);
                 const isSel = selectedId === s.id;
                 const online = r?.online ?? false;
+                const slides = r ? buildMetricSlides(r.metrics ?? {}, null) : [];
+                const slide = slides.length > 0 ? slides[slideTick % slides.length] : null;
+                const display = slide
+                  ? `${slide.value.toFixed(1)} ${slide.unit}`
+                  : r?.primary
+                    ? `${r.primary.value.toFixed(1)} ${r.primary.unit}`
+                    : online ? '—' : '⊘';
+                const showCount = slides.length > 1;
                 return (
                   <div
                     key={s.id}
@@ -224,22 +241,28 @@ export function SensorClusterPin({
                       }}
                     >
                       {s.name || s.type}
+                      {slide && (
+                        <span style={{ marginLeft: 6, color: '#94a3b8', fontWeight: 500 }}>
+                          {slide.label}
+                        </span>
+                      )}
                     </span>
                     <span
                       style={{
                         fontSize: 11,
                         fontWeight: 700,
-                        color: online ? c : '#64748b',
+                        color: c,
                         fontVariantNumeric: 'tabular-nums',
                         flexShrink: 0,
                       }}
                     >
-                      {r?.primary
-                        ? `${r.primary.value.toFixed(1)} ${r.primary.unit}`
-                        : online
-                          ? '—'
-                          : '⊘'}
+                      {display}
                     </span>
+                    {showCount && (
+                      <span style={{ fontSize: 9, color: '#64748b', flexShrink: 0 }}>
+                        {(slideTick % slides.length) + 1}/{slides.length}
+                      </span>
+                    )}
                     <span
                       style={{
                         width: 6,
