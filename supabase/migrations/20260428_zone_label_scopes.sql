@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS public.admin_emails (
   added_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-INSERT INTO public.admin_emails (email) VALUES ('lawmingfung2006@yahoo.com.hk')
+INSERT INTO public.admin_emails (email) VALUES ('andylaw@fsenv.com.hk')
 ON CONFLICT (email) DO NOTHING;
 
 -- 2.  is_admin()  helper, callable from RLS policies
