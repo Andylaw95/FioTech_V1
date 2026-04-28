@@ -4,6 +4,18 @@ import type { Sensor, Subsystem } from './mockData';
 
 const POLL_MS = 30_000;
 
+/**
+ * Maps a BIM-model slug (used in URLs and zone-label keys) to the property
+ * names it represents in the device dataset. `Device.building` stores the
+ * Chinese display name, NOT the slug.
+ *
+ * NOTE: also keep alias spellings here — Sometimes the property is registered
+ * as "其士商業中心" and other times as "其士商業大廈". Match either.
+ */
+const BIM_SLUG_TO_PROPERTY_NAMES: Record<string, string[]> = {
+  'ccc-17f': ['其士商業中心', '其士商業大廈', 'ccc'],
+};
+
 function inferType(d: Device): Sensor['type'] {
   const hay = `${d.type ?? ''} ${d.model ?? ''} ${d.manufacturer ?? ''} ${d.name ?? ''}`.toLowerCase();
   if (hay.includes('hy108') || hay.includes('noise') || hay.includes('sound')) return 'HY108-1';
@@ -38,11 +50,8 @@ function inferSubsystem(t: Sensor['type']): Subsystem {
  * String comparison is case-insensitive and accepts substring matches so that
  * "其士商業大廈 — 17/F" still resolves to "其士商業大廈".
  */
-function deviceMatchesProperty(d: Device, propertyId: string, propertyName?: string): boolean {
-  if (!propertyId && !propertyName) return true;
-  const needles = [propertyId, propertyName]
-    .filter((s): s is string => Boolean(s))
-    .map((s) => s.toLowerCase().trim());
+function deviceMatchesProperty(d: Device, needles: string[]): boolean {
+  if (needles.length === 0) return true;
   const haystack = [
     d.building,
     d.location,
@@ -82,17 +91,44 @@ export function usePropertyDevices(propertyId: string) {
 
     const tick = async () => {
       try {
-        // 1. Resolve human name for this property so we can match Device.building.
-        let propertyName: string | undefined;
+        // Build the haystack of names this BIM slug is allowed to match.
+        // Order of precedence: explicit slug→names map → exact Property.id
+        // match → fall back to a sole property in the workspace (1-property
+        // installs are common today) → finally id-only substring match.
+        const needles = new Set<string>();
+        const mapped = BIM_SLUG_TO_PROPERTY_NAMES[propertyId.toLowerCase()] ?? [];
+        mapped.forEach((n) => needles.add(n.toLowerCase().trim()));
+
+        let props: Property[] = [];
         try {
-          const props: Property[] = await api.getProperties();
-          propertyName = props.find((p) => p.id === propertyId)?.name;
+          props = await api.getProperties();
+          const exact = props.find((p) => p.id === propertyId);
+          if (exact?.name) needles.add(exact.name.toLowerCase().trim());
+          // 1-property tenants: if no explicit mapping AND no id match, use the
+          // only property — almost always the user's intent.
+          if (needles.size === 0 && props.length === 1 && props[0]?.name) {
+            needles.add(props[0].name.toLowerCase().trim());
+          }
         } catch {
-          // non-fatal; continue with id-only matching
+          /* non-fatal */
         }
+        // Always include the slug itself as a last-resort substring needle.
+        if (propertyId) needles.add(propertyId.toLowerCase().trim());
+
         const all = await api.getDevices();
         if (cancelled) return;
-        const filtered = all.filter((d) => deviceMatchesProperty(d, propertyId, propertyName));
+        const needleArr = Array.from(needles);
+        const filtered = all.filter((d) => deviceMatchesProperty(d, needleArr));
+
+        if (filtered.length === 0 && all.length > 0) {
+          console.warn('[usePropertyDevices] filter excluded all devices', {
+            propertyId,
+            needles: needleArr,
+            sampleDevice: { building: all[0]?.building, location: all[0]?.location },
+            propertiesAvailable: props.map((p) => ({ id: p.id, name: p.name })),
+          });
+        }
+
         setDevices(filtered.map(deviceToSensor));
         setError(null);
       } catch (e: any) {
