@@ -21,6 +21,7 @@ import { useSensorPositions } from '@/app/components/demo/bim3d/useSensorPositio
 import { useZoneSensorAssignments } from '@/app/components/demo/bim3d/useZoneSensorAssignments';
 import { useLiveDeviceStream } from '@/app/components/demo/bim3d/useLiveDeviceStream';
 import { usePropertyDevices } from '@/app/components/demo/bim3d/usePropertyDevices';
+import { useAuth } from '@/app/utils/AuthContext';
 import { ZoneLabels3D } from '@/app/components/demo/bim3d/ZoneLabels3D';
 import { BimToolsPanel, BimToolsState } from '@/app/components/demo/bim3d/BimToolsPanel';
 import { PickerOverlay } from '@/app/components/demo/bim3d/PickerOverlay';
@@ -334,6 +335,7 @@ export function Bim3DStage({
   // Sensor positions with localStorage overrides (drag-to-place fallback)
   const { sensors: liveSensors, overrides: positionOverrides } = useSensorPositions();
   const { devices: propertyDevices } = usePropertyDevices(propertyId ?? '');
+  const { isAdmin, user } = useAuth();
   // Zone-label-driven clustering
   const { clusters, labelBySensorId } = useZoneSensorAssignments(
     modelKey,
@@ -511,6 +513,8 @@ export function Bim3DStage({
           picked={picked}
           modelKey={modelKey}
           devices={propertyDevices}
+          isAdmin={isAdmin}
+          currentUserId={user?.id}
           onClose={() => { setPicked(null); highlightExpressId(null); }}
           onLabelChange={() => setLabelsVersion(v => v + 1)}
         />

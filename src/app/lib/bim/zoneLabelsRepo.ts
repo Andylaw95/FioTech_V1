@@ -53,6 +53,8 @@ interface BimZoneLabelRow {
   anchor_y: number;
   anchor_z: number;
   assigned_device_ids: string[] | null;
+  scope: 'global' | 'private' | null;
+  created_by: string | null;
   updated_at: string;
 }
 
@@ -67,6 +69,8 @@ function rowToLabel(r: BimZoneLabelRow): ZoneLabel {
     color: r.color ?? undefined,
     anchor: { x: r.anchor_x, y: r.anchor_y, z: r.anchor_z },
     assignedDeviceIds: r.assigned_device_ids ?? [],
+    scope: r.scope ?? 'private',
+    createdBy: r.created_by ?? undefined,
     updatedAt: r.updated_at,
   };
 }
@@ -86,6 +90,8 @@ function labelToRow(propertyId: string, modelKey: string, l: ZoneLabel): Omit<Bi
     anchor_y: l.anchor.y,
     anchor_z: l.anchor.z,
     assigned_device_ids: l.assignedDeviceIds ?? [],
+    scope: l.scope ?? 'private',
+    created_by: l.createdBy ?? null,
   };
 }
 

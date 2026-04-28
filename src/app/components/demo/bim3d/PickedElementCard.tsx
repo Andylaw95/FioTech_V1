@@ -32,6 +32,8 @@ export function PickedElementCard({
   onClose,
   onLabelChange,
   devices,
+  isAdmin = false,
+  currentUserId,
 }: {
   picked: PickedInfo;
   modelKey: string;
@@ -39,9 +41,17 @@ export function PickedElementCard({
   onLabelChange?: (label: ZoneLabel | null) => void;
   /** Real property devices (live, scoped to current property). */
   devices?: Sensor[];
+  /** When true, user can save labels with scope='global' (visible to everyone).
+   *  Non-admins are forced to scope='private' (visible only to themselves). */
+  isAdmin?: boolean;
+  /** Current authenticated user id; stamped onto new private labels. */
+  currentUserId?: string;
 }) {
   const [editing, setEditing] = useState<boolean>(!!picked.editLabelId);
-  const [draft, setDraft] = useState<Partial<ZoneLabel>>(EMPTY_DRAFT);
+  const [draft, setDraft] = useState<Partial<ZoneLabel>>(() => ({
+    ...EMPTY_DRAFT,
+    scope: isAdmin ? 'global' : 'private',
+  }));
   const [saving, setSaving] = useState(false);
 
   // The label currently being edited (only when picked.editLabelId is set)
@@ -57,19 +67,28 @@ export function PickedElementCard({
     [picked.expressId, modelKey, picked.editLabelId],
   );
 
+  // Permissions on the existing label
+  const canEditExisting = !existingLabel
+    ? true
+    : isAdmin || existingLabel.createdBy === currentUserId;
+
   useEffect(() => {
     if (existingLabel) {
       setDraft(existingLabel);
       setEditing(true);
     } else {
-      setDraft(EMPTY_DRAFT);
+      setDraft({ ...EMPTY_DRAFT, scope: isAdmin ? 'global' : 'private' });
       setEditing(false);
     }
-  }, [existingLabel]);
+  }, [existingLabel, isAdmin]);
 
   function save() {
     if (saving) return;
+    if (!canEditExisting) return;
     setSaving(true);
+    // Non-admins can NEVER write a global label, regardless of draft state.
+    const requestedScope: ZoneLabel['scope'] = draft.scope ?? (isAdmin ? 'global' : 'private');
+    const finalScope: ZoneLabel['scope'] = isAdmin ? requestedScope : 'private';
     const patch = {
       customName: draft.customName?.trim() || undefined,
       customCode: draft.customCode?.trim() || undefined,
@@ -77,6 +96,8 @@ export function PickedElementCard({
       notes: draft.notes?.trim() || undefined,
       color: draft.color || undefined,
       assignedDeviceIds: draft.assignedDeviceIds,
+      scope: finalScope,
+      createdBy: existingLabel?.createdBy ?? currentUserId,
     };
     let saved: ZoneLabel | null;
     try {
@@ -100,6 +121,7 @@ export function PickedElementCard({
 
   function clear() {
     if (!existingLabel) return;
+    if (!canEditExisting) return;
     deleteLabelById(modelKey, existingLabel.id);
     onLabelChange?.(null);
     onClose();
@@ -251,10 +273,48 @@ export function PickedElementCard({
               })()}
             </div>
           </div>
+          <div className="flex items-center gap-2 pt-1 px-2 py-1.5 rounded bg-slate-800/60 border border-white/10">
+            <span className="text-[10px] uppercase tracking-wider text-white/60">Visibility</span>
+            {isAdmin ? (
+              <div className="flex gap-1 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, scope: 'global' })}
+                  className={`text-[11px] px-2 py-0.5 rounded ${
+                    (draft.scope ?? 'global') === 'global'
+                      ? 'bg-emerald-500 text-slate-900 font-semibold'
+                      : 'bg-white/10 hover:bg-white/20 text-white/80'
+                  }`}
+                  title="Visible to everyone"
+                >
+                  🌐 Public
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, scope: 'private' })}
+                  className={`text-[11px] px-2 py-0.5 rounded ${
+                    draft.scope === 'private'
+                      ? 'bg-amber-400 text-slate-900 font-semibold'
+                      : 'bg-white/10 hover:bg-white/20 text-white/80'
+                  }`}
+                  title="Visible only to you"
+                >
+                  👤 Private
+                </button>
+              </div>
+            ) : (
+              <span className="ml-auto text-[11px] text-amber-300">👤 Private (only you)</span>
+            )}
+          </div>
+          {!canEditExisting && (
+            <div className="text-[11px] text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded px-2 py-1.5">
+              🔒 This is a public label created by an admin. You can't edit it.
+            </div>
+          )}
           <div className="flex gap-2 pt-1">
             <button
               onClick={save}
-              disabled={saving}
+              disabled={saving || !canEditExisting}
               className="flex-1 text-xs bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-semibold rounded px-3 py-1.5"
             >
               💾 {saving ? 'Saving…' : existingLabel ? 'Update label' : 'Save new label'}
@@ -268,7 +328,7 @@ export function PickedElementCard({
             >
               Cancel
             </button>
-            {existingLabel && (
+            {existingLabel && canEditExisting && (
               <button
                 onClick={clear}
                 className="text-xs bg-red-500/80 hover:bg-red-500 rounded px-3 py-1.5"

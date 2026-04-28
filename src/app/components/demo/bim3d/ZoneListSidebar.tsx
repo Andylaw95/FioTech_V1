@@ -250,7 +250,12 @@ export function ZoneListSidebar({
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${dot} flex-shrink-0`} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold truncate">{l.customName || '(unnamed)'}</div>
+                  <div className="text-xs font-semibold truncate flex items-center gap-1">
+                    <span title={l.scope === 'private' ? 'Private — only you can see this' : 'Public — visible to everyone'}>
+                      {l.scope === 'private' ? '👤' : '🌐'}
+                    </span>
+                    <span className="truncate">{l.customName || '(unnamed)'}</span>
+                  </div>
                   {l.customCode && <div className="text-[10px] font-mono text-white/50 truncate">{l.customCode}</div>}
                 </div>
                 <button

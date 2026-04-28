@@ -22,6 +22,12 @@ export interface ZoneLabel {
   anchor: { x: number; y: number; z: number };
   /** Sensor IDs (from MOCK_SENSORS) assigned to this zone. */
   assignedDeviceIds?: string[];
+  /** Visibility scope. 'global' = visible to everyone (admin only).
+   *  'private' = visible only to the creator. Defaults to 'private'. */
+  scope?: 'global' | 'private';
+  /** Supabase auth.users.id of the user who created this label.
+   *  Set server-side on insert when missing. */
+  createdBy?: string;
   updatedAt: string;
 }
 
@@ -144,6 +150,8 @@ export function createLabel(
     notes: patch.notes,
     color: patch.color,
     assignedDeviceIds: patch.assignedDeviceIds,
+    scope: patch.scope ?? 'private',
+    createdBy: patch.createdBy,
     updatedAt: new Date().toISOString(),
   };
   map[id] = next;
