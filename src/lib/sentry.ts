@@ -1,13 +1,10 @@
 import * as Sentry from '@sentry/react';
 
-const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
+// Primary: env var (for Vercel prod). Fallback: hardcoded DSN (Ming's project).
+const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined ||
+  'https://3e66954b837313aeff86b73e0b177dd5@o4511295318261760.ingest.de.sentry.io/4511295320817744';
 
 export function initSentry() {
-  if (!dsn) {
-    if (import.meta.env.DEV) console.info('[sentry] VITE_SENTRY_DSN not set — skipping init');
-    return;
-  }
-
   Sentry.init({
     dsn,
     environment: import.meta.env.MODE,
@@ -23,6 +20,11 @@ export function initSentry() {
     replaysSessionSampleRate: 0.05,
     replaysOnErrorSampleRate: 1.0,
     sendDefaultPii: false,
+    tracePropagationTargets: [
+      'localhost',
+      /^https:\/\/fiotech-app\.vercel\.app/,
+      /^https:\/\/wjvbojulgpmpblmterfy\.supabase\.co/,
+    ],
     ignoreErrors: [
       'ResizeObserver loop limit exceeded',
       'ResizeObserver loop completed with undelivered notifications',
