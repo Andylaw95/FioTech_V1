@@ -40,14 +40,10 @@ export function PickerOverlay({
       if (Math.hypot(dx, dy) > 5) return; // drag, not click
       if (performance.now() - downT > 600) return; // too slow
       if (!getModelGroup()) return;
-      const rect = dom.getBoundingClientRect();
-      const ndc = new THREE.Vector2(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
+      const mouse = new THREE.Vector2(e.clientX, e.clientY);
       const hit = await pickFragmentsAtMouse(
         camera as THREE.PerspectiveCamera | THREE.OrthographicCamera,
-        ndc,
+        mouse,
         dom as HTMLCanvasElement,
       );
       if (!hit) {
