@@ -1,5 +1,6 @@
 import { X, MapPin, Activity, Link2, Zap, Radio, Battery, Signal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useEffect, useMemo, useState } from 'react';
 import { Sensor, Alarm, severityColor } from './mockData';
 import type { LiveReading } from './useLiveDeviceStream';
 
@@ -45,6 +46,45 @@ export function DeviceDetailCard({ sensor, alarms, reading, onClose }: Props) {
         .slice(0, 8)
     : [];
 
+  const slides = useMemo(() => {
+    const arr = liveMetrics.map(([k, v]) => ({
+      key: k,
+      label: METRIC_LABEL[k].label,
+      unit: METRIC_LABEL[k].unit,
+      value: Number(v),
+      severity: (reading?.primary && reading.primary.label === METRIC_LABEL[k].label
+        ? reading.primary.severity
+        : 'normal') as 'normal' | 'warning' | 'critical',
+    }));
+    if (arr.length === 0 && reading?.primary) {
+      arr.push({
+        key: 'primary',
+        label: reading.primary.label,
+        unit: reading.primary.unit,
+        value: reading.primary.value,
+        severity: reading.primary.severity,
+      });
+    }
+    const primaryIdx = reading?.primary
+      ? arr.findIndex(s => s.label === reading.primary!.label)
+      : -1;
+    if (primaryIdx > 0) {
+      const [p] = arr.splice(primaryIdx, 1);
+      arr.unshift(p);
+    }
+    return arr;
+  }, [liveMetrics, reading?.primary]);
+
+  const [slideIdx, setSlideIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
+  useEffect(() => { setSlideIdx(0); }, [sensor?.id]);
+  useEffect(() => {
+    if (paused || slides.length <= 1) return;
+    const t = setInterval(() => setSlideIdx(i => (i + 1) % slides.length), 5000);
+    return () => clearInterval(t);
+  }, [paused, slides.length]);
+  const activeSlide = slides[slideIdx % Math.max(slides.length, 1)] ?? null;
+
   return (
     <AnimatePresence>
       {sensor && (
@@ -80,14 +120,52 @@ export function DeviceDetailCard({ sensor, alarms, reading, onClose }: Props) {
                       {reading.online ? '● online' : '○ stale'} · {ageLabel(reading.ageSec)}
                     </span>
                   </h4>
-                  {reading.primary && (
+                  {activeSlide && (
                     <div
-                      className="mb-2 p-2 rounded bg-slate-800/80 border-l-2 flex items-baseline gap-2"
-                      style={{ borderColor: severityColor(reading.primary.severity) }}
+                      className="mb-2 p-2 rounded bg-slate-800/80 border-l-2"
+                      style={{ borderColor: severityColor(activeSlide.severity) }}
+                      onMouseEnter={() => setPaused(true)}
+                      onMouseLeave={() => setPaused(false)}
                     >
-                      <span className="text-[10px] text-slate-200 uppercase tracking-wider font-semibold">{reading.primary.label}</span>
-                      <span className="text-2xl font-bold font-mono text-white">{reading.primary.value.toFixed(1)}</span>
-                      <span className="text-[11px] text-slate-300">{reading.primary.unit}</span>
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={activeSlide.key}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.25 }}
+                          className="flex items-baseline gap-2"
+                        >
+                          <span className="text-[10px] text-slate-200 uppercase tracking-wider font-semibold">
+                            {activeSlide.label}
+                          </span>
+                          <span className="text-2xl font-bold font-mono text-white">
+                            {activeSlide.value.toFixed(1)}
+                          </span>
+                          <span className="text-[11px] text-slate-300">{activeSlide.unit}</span>
+                        </motion.div>
+                      </AnimatePresence>
+                      {slides.length > 1 && (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <div className="flex gap-1">
+                            {slides.map((s, i) => (
+                              <button
+                                key={s.key}
+                                onClick={() => { setSlideIdx(i); setPaused(true); }}
+                                title={s.label}
+                                className={`h-1.5 rounded-full transition-all ${
+                                  i === slideIdx
+                                    ? 'w-4 bg-cyan-400'
+                                    : 'w-1.5 bg-slate-600 hover:bg-slate-400'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="ml-auto text-[9px] text-slate-500 font-mono">
+                            {paused ? 'paused' : `${slideIdx + 1}/${slides.length} · 5s`}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                   {liveMetrics.length > 0 && (
