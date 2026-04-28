@@ -392,14 +392,17 @@ export async function getIfcInfoFromIntersection(intersection: THREE.Intersectio
   const expressId: number | undefined = ud.localId;
   if (expressId == null) return null;
   try {
-    const item = cachedFragModel.getItem(expressId);
-    const ifcType = (await item.getCategory()) || 'unknown';
-    let name: string | null = null;
-    try {
-      const dataArr = await cachedFragModel.getItemsData([expressId]);
-      const d = dataArr?.[0] ?? {};
-      name = (d.Name?.value as string) ?? (d.LongName?.value as string) ?? null;
-    } catch {}
+    const dataArr = await cachedFragModel.getItemsData([expressId], {
+      attributesDefault: true,
+    });
+    const d: any = dataArr?.[0] ?? {};
+    const ifcType: string =
+      (typeof d._category?.value === 'string' && d._category.value) ||
+      (typeof d._category === 'string' && d._category) ||
+      (typeof d.category === 'string' && d.category) ||
+      'unknown';
+    const name: string | null =
+      (d.Name?.value as string) ?? (d.LongName?.value as string) ?? null;
     let storey: string | null = null;
     try {
       if (!cachedSpatialFlat) {
