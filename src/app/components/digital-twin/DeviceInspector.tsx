@@ -344,10 +344,13 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
         <div>
           <p className="text-[10px] font-medium text-slate-500 uppercase mb-1.5">All Sensor Readings</p>
           <div className="space-y-1">
-            {Object.entries(normalizedLive).map(([key, val]) => {
+            {Object.entries(normalizedLive)
+              .filter(([key]) => !['battery', 'pir', 'digital_input', 'water_leak'].includes(key))
+              .map(([key, val]) => {
               const meta = METRIC_LABEL[key];
-              const label = meta?.label ?? key.replace(/_/g, ' ');
-              const unit = meta?.unit ?? '';
+              if (!meta) return null;
+              const label = meta.label;
+              const unit = meta.unit;
               return (
                 <div key={key} className="flex items-center justify-between px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
                   <span className="text-[11px] text-slate-600 font-medium">{label}</span>

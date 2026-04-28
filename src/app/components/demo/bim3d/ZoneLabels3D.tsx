@@ -3,6 +3,7 @@ import { Html } from '@react-three/drei';
 import { getAllLabels, ZoneLabel } from './zoneLabels';
 import { type Sensor, type Severity, severityColor } from './mockData';
 import type { LiveReading } from './useLiveDeviceStream';
+import { buildMetricSlides } from './metricUtils';
 
 const ZONE_BG: Record<NonNullable<ZoneLabel['zoneType']>, string> = {
   room:  'bg-sky-500/85 ring-sky-200',
@@ -77,6 +78,13 @@ export function ZoneLabels3D({
   }, [modelKey]);
 
   useEffect(() => { reload(); }, [reload, version]);
+
+  // Shared 5s ticker — every expanded zone row uses this to advance its slideshow.
+  const [slideTick, setSlideTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setSlideTick((t) => t + 1), 5000);
+    return () => clearInterval(id);
+  }, []);
 
   // Auto-expand the zone that owns the externally-selected sensor — but
   // ONLY when the selection actually changes. Without the prevRef guard,
@@ -182,6 +190,16 @@ export function ZoneLabels3D({
                     const r = readings?.get(s.id);
                     const isSel = selectedSensorId === s.id;
                     const online = r?.online ?? false;
+                    // Build slideshow from this device's metrics; primary metric leads.
+                    const slides = r ? buildMetricSlides(r.metrics ?? {}, null) : [];
+                    let slide = slides.length > 0 ? slides[slideTick % slides.length] : null;
+                    // Fallback to primary if no labelled slides matched (e.g. water_leak only).
+                    const display = slide
+                      ? `${slide.value.toFixed(1)} ${slide.unit}`
+                      : r?.primary
+                        ? `${r.primary.value.toFixed(1)} ${r.primary.unit}`
+                        : online ? '—' : '⊘';
+                    const showCount = slides.length > 1;
                     return (
                       <div
                         key={s.id}
@@ -202,18 +220,26 @@ export function ZoneLabels3D({
                           }}
                         >
                           {s.name || s.type}
+                          {slide && (
+                            <span style={{ marginLeft: 6, color: '#94a3b8', fontWeight: 500 }}>
+                              {slide.label}
+                            </span>
+                          )}
                         </span>
                         <span
                           style={{
                             fontSize: 11.5, fontWeight: 700,
-                            color: online ? c : '#64748b',
+                            color: c,
                             fontVariantNumeric: 'tabular-nums', flexShrink: 0,
                           }}
                         >
-                          {r?.primary
-                            ? `${r.primary.value.toFixed(1)} ${r.primary.unit}`
-                            : online ? '—' : '⊘'}
+                          {display}
                         </span>
+                        {showCount && (
+                          <span style={{ fontSize: 9, color: '#64748b', flexShrink: 0 }}>
+                            {(slideTick % slides.length) + 1}/{slides.length}
+                          </span>
+                        )}
                         <span
                           style={{
                             width: 6, height: 6, borderRadius: 999,
