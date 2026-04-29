@@ -1015,6 +1015,20 @@ export function registerRoutes(app: any) {
       let sound_level_inst: number | null = null;
       let sound_level_lcpeak: number | null = null;
       let water_leak: number | null = null;
+      // ── Vibration ──
+      let accel_x_g: number | null = null;
+      let accel_y_g: number | null = null;
+      let accel_z_g: number | null = null;
+      let tilt_x_deg: number | null = null;
+      let tilt_y_deg: number | null = null;
+      let tilt_z_deg: number | null = null;
+      let ppv_x_mm_s: number | null = null;
+      let ppv_y_mm_s: number | null = null;
+      let ppv_z_mm_s: number | null = null;
+      let ppv_max_mm_s: number | null = null;
+      let ppv_resultant_mm_s: number | null = null;
+      let vibration_dominant_freq_hz: number | null = null;
+      let vibration_alarm_level: number | null = null;
       let count = 0;
       const tempSum: number[] = [];
       const humSum: number[] = [];
@@ -1042,6 +1056,19 @@ export function registerRoutes(app: any) {
         const slinst = fv(decoded, ["sound_level_inst", "noise_laf", "noise_inst", "noise_laf_inst"]);
         const slpeak = fv(decoded, ["sound_level_lcpeak", "noise_lcpeak", "lcpeak"]);
         const wleak = fv(decoded, ["water_leak", "digital_input"]);
+        const ax = fv(decoded, ["accel_x_g", "vibration_x_g", "acc_x"]);
+        const ay = fv(decoded, ["accel_y_g", "vibration_y_g", "acc_y"]);
+        const az = fv(decoded, ["accel_z_g", "vibration_z_g", "acc_z"]);
+        const tx = fv(decoded, ["tilt_x_deg", "tilt_x", "angle_x"]);
+        const ty = fv(decoded, ["tilt_y_deg", "tilt_y", "angle_y"]);
+        const tz = fv(decoded, ["tilt_z_deg", "tilt_z", "angle_z"]);
+        const px = fv(decoded, ["ppv_x_mm_s", "ppv_x"]);
+        const py = fv(decoded, ["ppv_y_mm_s", "ppv_y"]);
+        const pz = fv(decoded, ["ppv_z_mm_s", "ppv_z"]);
+        const pmax = fv(decoded, ["ppv_max_mm_s", "ppv_max", "ppv_peak"]);
+        const pres = fv(decoded, ["ppv_resultant_mm_s", "ppv_resultant"]);
+        const dfreq = fv(decoded, ["vibration_dominant_freq_hz", "dominant_freq_hz", "dominant_freq"]);
+        const alvl = fv(decoded, ["vibration_alarm_level", "alarm_level", "aaa_level"]);
         if (t !== null) { temperature = t; tempSum.push(t); }
         if (h !== null) { humidity = h; humSum.push(h); }
         if (c2 !== null) co2 = c2;
@@ -1057,6 +1084,19 @@ export function registerRoutes(app: any) {
         if (slpeak !== null) sound_level_lcpeak = slpeak;
         if (slinst !== null) sound_level_inst = slinst;
         if (wleak !== null) water_leak = wleak;
+        if (ax !== null) accel_x_g = ax;
+        if (ay !== null) accel_y_g = ay;
+        if (az !== null) accel_z_g = az;
+        if (tx !== null) tilt_x_deg = tx;
+        if (ty !== null) tilt_y_deg = ty;
+        if (tz !== null) tilt_z_deg = tz;
+        if (px !== null) ppv_x_mm_s = px;
+        if (py !== null) ppv_y_mm_s = py;
+        if (pz !== null) ppv_z_mm_s = pz;
+        if (pmax !== null) ppv_max_mm_s = pmax;
+        if (pres !== null) ppv_resultant_mm_s = pres;
+        if (dfreq !== null) vibration_dominant_freq_hz = dfreq;
+        if (alvl !== null) vibration_alarm_level = alvl;
 
         // Build per-device reading
         deviceReadings[eui] = {
@@ -1081,6 +1121,19 @@ export function registerRoutes(app: any) {
             ...(slpeak !== null && { sound_level_lcpeak: slpeak }),
             ...(slinst !== null && { sound_level_inst: slinst }),
             ...(wleak !== null && { water_leak: wleak }),
+            ...(ax !== null && { accel_x_g: ax }),
+            ...(ay !== null && { accel_y_g: ay }),
+            ...(az !== null && { accel_z_g: az }),
+            ...(tx !== null && { tilt_x_deg: tx }),
+            ...(ty !== null && { tilt_y_deg: ty }),
+            ...(tz !== null && { tilt_z_deg: tz }),
+            ...(px !== null && { ppv_x_mm_s: px }),
+            ...(py !== null && { ppv_y_mm_s: py }),
+            ...(pz !== null && { ppv_z_mm_s: pz }),
+            ...(pmax !== null && { ppv_max_mm_s: pmax }),
+            ...(pres !== null && { ppv_resultant_mm_s: pres }),
+            ...(dfreq !== null && { vibration_dominant_freq_hz: dfreq }),
+            ...(alvl !== null && { vibration_alarm_level: alvl }),
           },
         };
       }
@@ -1188,6 +1241,10 @@ export function registerRoutes(app: any) {
           temperature, humidity, co2, tvoc, pm2_5, pm10,
           barometric_pressure, illuminance, pir,
           sound_level_leq, sound_level_lmin, sound_level_lmax, sound_level_inst, sound_level_lcpeak, water_leak,
+          accel_x_g, accel_y_g, accel_z_g,
+          tilt_x_deg, tilt_y_deg, tilt_z_deg,
+          ppv_x_mm_s, ppv_y_mm_s, ppv_z_mm_s, ppv_max_mm_s, ppv_resultant_mm_s,
+          vibration_dominant_freq_hz, vibration_alarm_level,
         },
         zones,
         sensorList,
@@ -3015,6 +3072,55 @@ export function registerRoutes(app: any) {
         }
       }
 
+      // Shape 5: AS400 / BEWIS vibration sensor field aliases
+      // Canonical field names: accel_x_g, ppv_x_mm_s, tilt_x_deg, ppv_max_mm_s, ppv_resultant_mm_s,
+      //                        vibration_dominant_freq_hz, vibration_alarm_level
+      // Vendor variants vary — accept aliases and normalize to canonical.
+      const VIBRATION_MAP: Record<string, string> = {
+        vibration_x_g: "accel_x_g", vibration_y_g: "accel_y_g", vibration_z_g: "accel_z_g",
+        acc_x: "accel_x_g", acc_y: "accel_y_g", acc_z: "accel_z_g",
+        x_g: "accel_x_g", y_g: "accel_y_g", z_g: "accel_z_g",
+        acceleration_x: "accel_x_g", acceleration_y: "accel_y_g", acceleration_z: "accel_z_g",
+        ppv_x: "ppv_x_mm_s", ppv_y: "ppv_y_mm_s", ppv_z: "ppv_z_mm_s",
+        peak_velocity_x: "ppv_x_mm_s", peak_velocity_y: "ppv_y_mm_s", peak_velocity_z: "ppv_z_mm_s",
+        vel_x_mm_s: "ppv_x_mm_s", vel_y_mm_s: "ppv_y_mm_s", vel_z_mm_s: "ppv_z_mm_s",
+        ppv_max: "ppv_max_mm_s", ppv_peak: "ppv_max_mm_s",
+        ppv_resultant: "ppv_resultant_mm_s",
+        tilt_x: "tilt_x_deg", tilt_y: "tilt_y_deg", tilt_z: "tilt_z_deg",
+        angle_x: "tilt_x_deg", angle_y: "tilt_y_deg", angle_z: "tilt_z_deg",
+        dominant_freq: "vibration_dominant_freq_hz",
+        dominant_freq_hz: "vibration_dominant_freq_hz",
+        peak_freq_hz: "vibration_dominant_freq_hz",
+        alarm_level: "vibration_alarm_level",
+        aaa_level: "vibration_alarm_level",
+      };
+      for (const [raw, mapped] of Object.entries(VIBRATION_MAP)) {
+        if (typeof decodedData[raw] === "number") {
+          if (!(mapped in decodedData)) decodedData[mapped] = decodedData[raw];
+          delete decodedData[raw];
+        }
+        if (typeof (body as any)[raw] === "number" && !(mapped in decodedData)) {
+          decodedData[mapped] = (body as any)[raw];
+        }
+      }
+      // Compute ppv_max / ppv_resultant if missing but per-axis present
+      const ppvX = decodedData.ppv_x_mm_s, ppvY = decodedData.ppv_y_mm_s, ppvZ = decodedData.ppv_z_mm_s;
+      if (typeof ppvX === "number" && typeof ppvY === "number" && typeof ppvZ === "number") {
+        if (decodedData.ppv_max_mm_s == null) {
+          decodedData.ppv_max_mm_s = Math.max(Math.abs(ppvX), Math.abs(ppvY), Math.abs(ppvZ));
+        }
+        if (decodedData.ppv_resultant_mm_s == null) {
+          decodedData.ppv_resultant_mm_s = Math.sqrt(ppvX * ppvX + ppvY * ppvY + ppvZ * ppvZ);
+        }
+      }
+      // Mark provenance — device-supplied PPV vs derived from per-axis vs unknown
+      const hasVibrationData = decodedData.ppv_max_mm_s != null || decodedData.accel_x_g != null
+        || decodedData.tilt_x_deg != null;
+      if (hasVibrationData && (decodedData as any).ppv_source == null) {
+        (decodedData as any).ppv_source = (typeof body.ppv_max_mm_s === "number" || typeof body.ppv_max === "number")
+          ? "device" : (decodedData.ppv_max_mm_s != null ? "edge_estimated" : "unknown");
+      }
+
       if (Object.keys(decodedData).length === 0) {
         return c.json({ error: "No sensor readings found in payload." }, 400);
       }
@@ -3077,18 +3183,31 @@ export function registerRoutes(app: any) {
         // Re-classify generic devices
         if (devices[devIdx].type === "LoRaWAN Sensor" || devices[devIdx].type === "4G Sensor") {
           const hasSoundLevel = "sound_level_leq" in decodedData || "sound_level_lmax" in decodedData;
+          const hasVibration = decodedData.ppv_max_mm_s != null || decodedData.accel_x_g != null || decodedData.tilt_x_deg != null;
           if (hasSoundLevel) {
             devices[devIdx].type = "Sound Level Sensor";
             devices[devIdx].capabilities = ["sound_level", "battery"];
+          } else if (hasVibration) {
+            devices[devIdx].type = "Vibration Sensor";
+            devices[devIdx].capabilities = ["vibration", "acceleration", "ppv", "tilt"];
+            const nameU = (devices[devIdx].name || "").toUpperCase();
+            if (nameU.includes("AS400") || nameU.includes("BEWIS")) {
+              devices[devIdx].manufacturer = devices[devIdx].manufacturer || "BEWIS";
+              devices[devIdx].model = devices[devIdx].model || "AS400";
+            }
           }
         }
         await cachedKvSet(devKey, devices);
       } else {
         // Auto-register new 4G device
         const hasSoundLevel = "sound_level_leq" in decodedData || "sound_level_lmax" in decodedData;
+        const hasVibration = decodedData.ppv_max_mm_s != null || decodedData.ppv_x_mm_s != null
+          || decodedData.accel_x_g != null || decodedData.tilt_x_deg != null;
         const nameUpper = (deviceName || "").toUpperCase();
         const isLD1 = nameUpper.includes("LD1") || nameUpper.includes("HAAS") || nameUpper.includes("506");
         const isHY108 = nameUpper.includes("HY108") || nameUpper.includes("HY-108");
+        const isAS400 = nameUpper.includes("AS400") || nameUpper.includes("AS-400")
+          || nameUpper.includes("BEWIS") || nameUpper.includes("BWS400");
 
         let inferredType = "4G Sensor";
         let inferredModel = "";
@@ -3100,6 +3219,11 @@ export function registerRoutes(app: any) {
           inferredModel = isHY108 ? "HY108-1" : (isLD1 ? "HaaS506-LD1" : "4G Sound Level Meter");
           inferredManufacturer = isHY108 ? "Hunan Shengyi" : (isLD1 ? "HaaS" : "");
           inferredCapabilities = ["sound_level"];
+        } else if (hasVibration || isAS400 || nameUpper.includes("VIBRATION") || nameUpper.includes("ACCELEROMETER")) {
+          inferredType = "Vibration Sensor";
+          inferredModel = isAS400 ? "AS400" : "Vibration Monitor";
+          inferredManufacturer = isAS400 ? "BEWIS" : "";
+          inferredCapabilities = ["vibration", "acceleration", "ppv", "tilt"];
         } else {
           // Infer from data keys
           const dataKeys = Object.keys(decodedData);
@@ -3293,6 +3417,19 @@ export function registerRoutes(app: any) {
           sound_level_inst: fv(d, ["sound_level_inst", "noise_laf", "noise_inst", "noise_laf_inst"]),
           sound_level_lcpeak: fv(d, ["sound_level_lcpeak", "noise_lcpeak", "lcpeak"]),
           water_leak: fv(d, ["water_leak"]),
+          accel_x_g: fv(d, ["accel_x_g", "vibration_x_g", "acc_x"]),
+          accel_y_g: fv(d, ["accel_y_g", "vibration_y_g", "acc_y"]),
+          accel_z_g: fv(d, ["accel_z_g", "vibration_z_g", "acc_z"]),
+          tilt_x_deg: fv(d, ["tilt_x_deg", "tilt_x", "angle_x"]),
+          tilt_y_deg: fv(d, ["tilt_y_deg", "tilt_y", "angle_y"]),
+          tilt_z_deg: fv(d, ["tilt_z_deg", "tilt_z", "angle_z"]),
+          ppv_x_mm_s: fv(d, ["ppv_x_mm_s", "ppv_x"]),
+          ppv_y_mm_s: fv(d, ["ppv_y_mm_s", "ppv_y"]),
+          ppv_z_mm_s: fv(d, ["ppv_z_mm_s", "ppv_z"]),
+          ppv_max_mm_s: fv(d, ["ppv_max_mm_s", "ppv_max", "ppv_peak"]),
+          ppv_resultant_mm_s: fv(d, ["ppv_resultant_mm_s", "ppv_resultant"]),
+          vibration_dominant_freq_hz: fv(d, ["vibration_dominant_freq_hz", "dominant_freq_hz", "dominant_freq"]),
+          vibration_alarm_level: fv(d, ["vibration_alarm_level", "alarm_level", "aaa_level"]),
         };
       }).reverse(); // oldest first
 

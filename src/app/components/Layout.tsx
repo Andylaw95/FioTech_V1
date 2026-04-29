@@ -21,6 +21,7 @@ import {
   Moon,
   Volume2,
   CloudFog,
+  Activity as ActivityIcon,
   MapPin,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -74,6 +75,7 @@ export function Layout() {
   const environmentSubItems = [
     { icon: Volume2, label: 'Noise Monitoring', path: '/environment/noise', color: 'text-blue-500' },
     { icon: CloudFog, label: 'Dust Monitoring', path: '/environment/dust', color: 'text-amber-500' },
+    { icon: ActivityIcon, label: 'Vibration Monitoring', path: '/environment/vibration', color: 'text-purple-500' },
   ];
 
   // Auto-expand environment sub-nav when on an environment sub-page
@@ -99,6 +101,7 @@ export function Layout() {
     if (location.pathname === '/environment') return 'Environmental Monitoring';
     if (location.pathname === '/environment/noise') return 'Noise Monitoring';
     if (location.pathname === '/environment/dust') return 'Dust Monitoring';
+    if (location.pathname === '/environment/vibration') return 'Vibration Monitoring';
     if (location.pathname === '/gateways') return 'Gateways';
     if (location.pathname === '/alarms/water') return 'Water Alarms';
     if (location.pathname === '/alarms/fire') return 'Fire Alarms';

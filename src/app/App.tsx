@@ -20,6 +20,7 @@ const Gateways = React.lazy(() => import('@/app/pages/Gateways').then(m => ({ de
 const AdminPanel = React.lazy(() => import('@/app/pages/AdminPanel').then(m => ({ default: m.AdminPanel })));
 const NoiseDashboard = React.lazy(() => import('@/app/pages/NoiseDashboard').then(m => ({ default: m.NoiseDashboard })));
 const DustDashboard = React.lazy(() => import('@/app/pages/DustDashboard').then(m => ({ default: m.DustDashboard })));
+const VibrationDashboard = React.lazy(() => import('@/app/pages/VibrationDashboard').then(m => ({ default: m.VibrationDashboard })));
 const EnvironmentalMonitoring = React.lazy(() => import('@/app/pages/EnvironmentalMonitoring').then(m => ({ default: m.EnvironmentalMonitoring })));
 const DigitalTwinPortfolio = React.lazy(() => import('@/app/pages/DigitalTwin/Portfolio').then(m => ({ default: m.Portfolio })));
 const BIM3DDemo = React.lazy(() => import('@/app/pages/demo/BIM3DDemo').then(m => ({ default: m.BIM3DDemo })));
@@ -270,6 +271,8 @@ export default function App() {
                         <Route path="environment" element={<EnvironmentalMonitoring />} />
                         <Route path="environment/noise" element={<NoiseDashboard />} />
                         <Route path="environment/dust" element={<DustDashboard />} />
+                        <Route path="environment/vibration" element={<VibrationDashboard />} />
+                        <Route path="vibration" element={<VibrationDashboard />} />
                         <Route path="bim" element={<BIMTwins />} />
                         <Route path="bim-legacy" element={<BIMTwins />} />
                         <Route path="digital-twin-v2" element={<DigitalTwinPortfolio />} />

@@ -953,6 +953,20 @@ export interface PropertyTelemetry {
     sound_level_inst: number | null;
     sound_level_lcpeak: number | null;
     water_leak: number | null;
+    // ── Vibration (BEWIS AS400 / accelerometers) ──
+    accel_x_g: number | null;
+    accel_y_g: number | null;
+    accel_z_g: number | null;
+    tilt_x_deg: number | null;
+    tilt_y_deg: number | null;
+    tilt_z_deg: number | null;
+    ppv_x_mm_s: number | null;
+    ppv_y_mm_s: number | null;
+    ppv_z_mm_s: number | null;
+    ppv_max_mm_s: number | null;
+    ppv_resultant_mm_s: number | null;
+    vibration_dominant_freq_hz: number | null;
+    vibration_alarm_level: number | null;
   };
   zones: {
     id: string;
@@ -1017,6 +1031,20 @@ export interface DeviceHistoryPoint {
   sound_level_inst: number | null;
   sound_level_lcpeak: number | null;
   water_leak: number | null;
+  // ── Vibration (BEWIS AS400 / accelerometers) ──
+  accel_x_g: number | null;
+  accel_y_g: number | null;
+  accel_z_g: number | null;
+  tilt_x_deg: number | null;
+  tilt_y_deg: number | null;
+  tilt_z_deg: number | null;
+  ppv_x_mm_s: number | null;
+  ppv_y_mm_s: number | null;
+  ppv_z_mm_s: number | null;
+  ppv_max_mm_s: number | null;
+  ppv_resultant_mm_s: number | null;
+  vibration_dominant_freq_hz: number | null;
+  vibration_alarm_level: number | null;
 }
 
 export interface DeviceHistoryResponse {
