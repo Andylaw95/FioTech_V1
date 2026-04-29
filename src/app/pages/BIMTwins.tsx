@@ -9,6 +9,7 @@ import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { api, type Property, type PropertyDetails, type Device, type PropertyTelemetry } from '@/app/utils/api';
 import { BMSPanel } from '@/app/components/digital-twin/BMSPanel';
+import { VibrationStatusPanel } from '@/app/components/digital-twin/VibrationStatusPanel';
 import { DeviceInspector } from '@/app/components/digital-twin/DeviceInspector';
 import { Bim3DStage } from '@/app/components/digital-twin/Bim3DStage';
 
@@ -69,6 +70,12 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
               newTelemetry[d.id] = decoded.humidity;
             } else if ((d.type === 'Noise' || d.type === 'Sound Level Sensor') && decoded.sound_level_leq != null) {
               newTelemetry[d.id] = decoded.sound_level_leq;
+            } else if (
+              (d.type?.toLowerCase().includes('vibration') || d.type?.toLowerCase().includes('accelerometer')
+                || d.name?.toLowerCase().includes('as400') || d.name?.toLowerCase().includes('bewis'))
+              && (decoded.ppv_max_mm_s != null || decoded.ppv_resultant_mm_s != null)
+            ) {
+              newTelemetry[d.id] = decoded.ppv_max_mm_s ?? decoded.ppv_resultant_mm_s;
             } else {
               // Default: use temperature if available, otherwise first numeric value
               const val = decoded.temperature ?? decoded.co2 ?? decoded.humidity ??
@@ -969,6 +976,9 @@ export function BIMTwins() {
                       </div>
                     </div>
 
+                    {/* Vibration Compliance Status (only renders if property has vibration sensors) */}
+                    <VibrationStatusPanel devices={devices} telemetry={propertyTelemetry} />
+
                     {/* Table Zones — Floor 17 */}
                     <div>
                       <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Floor 17 — Table Zones</p>
@@ -1244,6 +1254,7 @@ export function BIMTwins() {
                         <p className="text-lg font-bold text-slate-700">{TABLE_ZONES.length}</p>
                       </div>
                     </div>
+                    <VibrationStatusPanel devices={devices} telemetry={propertyTelemetry} />
                     <button onClick={() => { setInspectorMode('bms'); }}
                       className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100 text-xs font-medium text-indigo-700">
                       <span className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" /> View BMS</span>
