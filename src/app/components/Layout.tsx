@@ -68,6 +68,7 @@ export function Layout() {
     { icon: Droplets, label: 'Water', path: '/alarms/water', color: 'text-blue-500' },
     { icon: Flame, label: 'Fire', path: '/alarms/fire', color: 'text-red-500' },
     { icon: Wind, label: 'Smoke', path: '/alarms/smoke', color: 'text-slate-500' },
+    { icon: ActivityIcon, label: 'Vibration', path: '/alarms/vibration', color: 'text-purple-500' },
   ];
 
   const [isEnvironmentExpanded, setIsEnvironmentExpanded] = React.useState(false);
@@ -106,6 +107,7 @@ export function Layout() {
     if (location.pathname === '/alarms/water') return 'Water Alarms';
     if (location.pathname === '/alarms/fire') return 'Fire Alarms';
     if (location.pathname === '/alarms/smoke') return 'Smoke Alarms';
+    if (location.pathname === '/alarms/vibration') return 'Vibration Alarms';
     if (location.pathname === '/alarms') return 'Alarms';
     const all = [...navItems, ...monitoringItems, ...visualizationItems, ...bottomNavItems, { icon: Bell, label: 'Alarms', path: '/alarms' }];
     const current = all.find(item => item.path === location.pathname);

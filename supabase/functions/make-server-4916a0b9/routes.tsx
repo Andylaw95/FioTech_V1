@@ -442,6 +442,15 @@ function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, strin
   const now = Date.now();
   const STALE_OFFLINE = 60 * 60 * 1000; // 1 hour without uplink → offline
   const STALE_WARNING = 30 * 60 * 1000; // 30 min without uplink → warning
+  // Vibration sensors monitor structural movement — much shorter offline window for compliance
+  const VIB_STALE_OFFLINE = 5 * 60 * 1000;  // 5 min — generous for transient 4G dropouts
+  const VIB_STALE_WARNING = 2 * 60 * 1000;  // 2 min (matches dashboard 120s threshold)
+  const isVibrationDevice = (d: any) => {
+    const t = (d.type || "").toLowerCase();
+    const n = (d.name || "").toLowerCase();
+    return t.includes("vibration") || t.includes("accelerometer") || t.includes("as400") || t.includes("bewis")
+      || n.includes("as400") || n.includes("as-400") || n.includes("bewis") || n.includes("vibration");
+  };
 
   return devices.map((d: any) => {
     let status = d.status || "online";
@@ -449,16 +458,23 @@ function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, strin
     let battery = typeof d.battery === "number" ? d.battery : (d.connectionType === "4G" ? null : 100);
 
     // Staleness-based status: if no uplink for a while, mark offline/warning
+    // Vibration sensors get tighter thresholds (compliance with construction monitoring requirements)
+    const isVib = isVibrationDevice(d);
+    const offlineMs = isVib ? VIB_STALE_OFFLINE : STALE_OFFLINE;
+    const warningMs = isVib ? VIB_STALE_WARNING : STALE_WARNING;
     if (d.lastSeen) {
       const age = now - new Date(d.lastSeen).getTime();
-      if (age > STALE_OFFLINE) {
+      if (age > offlineMs) {
         status = "offline";
         const hrs = Math.round(age / (60 * 60 * 1000));
-        lastUpdate = hrs >= 24 ? `Offline ${Math.round(hrs / 24)}d ago` : `Offline ${hrs}h ago`;
+        const mins = Math.round(age / (60 * 1000));
+        lastUpdate = isVib && age < 60 * 60 * 1000
+          ? `Offline ${mins}m ago`
+          : (hrs >= 24 ? `Offline ${Math.round(hrs / 24)}d ago` : `Offline ${hrs}h ago`);
         // If last-known battery was already low, the device likely died from
         // a depleted battery — show 0% so the UI doesn't mislead with a stale value.
         if (battery !== null && battery <= 15) battery = 0;
-      } else if (age > STALE_WARNING && status === "online") {
+      } else if (age > warningMs && status === "online") {
         status = "warning";
         lastUpdate = `Last seen ${Math.round(age / (60 * 1000))}m ago`;
       }
@@ -2236,7 +2252,7 @@ export function registerRoutes(app: any) {
     if (auth instanceof Response) return auth;
     const userId = resolveTargetUser(auth, c);
     try {
-      const type = sanitizeEnum(c.req.query("type") || "", ["water", "fire", "smoke"], "water");
+      const type = sanitizeEnum(c.req.query("type") || "", ["water", "fire", "smoke", "vibration"], "water");
       const [devices, alarms, properties] = await Promise.all([
         getUserCollection(userId, "devices"),
         getUserCollection(userId, "alarms"),
@@ -2248,6 +2264,7 @@ export function registerRoutes(app: any) {
           case "water": return t.includes("water") || t.includes("leak") || t.includes("flood") || t.includes("moisture");
           case "fire": return t.includes("fire") || t.includes("heat") || t.includes("sprinkler");
           case "smoke": return t.includes("smoke") || t.includes("air quality") || t.includes("ventilation");
+          case "vibration": return t.includes("vibration") || t.includes("ppv") || t.includes("tilt shift") || t.includes("acceleration");
           default: return false;
         }
       };
@@ -2257,6 +2274,7 @@ export function registerRoutes(app: any) {
           case "water": return dt.includes("leak") || dt === "leakage" || dt.includes("water") || dt.includes("moisture");
           case "fire": return dt.includes("fire") || dt.includes("heat") || dt.includes("sprinkler");
           case "smoke": return dt.includes("smoke") || dt.includes("iaq") || dt.includes("air");
+          case "vibration": return dt.includes("vibration") || dt.includes("accelerometer") || dt.includes("as400") || dt.includes("bewis");
           default: return false;
         }
       };
@@ -3119,6 +3137,96 @@ export function registerRoutes(app: any) {
       if (hasVibrationData && (decodedData as any).ppv_source == null) {
         (decodedData as any).ppv_source = (typeof body.ppv_max_mm_s === "number" || typeof body.ppv_max === "number")
           ? "device" : (decodedData.ppv_max_mm_s != null ? "edge_estimated" : "unknown");
+      }
+
+      // ── Vibration compliance alarm checks (Lai King Hospital AAA defaults) ──
+      // Triggers: PPV three-tier, tilt-shift, low battery. Offline detection happens in deriveDeviceStatuses.
+      if (hasVibrationData) {
+        try {
+          const PPV_ALERT  = 0.075; // mm/s — informational
+          const PPV_ALARM  = 0.15;  // mm/s — high
+          const PPV_ACTION = 0.30;  // mm/s — critical (stop work)
+          const TILT_DELTA_DEG = 0.5; // any axis Δ ≥ 0.5° = structural shift
+
+          const ppv = decodedData.ppv_max_mm_s ?? decodedData.ppv_resultant_mm_s;
+          const vibAlarms: Array<{ type: string; severity: string; desc: string }> = [];
+
+          if (typeof ppv === "number") {
+            if (ppv >= PPV_ACTION) {
+              vibAlarms.push({ type: "Vibration Action", severity: "critical",
+                desc: `PPV ${ppv.toFixed(3)} mm/s exceeded Action threshold (${PPV_ACTION}). Stop work immediately.` });
+            } else if (ppv >= PPV_ALARM) {
+              vibAlarms.push({ type: "Vibration Alarm", severity: "high",
+                desc: `PPV ${ppv.toFixed(3)} mm/s exceeded Alarm threshold (${PPV_ALARM}). Investigate source.` });
+            } else if (ppv >= PPV_ALERT) {
+              vibAlarms.push({ type: "Vibration Alert", severity: "low",
+                desc: `PPV ${ppv.toFixed(3)} mm/s exceeded Alert threshold (${PPV_ALERT}).` });
+            }
+          }
+
+          // Tilt-shift detection — compare against per-device baseline cached in KV
+          const tiltX = decodedData.tilt_x_deg, tiltY = decodedData.tilt_y_deg, tiltZ = decodedData.tilt_z_deg;
+          if (typeof tiltX === "number" || typeof tiltY === "number" || typeof tiltZ === "number") {
+            const tiltKey = uk(userId, `device_tilt_baseline:${deviceId}`);
+            const baseline: any = await kvGetWithRetry(tiltKey);
+            const now = Date.now();
+            if (baseline && typeof baseline === "object" && (now - (baseline.t || 0)) < 24 * 60 * 60 * 1000) {
+              const dx = typeof tiltX === "number" && typeof baseline.x === "number" ? Math.abs(tiltX - baseline.x) : 0;
+              const dy = typeof tiltY === "number" && typeof baseline.y === "number" ? Math.abs(tiltY - baseline.y) : 0;
+              const dz = typeof tiltZ === "number" && typeof baseline.z === "number" ? Math.abs(tiltZ - baseline.z) : 0;
+              const maxDelta = Math.max(dx, dy, dz);
+              if (maxDelta >= TILT_DELTA_DEG) {
+                vibAlarms.push({ type: "Tilt Shift", severity: "medium",
+                  desc: `Tilt change ${maxDelta.toFixed(2)}° detected (Δx=${dx.toFixed(2)}, Δy=${dy.toFixed(2)}, Δz=${dz.toFixed(2)}). Possible structural movement.` });
+              }
+            }
+            // Refresh baseline (with smoothing — only update if change is small, to avoid masking slow drift)
+            if (!baseline || (now - (baseline.t || 0)) >= 60 * 60 * 1000) {
+              await kvSetWithRetry(tiltKey, {
+                x: typeof tiltX === "number" ? tiltX : baseline?.x,
+                y: typeof tiltY === "number" ? tiltY : baseline?.y,
+                z: typeof tiltZ === "number" ? tiltZ : baseline?.z,
+                t: now,
+              });
+            }
+          }
+
+          // Low battery for vibration sensors
+          if (typeof decodedData.battery === "number" && decodedData.battery < 10) {
+            vibAlarms.push({ type: "Vibration Sensor Low Battery", severity: "medium",
+              desc: `Battery ${decodedData.battery}% — replace soon to avoid monitoring gap.` });
+          }
+
+          if (vibAlarms.length > 0) {
+            const alarmKey = uk(userId, "alarms");
+            let alarms = await kvGetWithRetry(alarmKey);
+            if (!Array.isArray(alarms)) alarms = [];
+            for (const va of vibAlarms) {
+              const recentDupe = alarms.find((a: any) => a.type === va.type
+                && a.location === deviceName
+                && a.status === "pending"
+                && (Date.now() - new Date(a.time).getTime()) < 300000);
+              if (recentDupe) continue;
+              const newAlarm = {
+                id: `A${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                type: va.type, location: deviceName,
+                property: sanitizeString(body.application || "Vibration Monitoring", 200),
+                severity: va.severity,
+                time: new Date().toISOString(), status: "pending",
+                description: va.desc,
+              };
+              alarms.unshift(newAlarm);
+              if (alarms.length > 1000) alarms = alarms.slice(0, 1000);
+              if (va.severity === "critical" || va.severity === "high") {
+                broadcastAlarmPush(userId, newAlarm).catch(() => {});
+              }
+            }
+            await kvSetWithRetry(alarmKey, alarms);
+            invalidateKvCache(alarmKey);
+          }
+        } catch (vibErr) {
+          console.log(`[Vibration Alarms] Skipped: ${errorMessage(vibErr)}`);
+        }
       }
 
       if (Object.keys(decodedData).length === 0) {
@@ -4109,7 +4217,7 @@ export function registerRoutes(app: any) {
     if (auth instanceof Response) return auth;
     try {
       const body = await c.req.json();
-      const alarm_type = sanitizeEnum(body.alarm_type, ["water", "fire", "smoke"], "");
+      const alarm_type = sanitizeEnum(body.alarm_type, ["water", "fire", "smoke", "vibration"], "");
       const property_id = sanitizeString(body.property_id);
       const device_id = sanitizeString(body.device_id);
       if (!alarm_type || !property_id || !device_id) {

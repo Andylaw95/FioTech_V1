@@ -1178,7 +1178,7 @@ export interface BimDeviceMapping {
   updatedAt?: string;
 }
 
-export type SafetyAlarmType = 'water' | 'fire' | 'smoke';
+export type SafetyAlarmType = 'water' | 'fire' | 'smoke' | 'vibration';
 export type SafetyAlarmStatus =
   | 'pending' | 'acknowledged' | 'in_progress' | 'resolved' | 'false_alarm';
 
@@ -1383,7 +1383,7 @@ export const api = {
 
   // Alarm telemetry (zones + trend data from real backend data)
   getAlarmTelemetry: (
-    type: 'water' | 'fire' | 'smoke',
+    type: 'water' | 'fire' | 'smoke' | 'vibration',
   ): Promise<AlarmTelemetryResponse> =>
     fetchWithAuth(`/alarm-telemetry?type=${type}`),
 
@@ -1615,7 +1615,7 @@ export const api = {
     return fetchWithAuth(`/safety-alarms${qs ? `?${qs}` : ''}`);
   },
   createSafetyAlarm: (body: {
-    alarm_type: 'water' | 'fire' | 'smoke';
+    alarm_type: 'water' | 'fire' | 'smoke' | 'vibration';
     property_id: string;
     device_id: string;
     property_name?: string;

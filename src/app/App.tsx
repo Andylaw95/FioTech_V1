@@ -16,6 +16,7 @@ const BuildingDetails = React.lazy(() => import('@/app/pages/BuildingDetails').t
 const WaterAlarms = React.lazy(() => import('@/app/pages/WaterAlarms').then(m => ({ default: m.WaterAlarms })));
 const FireAlarms = React.lazy(() => import('@/app/pages/FireAlarms').then(m => ({ default: m.FireAlarms })));
 const SmokeAlarms = React.lazy(() => import('@/app/pages/SmokeAlarms').then(m => ({ default: m.SmokeAlarms })));
+const VibrationAlarms = React.lazy(() => import('@/app/pages/VibrationAlarms').then(m => ({ default: m.VibrationAlarms })));
 const Gateways = React.lazy(() => import('@/app/pages/Gateways').then(m => ({ default: m.Gateways })));
 const AdminPanel = React.lazy(() => import('@/app/pages/AdminPanel').then(m => ({ default: m.AdminPanel })));
 const NoiseDashboard = React.lazy(() => import('@/app/pages/NoiseDashboard').then(m => ({ default: m.NoiseDashboard })));
@@ -266,6 +267,7 @@ export default function App() {
                         <Route path="alarms/water" element={<WaterAlarms />} />
                         <Route path="alarms/fire" element={<FireAlarms />} />
                         <Route path="alarms/smoke" element={<SmokeAlarms />} />
+                        <Route path="alarms/vibration" element={<VibrationAlarms />} />
                         <Route path="noise" element={<NoiseDashboard />} />
                         <Route path="dust" element={<DustDashboard />} />
                         <Route path="environment" element={<EnvironmentalMonitoring />} />

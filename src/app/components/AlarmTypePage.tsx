@@ -37,7 +37,7 @@ import { SafeChartContainer } from './SafeChartContainer';
 
 // --- Types ---
 export interface AlarmTypeConfig {
-  type: 'water' | 'fire' | 'smoke';
+  type: 'water' | 'fire' | 'smoke' | 'vibration';
   title: string;
   subtitle: string;
   icon: React.ReactNode;

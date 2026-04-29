@@ -7,6 +7,7 @@ import {
   Droplets, 
   Flame, 
   Wind,
+  Activity as VibIcon,
   Thermometer,
   WifiOff,
   MoreVertical,
@@ -41,6 +42,7 @@ function formatTimeAgo(isoString: string): string {
 function getAlarmIcon(type: string) {
   if (type.includes('Water') || type.includes('Leak')) return <Droplets className="h-4 w-4 text-blue-500" />;
   if (type.includes('Smoke')) return <Wind className="h-4 w-4 text-slate-500" />;
+  if (type.includes('Vibration') || type.includes('PPV') || type.includes('Tilt Shift')) return <VibIcon className="h-4 w-4 text-purple-500" />;
   if (type.includes('Fire')) return <Flame className="h-4 w-4 text-red-500" />;
   if (type.includes('Temperature') || type.includes('Humidity')) return <Thermometer className="h-4 w-4 text-orange-500" />;
   if (type.includes('Offline')) return <WifiOff className="h-4 w-4 text-slate-400" />;
@@ -161,17 +163,22 @@ export function Alarms() {
       const t = (a.type ?? '').toLowerCase();
       return t.includes('smoke') || t.includes('air quality') || t.includes('ventilation');
     });
+    const vibration = alarms.filter(a => {
+      const t = (a.type ?? '').toLowerCase();
+      return t.includes('vibration') || t.includes('ppv') || t.includes('tilt shift') || t.includes('acceleration');
+    });
     return {
       water: { total: water.length, pending: water.filter(a => a.status === 'pending').length },
       fire: { total: fire.length, pending: fire.filter(a => a.status === 'pending').length },
       smoke: { total: smoke.length, pending: smoke.filter(a => a.status === 'pending').length },
+      vibration: { total: vibration.length, pending: vibration.filter(a => a.status === 'pending').length },
     };
   }, [alarms]);
 
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Type-specific quick navigation */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
           {
             key: 'water',
@@ -211,6 +218,19 @@ export function Alarms() {
             iconColor: 'text-slate-700',
             borderColor: 'border-slate-200',
             hoverBg: 'hover:border-slate-300',
+          },
+          {
+            key: 'vibration',
+            label: 'Vibration Alarms',
+            desc: 'PPV / tilt-shift / structural compliance',
+            icon: VibIcon,
+            path: '/alarms/vibration',
+            counts: typeCounts.vibration,
+            gradient: 'from-purple-500 to-fuchsia-400',
+            iconBg: 'bg-purple-100',
+            iconColor: 'text-purple-600',
+            borderColor: 'border-purple-100',
+            hoverBg: 'hover:border-purple-200',
           },
         ].map((item, index) => (
           <motion.button
