@@ -29,9 +29,11 @@ const levelStyle: Record<ComplianceLevel, { label: string; bg: string; text: str
 function isVibrationDevice(d: Device): boolean {
   const t = (d.type ?? '').toLowerCase();
   const n = (d.name ?? '').toLowerCase();
-  return t.includes('vibration') || t.includes('accelerometer') || t.includes('as400') || t.includes('bewis')
+  return t.includes('vibration') || t.includes('accelerometer') || t.includes('as400') || t.includes('as-400') || t.includes('bewis')
       || n.includes('vibration') || n.includes('as400') || n.includes('as-400') || n.includes('bewis');
 }
+
+export { isVibrationDevice };
 
 interface VibrationReading {
   device: Device;
@@ -50,12 +52,32 @@ function matchReading(device: Device, telemetry: PropertyTelemetry | null): Vibr
     receivedAt: null, ppvSource: null,
   };
   if (!telemetry?.deviceReadings) return empty;
-  const readings = Object.values(telemetry.deviceReadings);
-  const dn = (device.name ?? '').toLowerCase();
-  const match = readings.find(r => {
-    const rn = (r.deviceName ?? '').toLowerCase();
-    return rn && dn && (rn.includes(dn) || dn.includes(rn));
-  });
+  const entries = Object.entries(telemetry.deviceReadings);
+  const dn = (device.name ?? '').trim().toLowerCase();
+  const did = (device.id ?? '').trim().toLowerCase();
+  const dEui = ((device as any).devEui ?? (device as any).devEUI ?? '').toString().trim().toLowerCase();
+
+  // 1) Exact match on devEUI / id (key in deviceReadings is devEUI)
+  let match = entries.find(([eui, r]) => {
+    const k = eui.toLowerCase();
+    const re = (r.devEUI ?? '').toLowerCase();
+    return (dEui && (k === dEui || re === dEui)) || (did && (k === did || re === did));
+  })?.[1];
+
+  // 2) Exact name match (case + trim normalised)
+  if (!match && dn) {
+    match = entries.find(([, r]) => (r.deviceName ?? '').trim().toLowerCase() === dn)?.[1];
+  }
+
+  // 3) Unambiguous fuzzy substring match — only when EXACTLY one matches
+  if (!match && dn) {
+    const fuzzy = entries.filter(([, r]) => {
+      const rn = (r.deviceName ?? '').trim().toLowerCase();
+      return rn && (rn.includes(dn) || dn.includes(rn));
+    });
+    if (fuzzy.length === 1) match = fuzzy[0][1];
+  }
+
   if (!match?.decoded) return empty;
   const d = match.decoded as Record<string, number | string | null | undefined>;
   const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
@@ -95,11 +117,15 @@ export function VibrationStatusPanel({ devices, telemetry }: VibrationStatusPane
 
   if (vibDevices.length === 0) return null;
 
-  const worstLevel: ComplianceLevel = readings.reduce<ComplianceLevel>((acc, r) => {
-    const lvl = classifyPpv(r.ppv);
-    const order: ComplianceLevel[] = ['unknown', 'normal', 'alert', 'alarm', 'action'];
-    return order.indexOf(lvl) > order.indexOf(acc) ? lvl : acc;
-  }, 'normal');
+  // Worst-case compliance: ignore 'unknown' if any sensor has a real reading,
+  // but show 'No Data' if ALL sensors are unknown (avoids falsely showing Normal during loading).
+  const levels = readings.map(r => classifyPpv(r.ppv));
+  const order: ComplianceLevel[] = ['normal', 'alert', 'alarm', 'action'];
+  const knownLevels = levels.filter((l): l is Exclude<ComplianceLevel, 'unknown'> => l !== 'unknown');
+  const worstLevel: ComplianceLevel = knownLevels.length === 0
+    ? 'unknown'
+    : knownLevels.reduce<ComplianceLevel>((acc, lvl) =>
+        order.indexOf(lvl) > order.indexOf(acc as Exclude<ComplianceLevel, 'unknown'>) ? lvl : acc, 'normal');
   const worstStyle = levelStyle[worstLevel];
 
   const onlineCount = readings.filter(r => r.device.status === 'online').length;
@@ -213,8 +239,8 @@ export function VibrationStatusPanel({ devices, telemetry }: VibrationStatusPane
                 <div className="absolute top-0 h-full w-px bg-orange-500/60" style={{ left: `${(PPV_ALARM / PPV_ACTION) * 100}%` }} />
               </div>
 
-              {/* Tilt + Battery row */}
-              <div className="mt-2.5 grid grid-cols-3 gap-1.5 text-[10px]">
+              {/* Tilt + Battery row (X / Y / Z / Batt) */}
+              <div className="mt-2.5 grid grid-cols-4 gap-1.5 text-[10px]">
                 <div className="rounded bg-slate-50 px-1.5 py-1">
                   <div className="flex items-center gap-1 text-slate-500">
                     <Compass className="h-2.5 w-2.5" /> X°
@@ -233,6 +259,14 @@ export function VibrationStatusPanel({ devices, telemetry }: VibrationStatusPane
                 </div>
                 <div className="rounded bg-slate-50 px-1.5 py-1">
                   <div className="flex items-center gap-1 text-slate-500">
+                    <Compass className="h-2.5 w-2.5" /> Z°
+                  </div>
+                  <p className="font-mono font-semibold text-slate-800">
+                    {typeof r.tiltZ === 'number' ? r.tiltZ.toFixed(2) : '—'}
+                  </p>
+                </div>
+                <div className="rounded bg-slate-50 px-1.5 py-1">
+                  <div className="flex items-center gap-1 text-slate-500">
                     {typeof r.battery === 'number' && r.battery < 10
                       ? <BatteryLow className="h-2.5 w-2.5 text-amber-500" />
                       : <ShieldCheck className="h-2.5 w-2.5" />}
@@ -245,7 +279,11 @@ export function VibrationStatusPanel({ devices, telemetry }: VibrationStatusPane
                 </div>
               </div>
 
-              <p className="mt-1.5 text-[10px] text-slate-400">Last seen: {relativeTime(r.receivedAt) || r.device.lastUpdate || '—'}</p>
+              {(() => {
+                const seen = relativeTime(r.receivedAt);
+                const fallback = seen === '—' ? (r.device.lastUpdate || '—') : seen;
+                return <p className="mt-1.5 text-[10px] text-slate-400">Last seen: {fallback}</p>;
+              })()}
             </div>
           );
         })}

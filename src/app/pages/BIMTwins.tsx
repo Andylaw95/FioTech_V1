@@ -9,7 +9,7 @@ import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { api, type Property, type PropertyDetails, type Device, type PropertyTelemetry } from '@/app/utils/api';
 import { BMSPanel } from '@/app/components/digital-twin/BMSPanel';
-import { VibrationStatusPanel } from '@/app/components/digital-twin/VibrationStatusPanel';
+import { VibrationStatusPanel, isVibrationDevice } from '@/app/components/digital-twin/VibrationStatusPanel';
 import { DeviceInspector } from '@/app/components/digital-twin/DeviceInspector';
 import { Bim3DStage } from '@/app/components/digital-twin/Bim3DStage';
 
@@ -52,12 +52,28 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
         const readingsArr = Object.values(readings);
 
         devices.forEach((d, idx) => {
-          // Try to match device to a sensor reading by name or index
-          const matchByName = readingsArr.find(
-            r => r.deviceName?.toLowerCase().includes(d.name?.toLowerCase()) ||
-                 d.name?.toLowerCase().includes(r.deviceName?.toLowerCase())
-          );
-          const reading = matchByName || readingsArr[idx % readingsArr.length];
+          // Match device → reading by devEUI/id first, then exact name, then unambiguous fuzzy.
+          // Index fallback removed to prevent wrong-sensor data on critical (vibration) markers.
+          const dn = (d.name ?? '').trim().toLowerCase();
+          const did = (d.id ?? '').trim().toLowerCase();
+          const dEui = ((d as any).devEui ?? (d as any).devEUI ?? '').toString().trim().toLowerCase();
+
+          let matchByName = readingsArr.find(r => {
+            const re = (r.devEUI ?? '').toLowerCase();
+            return (dEui && re === dEui) || (did && re === did);
+          });
+          if (!matchByName && dn) {
+            matchByName = readingsArr.find(r => (r.deviceName ?? '').trim().toLowerCase() === dn);
+          }
+          if (!matchByName && dn) {
+            const fuzzy = readingsArr.filter(r => {
+              const rn = (r.deviceName ?? '').trim().toLowerCase();
+              return rn && (rn.includes(dn) || dn.includes(rn));
+            });
+            if (fuzzy.length === 1) matchByName = fuzzy[0];
+          }
+          // Last-resort index fallback ONLY for non-vibration devices (compliance markers must not be wrong)
+          const reading = matchByName || (!isVibrationDevice(d) ? readingsArr[idx % readingsArr.length] : undefined);
 
           if (reading?.decoded) {
             // Use the most relevant metric based on device type
@@ -71,11 +87,10 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
             } else if ((d.type === 'Noise' || d.type === 'Sound Level Sensor') && decoded.sound_level_leq != null) {
               newTelemetry[d.id] = decoded.sound_level_leq;
             } else if (
-              (d.type?.toLowerCase().includes('vibration') || d.type?.toLowerCase().includes('accelerometer')
-                || d.name?.toLowerCase().includes('as400') || d.name?.toLowerCase().includes('bewis'))
+              isVibrationDevice(d)
               && (decoded.ppv_max_mm_s != null || decoded.ppv_resultant_mm_s != null)
             ) {
-              newTelemetry[d.id] = decoded.ppv_max_mm_s ?? decoded.ppv_resultant_mm_s;
+              newTelemetry[d.id] = (decoded.ppv_max_mm_s ?? decoded.ppv_resultant_mm_s) as number;
             } else {
               // Default: use temperature if available, otherwise first numeric value
               const val = decoded.temperature ?? decoded.co2 ?? decoded.humidity ??
@@ -85,9 +100,8 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
           }
         });
 
-        if (Object.keys(newTelemetry).length > 0) {
-          setTelemetry(newTelemetry);
-        }
+        // Always set after a successful fetch — clears stale markers when telemetry empties
+        setTelemetry(newTelemetry);
       } catch (err) {
         console.debug('BIMTwins telemetry fetch failed:', err);
         if (!cancelled) {

@@ -1085,6 +1085,8 @@ export function registerRoutes(app: any) {
         const pres = fv(decoded, ["ppv_resultant_mm_s", "ppv_resultant"]);
         const dfreq = fv(decoded, ["vibration_dominant_freq_hz", "dominant_freq_hz", "dominant_freq"]);
         const alvl = fv(decoded, ["vibration_alarm_level", "alarm_level", "aaa_level"]);
+        const batt = fv(decoded, ["battery", "battery_pct", "battery_percent", "batt"]);
+        const psrc = typeof (decoded as any).ppv_source === "string" ? (decoded as any).ppv_source : null;
         if (t !== null) { temperature = t; tempSum.push(t); }
         if (h !== null) { humidity = h; humSum.push(h); }
         if (c2 !== null) co2 = c2;
@@ -1150,6 +1152,8 @@ export function registerRoutes(app: any) {
             ...(pres !== null && { ppv_resultant_mm_s: pres }),
             ...(dfreq !== null && { vibration_dominant_freq_hz: dfreq }),
             ...(alvl !== null && { vibration_alarm_level: alvl }),
+            ...(batt !== null && { battery: batt }),
+            ...(psrc !== null && { ppv_source: psrc }),
           },
         };
       }
