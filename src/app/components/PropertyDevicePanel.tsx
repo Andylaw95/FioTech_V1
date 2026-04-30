@@ -28,7 +28,7 @@ function formatLastUpdate(raw: string | undefined): string {
     if (diffHr < 24) return `${diffHr}h ago`;
     const diffDay = Math.floor(diffHr / 24);
     if (diffDay < 7) return `${diffDay}d ago`;
-    return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Hong_Kong' });
+    return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   } catch { return raw; }
 }
 
@@ -40,7 +40,6 @@ const deviceMeta: Record<string, { icon: React.ElementType; bg: string; color: s
   'Water Leakage Sensor': { icon: Droplets, bg: 'bg-blue-50', color: 'text-blue-600', label: 'Water Leak' },
   Noise:       { icon: Volume2,     bg: 'bg-violet-50',   color: 'text-violet-600',   label: 'Noise' },
   'Sound Level Sensor': { icon: Volume2, bg: 'bg-violet-50', color: 'text-violet-600', label: 'Sound Level' },
-  '4G Sensor': { icon: Volume2, bg: 'bg-violet-50', color: 'text-violet-600', label: '4G Sensor' },
   Smoke:       { icon: Shield,      bg: 'bg-slate-100',   color: 'text-slate-600',    label: 'Smoke Detector' },
   Fire:        { icon: Flame,       bg: 'bg-red-50',      color: 'text-red-600',      label: 'Fire Alarm' },
   'Environment Sensor': { icon: Wind, bg: 'bg-emerald-50', color: 'text-emerald-600', label: 'Environment' },
@@ -58,8 +57,7 @@ function getSimulatedReading(device: Device) {
     case 'Temperature': return { value: (19 + (h % 80) / 10).toFixed(1), unit: '°C', label: 'Temp' };
     case 'Leakage':     return { value: h % 5 === 0 ? 'LEAK' : 'DRY', unit: '', label: 'Status' };
     case 'Noise':
-    case 'Sound Level Sensor':
-    case '4G Sensor': return { value: (30 + (h % 45)).toString(), unit: 'dB(A)', label: 'LAF' };
+    case 'Sound Level Sensor': return { value: (30 + (h % 45)).toString(), unit: 'dB', label: 'Leq' };
     case 'Water Leakage Sensor': return { value: h % 5 === 0 ? 'LEAK' : 'DRY', unit: '', label: 'Status' };
     case 'Smoke':       return { value: (0.05 + (h % 30) / 100).toFixed(2), unit: 'μg/m³', label: 'Particles' };
     case 'Fire':        return { value: (20 + (h % 40) / 10).toFixed(1), unit: '°C', label: 'Heat' };
@@ -79,11 +77,9 @@ function getRealReading(decoded: Record<string, number>): { primary: { value: st
   if (decoded.barometric_pressure !== undefined) all.push({ label: 'Pressure', value: decoded.barometric_pressure.toFixed(1), unit: 'hPa' });
   if (decoded.illuminance !== undefined) all.push({ label: 'Light', value: Math.round(decoded.illuminance).toString(), unit: 'lux' });
   if (decoded.pir !== undefined) all.push({ label: 'PIR', value: decoded.pir > 0 ? 'Motion' : 'Clear', unit: '' });
-  if (decoded.sound_level_inst !== undefined) all.push({ label: 'LAF', value: decoded.sound_level_inst.toFixed(1), unit: 'dB(A)' });
-  if (decoded.sound_level_lmax !== undefined) all.push({ label: 'LAFmax', value: decoded.sound_level_lmax.toFixed(1), unit: 'dB(A)' });
-  if (decoded.sound_level_lmin !== undefined) all.push({ label: 'LAFmin', value: decoded.sound_level_lmin.toFixed(1), unit: 'dB(A)' });
-  if (decoded.sound_level_leq !== undefined) all.push({ label: 'LAeq', value: decoded.sound_level_leq.toFixed(1), unit: 'dB(A)' });
-  if (decoded.sound_level_lcpeak !== undefined) all.push({ label: 'LCPeak', value: decoded.sound_level_lcpeak.toFixed(1), unit: 'dB(C)' });
+  if (decoded.sound_level_leq !== undefined) all.push({ label: 'Leq', value: decoded.sound_level_leq.toFixed(1), unit: 'dB' });
+  if (decoded.sound_level_lmax !== undefined) all.push({ label: 'Lmax', value: decoded.sound_level_lmax.toFixed(1), unit: 'dB' });
+  if (decoded.sound_level_lmin !== undefined) all.push({ label: 'Lmin', value: decoded.sound_level_lmin.toFixed(1), unit: 'dB' });
   if (decoded.water_leak !== undefined) all.push({ label: 'Leak', value: decoded.water_leak > 0 ? 'LEAK!' : 'Dry', unit: '' });
   const primary = all[0] || { value: '--', unit: '', label: 'No Data' };
   return { primary, all };
@@ -389,9 +385,9 @@ export function PropertyDevicePanel({ devices, propertyName, onDeviceChange, sea
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(d =>
-        (d.name ?? '').toLowerCase().includes(q) ||
-        (d.type ?? '').toLowerCase().includes(q) ||
-        (d.location ?? '').toLowerCase().includes(q)
+        d.name.toLowerCase().includes(q) ||
+        d.type.toLowerCase().includes(q) ||
+        d.location.toLowerCase().includes(q)
       );
     }
     return result;

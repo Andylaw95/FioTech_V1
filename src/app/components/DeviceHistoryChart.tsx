@@ -15,7 +15,7 @@ function formatLocalTime(iso: string): string {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Hong_Kong' });
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   } catch { return iso; }
 }
 
@@ -23,7 +23,7 @@ function formatLocalDate(iso: string): string {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'Asia/Hong_Kong' });
+    return d.toLocaleDateString([], { day: '2-digit', month: 'short' });
   } catch { return iso; }
 }
 
@@ -95,9 +95,9 @@ const METRICS: MetricDef[] = [
     domain: [0, 100],
   },
   {
-    key: 'sound_level_inst', label: 'LAF', unit: 'dB(A)', icon: Volume2, color: '#7c3aed',
-    description: 'A-weighted instantaneous sound level (fast)',
-    referenceLines: [{ y: 70, color: '#f59e0b', label: '70 dB(A)' }, { y: 85, color: '#ef4444', label: '85 dB(A)' }],
+    key: 'sound_level_leq', label: 'Sound Leq', unit: 'dB', icon: Volume2, color: '#8b5cf6',
+    description: 'Equivalent continuous sound level',
+    referenceLines: [{ y: 70, color: '#f59e0b', label: '70 dB' }, { y: 85, color: '#ef4444', label: '85 dB' }],
     referenceAreas: [
       { y1: 0, y2: 55, color: '#dcfce7', opacity: 0.3 },
       { y1: 55, y2: 70, color: '#fef9c3', opacity: 0.3 },
@@ -105,29 +105,12 @@ const METRICS: MetricDef[] = [
     ],
   },
   {
-    key: 'sound_level_lmax', label: 'LAFmax', unit: 'dB(A)', icon: Volume2, color: '#a855f7',
-    description: 'A-weighted maximum sound level',
+    key: 'sound_level_lmax', label: 'Sound Lmax', unit: 'dB', icon: Volume2, color: '#a855f7',
+    description: 'Maximum sound level',
   },
   {
-    key: 'sound_level_lmin', label: 'LAFmin', unit: 'dB(A)', icon: Volume2, color: '#c084fc',
-    description: 'A-weighted minimum sound level',
-  },
-  {
-    key: 'sound_level_leq', label: 'LAeq', unit: 'dB(A)', icon: Volume2, color: '#8b5cf6',
-    description: 'A-weighted equivalent continuous sound level',
-  },
-  {
-    key: 'sound_level_lcpeak', label: 'LCPeak', unit: 'dB(C)', icon: Volume2, color: '#dc2626',
-  },
-  {
-    key: 'water_leak', label: 'Leak Status', unit: '', icon: Droplets, color: '#0ea5e9',
-    description: '0 = Dry, 1 = Leak detected',
-    domain: [0, 1],
-    chartType: 'bar',
-    referenceAreas: [
-      { y1: 0, y2: 0.5, color: '#dcfce7', opacity: 0.3 },
-      { y1: 0.5, y2: 1, color: '#fee2e2', opacity: 0.4 },
-    ],
+    key: 'sound_level_lmin', label: 'Sound Lmin', unit: 'dB', icon: Volume2, color: '#c084fc',
+    description: 'Minimum sound level',
   },
 ];
 
@@ -145,20 +128,11 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
   'Pressure': 'pressure',
   'Light': 'illuminance',
   'PIR': 'pir',
-  'LAF': 'sound_level_inst',
-  'LAFmax': 'sound_level_lmax',
-  'LAFmin': 'sound_level_lmin',
-  'LAeq': 'sound_level_leq',
-  'LCPeak': 'sound_level_lcpeak',
   'Sound Leq': 'sound_level_leq',
   'Sound Lmax': 'sound_level_lmax',
   'Sound Lmin': 'sound_level_lmin',
   'Leq': 'sound_level_leq',
-  'Lmax': 'sound_level_lmax',
-  'Lmin': 'sound_level_lmin',
-  'Inst': 'sound_level_inst',
-  'Instantaneous': 'sound_level_inst',
-  'Noise': 'sound_level_inst',
+  'Noise': 'sound_level_leq',
   'Battery': 'battery',
 };
 
@@ -166,12 +140,10 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
 const TYPE_METRIC_PRIORITY: Record<string, string[]> = {
   IAQ:         ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],
   Temperature: ['temperature', 'humidity', 'co2', 'pressure', 'battery'],
-  Noise:       ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
-  'Sound Level Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
-  '4G Sensor': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
-  '4G Sound Level Meter': ['sound_level_inst', 'sound_level_lmax', 'sound_level_lmin', 'sound_level_leq', 'sound_level_lcpeak', 'battery'],
-  Leakage:     ['water_leak', 'temperature', 'humidity', 'battery'],
-  'Water Leakage Sensor': ['water_leak', 'temperature', 'humidity', 'battery'],
+  Noise:       ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
+  'Sound Level Sensor': ['sound_level_leq', 'sound_level_lmax', 'sound_level_lmin', 'battery'],
+  Leakage:     ['temperature', 'humidity', 'battery'],
+  'Water Leakage Sensor': ['temperature', 'humidity', 'battery'],
   'Environment Sensor': ['co2', 'tvoc', 'pm2_5', 'pm10', 'temperature', 'humidity', 'pressure', 'illuminance', 'battery'],
   Smoke:       ['pm2_5', 'pm10', 'co2', 'temperature', 'battery'],
   Fire:        ['temperature', 'humidity', 'co2', 'battery'],
@@ -310,11 +282,9 @@ interface DeviceHistoryChartProps {
   period?: string;
   /** Compact layout for narrow panels (e.g. side inspector) */
   compact?: boolean;
-  /** Live decoded data from device record (fresher than throttled history) */
-  liveDecoded?: Record<string, number>;
 }
 
-export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, hideMetricCards, period = '24h', compact, liveDecoded }: DeviceHistoryChartProps) {
+export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, hideMetricCards, period = '24h', compact }: DeviceHistoryChartProps) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DeviceHistoryPoint[]>([]);
   const [error, setError] = useState('');
@@ -341,14 +311,10 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
   // Determine which metrics have data
-  // Determine which metrics have data (from history OR live decoded)
   const availableMetrics = useMemo(() => {
-    return METRICS.filter((m) => {
-      if (data.some((d) => d[m.key] != null)) return true;
-      if (liveDecoded && typeof liveDecoded[m.key as string] === 'number') return true;
-      return false;
-    });
-  }, [data, liveDecoded]);
+    if (data.length === 0) return [];
+    return METRICS.filter((m) => data.some((d) => d[m.key] != null));
+  }, [data]);
 
   // Sort by device type priority
   const sortedMetrics = useMemo(() => {
@@ -380,27 +346,18 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
 
   const selectedMetric = sortedMetrics.find(m => m.key === selectedMetricKey) || sortedMetrics[0];
 
-  // Get latest value for each metric — prefer liveDecoded (real-time) over history (throttled)
+  // Get latest value for each metric (last non-null reading)
   const latestValues = useMemo(() => {
     const vals: Record<string, number> = {};
-    // First, fill from history data (oldest source)
-    if (data.length > 0) {
-      for (const m of METRICS) {
-        for (let i = data.length - 1; i >= 0; i--) {
-          const v = data[i][m.key];
-          if (v != null) { vals[m.key as string] = v as number; break; }
-        }
-      }
-    }
-    // Override with liveDecoded values (fresher, updated every webhook call)
-    if (liveDecoded) {
-      for (const m of METRICS) {
-        const v = liveDecoded[m.key as string];
-        if (typeof v === 'number') vals[m.key as string] = v;
+    if (data.length === 0) return vals;
+    for (const m of METRICS) {
+      for (let i = data.length - 1; i >= 0; i--) {
+        const v = data[i][m.key];
+        if (v != null) { vals[m.key as string] = v as number; break; }
       }
     }
     return vals;
-  }, [data, liveDecoded]);
+  }, [data]);
 
   // Data time range for display
   const timeRange = useMemo(() => {
@@ -441,9 +398,8 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
       {/* Clickable metric cards — show latest value + act as selector (hidden when parent provides its own) */}
       {!hideMetricCards && (
         <div className={clsx(
-          compact
-            ? "grid gap-2 mb-3 grid-cols-3 sm:grid-cols-4 lg:grid-cols-5"
-            : "grid gap-2 mb-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
+          "grid gap-2 mb-4",
+          compact ? "grid-cols-2" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
         )}>
           {sortedMetrics.map((m) => {
             const MIcon = m.icon;
@@ -454,17 +410,18 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
                 key={m.key as string}
                 onClick={() => setSelectedMetricKey(m.key as string)}
                 className={clsx(
-                  "relative rounded-lg text-left transition-all border-2 cursor-pointer group",
-                  compact ? "p-2.5" : "p-3",
+                  "relative rounded-xl text-left transition-all border-2 cursor-pointer group",
+                  compact ? "p-2" : "p-3",
                   isActive
                     ? "border-blue-500 bg-blue-50/60 shadow-sm"
                     : "border-transparent bg-slate-50 hover:bg-slate-100 hover:border-slate-200"
                 )}
               >
-                <div className="flex items-center gap-1 mb-0.5">
+                <div className="flex items-center gap-1.5 mb-0.5">
                   <MIcon className={clsx(compact ? "h-3 w-3" : "h-3.5 w-3.5")} style={{ color: m.color }} />
                   <span className={clsx(
-                    "text-xs font-medium truncate",
+                    compact ? "text-[10px]" : "text-xs",
+                    "font-medium truncate",
                     isActive ? "text-blue-700" : "text-slate-500"
                   )}>{m.label}</span>
                 </div>
@@ -476,10 +433,10 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
                   )}>
                     {latest !== undefined ? (Number.isInteger(latest) ? latest : latest.toFixed(1)) : '—'}
                   </span>
-                  <span className="text-[10px] text-slate-400">{m.unit}</span>
+                  <span className={clsx(compact ? "text-[10px]" : "text-xs", "text-slate-400")}>{m.unit}</span>
                 </div>
                 {isActive && (
-                  <div className="absolute bottom-0 left-1.5 right-1.5 h-0.5 rounded-full bg-blue-500" />
+                  <div className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-blue-500" />
                 )}
               </button>
             );
@@ -497,7 +454,7 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
             {!compact && <span className="ml-auto text-xs text-slate-400 shrink-0">{data.length} pts · {timeRange}</span>}
           </div>
           {compact ? (
-            <p className="text-[10px] text-slate-400 mb-1 truncate">{data.length} pts · {timeRange || period}</p>
+            <p className="text-[10px] text-slate-400 mb-2 truncate">{data.length} data points · 3-day history</p>
           ) : (
             <p className="text-xs text-slate-400 mb-3">{selectedMetric.description}</p>
           )}
