@@ -2643,9 +2643,9 @@ export function registerRoutes(app: any) {
       const eventType = isJoinEvent ? "join" : isErrorEvent ? "error" : isAckEvent ? "ack" : "uplink";
 
       const bodyDeviceInfo = body.deviceInfo && typeof body.deviceInfo === "object" ? body.deviceInfo : {};
-      const devEUI = sanitizeString(body.devEUI || body.devEui || body.dev_eui || bodyDeviceInfo.devEui || bodyDeviceInfo.devEUI || c.req.query("devEUI") || c.req.query("devEui") || c.req.query("dev_eui") || c.req.query("deveui") || "", 24);
-      const deviceName = sanitizeString(body.deviceName || body.device_name || bodyDeviceInfo.deviceName || bodyDeviceInfo.device_name || c.req.query("deviceName") || c.req.query("device_name") || c.req.query("name") || "Unknown Device", 200);
-      const applicationName = sanitizeString(body.applicationName || body.application_name || bodyDeviceInfo.applicationName || bodyDeviceInfo.application_name || c.req.query("applicationName") || c.req.query("application_name") || c.req.query("application") || "", 200);
+      let devEUI = sanitizeString(body.devEUI || body.devEui || body.dev_eui || bodyDeviceInfo.devEui || bodyDeviceInfo.devEUI || c.req.query("devEUI") || c.req.query("devEui") || c.req.query("dev_eui") || c.req.query("deveui") || "", 24);
+      let deviceName = sanitizeString(body.deviceName || body.device_name || bodyDeviceInfo.deviceName || bodyDeviceInfo.device_name || c.req.query("deviceName") || c.req.query("device_name") || c.req.query("name") || "Unknown Device", 200);
+      let applicationName = sanitizeString(body.applicationName || body.application_name || bodyDeviceInfo.applicationName || bodyDeviceInfo.application_name || c.req.query("applicationName") || c.req.query("application_name") || c.req.query("application") || "", 200);
       const fPort = typeof body.fPort === "number" ? body.fPort : (typeof body.fport === "number" ? body.fport : 0);
       const fCnt = typeof body.fCnt === "number" ? body.fCnt : (typeof body.fcnt === "number" ? body.fcnt : 0);
       const rawData = sanitizeString(body.data || "", 2000);
@@ -2690,6 +2690,39 @@ export function registerRoutes(app: any) {
       }
 
       const uplinkTime = sanitizeString(body.time || body.timestamp || new Date().toISOString(), 50);
+
+      if (!devEUI && decodedData && typeof decodedData === "object") {
+        const decodedKeys = new Set(Object.keys(decodedData));
+        const hasDirectMilesightEnvPayload = decodedKeys.has("temperature") || decodedKeys.has("humidity") || decodedKeys.has("water_leak") || decodedKeys.has("digital_input");
+        if (hasDirectMilesightEnvPayload) {
+          const existingDevices = await getUserCollection(userId, "devices");
+          const scored = existingDevices
+            .map((d: any) => {
+              const text = `${d.name || ""} ${d.type || ""} ${d.model || ""} ${d.manufacturer || ""}`.toLowerCase();
+              const caps = Array.isArray(d.capabilities) ? d.capabilities.map((c: any) => String(c).toLowerCase()) : [];
+              let score = 0;
+              if (d.devEui || d.devEUI) score += 1;
+              if (/milesight|em300|em-300|water|leak|environment|temperature|humidity/.test(text)) score += 2;
+              if (decodedKeys.has("water_leak") && (text.includes("leak") || caps.includes("water_leak"))) score += 3;
+              if (decodedKeys.has("temperature") && (text.includes("temperature") || caps.includes("temperature"))) score += 1;
+              if (decodedKeys.has("humidity") && (text.includes("humidity") || caps.includes("humidity"))) score += 1;
+              return { device: d, score };
+            })
+            .filter((x: any) => x.score >= 3 && (x.device.devEui || x.device.devEUI))
+            .sort((a: any, b: any) => b.score - a.score);
+          const topScore = scored[0]?.score ?? 0;
+          const topMatches = scored.filter((x: any) => x.score === topScore);
+          if (topMatches.length === 1) {
+            const matched = topMatches[0].device;
+            devEUI = sanitizeString(matched.devEui || matched.devEUI || "", 24);
+            if (!deviceName || deviceName === "Unknown Device") deviceName = sanitizeString(matched.name || "Unknown Device", 200);
+            if (!applicationName && matched.building) applicationName = sanitizeString(matched.building, 200);
+            console.log(`[Webhook] Inferred missing devEUI ${devEUI} from direct decoded Milesight payload for ${deviceName}`);
+          } else {
+            console.log(`[Webhook] Cannot infer devEUI from direct decoded payload: ${topMatches.length} candidate devices at score ${topScore}`);
+          }
+        }
+      }
 
       let gatewayEUI = "", rssi = -999, snr = 0, frequency = 0;
       if (Array.isArray(body.rxInfo) && body.rxInfo.length > 0) {
