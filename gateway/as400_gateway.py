@@ -4,13 +4,13 @@ BEWIS AS400 Vibration Sensor Gateway for FioTec — CSV firmware variant
 =======================================================================
 
 This LD1-attached AS400 sensor uses NOVOX-customised firmware that streams
-pre-computed PPV (Peak Particle Velocity, mm/s) over RS485 as ASCII CSV at
+pre-computed PPV (Peak Particle Velocity) over RS485 as ASCII CSV at
 9600/8/N/1 (NOT the stock binary 0x77 protocol).
 
 Wire format observed on /dev/tty485_1:
 
     863866042288045,000.031,000.073,000.096,...,000.000\r\n
-    ^ IMEI/serial    ^---------- 64 PPV samples (mm/s) ----------^
+    ^ IMEI/serial    ^---------- 64 PPV samples ----------^
 
 - One CSV line every ~4 s.
 - 64 floats per line  ->  16 Hz onboard sample rate.
@@ -74,6 +74,8 @@ DEVICE_NAME          = "AS400-001 Vibration"
 UPLOAD_INTERVAL_S    = 30          # how often to POST to FioTec
 LINE_READ_TIMEOUT_S  = 2.0
 SAMPLE_RATE_HZ       = 16.0        # observed: 64 samples / ~4s
+CSV_SAMPLE_COUNT     = 64
+CSV_UM_S_AUTODETECT_THRESHOLD = 10.0
 
 # AAA thresholds (Lai King Hospital reference, mm/s)
 ALERT_MM_S           = 0.075
@@ -125,7 +127,7 @@ def parse_csv_line(line: str):
         return None, None
     serial_id = parts[0]
     values = []
-    for tok in parts[1:]:
+    for tok in parts[1:1 + CSV_SAMPLE_COUNT]:
         try:
             values.append(float(tok))
         except ValueError:
@@ -137,8 +139,28 @@ def parse_csv_line(line: str):
     return serial_id, values
 
 
+def normalise_ppv_values(values):
+    """
+    Returns (values_in_mm_s, raw_unit).
+
+    NOVOX CSV has appeared in two unit variants:
+    - 000.099 style values are already mm/s
+    - 098.000 style values are μm/s and must be divided by 1000 before upload
+
+    FioTec canonical payload fields stay in mm/s; UI displays μm/s.
+    """
+    if not values:
+        return [], "unknown"
+    raw_peak = max(abs(v) for v in values)
+    if raw_peak >= CSV_UM_S_AUTODETECT_THRESHOLD:
+        return [v / 1000.0 for v in values], "um/s"
+    return values, "mm/s"
+
+
 def to_decoded_block(serial_id: str, values, last_seen_ts: float):
     """Build the FioTec `decoded` payload for one CSV line."""
+    raw_values = values
+    values, raw_unit = normalise_ppv_values(values)
     n = len(values)
     if n == 0:
         return None
@@ -175,6 +197,8 @@ def to_decoded_block(serial_id: str, values, last_seen_ts: float):
         "vibration_dominant_freq_hz": SAMPLE_RATE_HZ,  # nominal
         "vibration_alarm_level":      alarm,
         "ppv_source":                 "device",        # NOVOX firmware computes onboard
+        "ppv_raw_peak":               round(max(abs(v) for v in raw_values), 4),
+        "ppv_raw_unit_um_s":          1 if raw_unit == "um/s" else 0,
 
         # Window metadata
         "sample_count":   n,
