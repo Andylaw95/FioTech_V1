@@ -2506,6 +2506,68 @@ export function registerRoutes(app: any) {
     return c.json({ memoryLog: WEBHOOK_DEBUG_LOG, persistedLog, total: persistedLog.length });
   });
 
+  app.get("/make-server-4916a0b9/webhook-status", async (c: any) => {
+    const ip = getClientIp(c);
+    if (!rateLimit(ip + ":webhook-status", 30, 60000)) return c.json({ error: "Rate limited." }, 429);
+    try {
+      const token = c.req.header("X-Webhook-Token") || c.req.query("token") || "";
+      if (!token || token.length < 10) return c.json({ error: "Missing or invalid webhook token." }, 401);
+      const userId = await kvGetWithRetry(`webhook_lookup_${token}`);
+      if (!userId) return c.json({ error: "Invalid webhook token." }, 401);
+      const storedToken = await kvGetWithRetry(`webhook_token_${userId}`);
+      if (!safeCompare(storedToken, token)) return c.json({ error: "Webhook token revoked." }, 401);
+
+      const [sensorDataRaw, devices] = await Promise.all([
+        cachedKvGet(`sensor_data_${userId}`).catch(() => []),
+        getUserCollection(userId, "devices").catch(() => []),
+      ]);
+      const sensorData = Array.isArray(sensorDataRaw) ? sensorDataRaw : [];
+      const now = Date.now();
+      const recent = sensorData
+        .filter((e: any) => e?.receivedAt && now - new Date(e.receivedAt).getTime() <= 30 * 60 * 1000)
+        .slice(0, 20)
+        .map((e: any) => ({
+          receivedAt: e.receivedAt,
+          ageSeconds: Math.max(0, Math.round((now - new Date(e.receivedAt).getTime()) / 1000)),
+          eventType: e.eventType || "uplink",
+          devEUI: e.devEUI || "",
+          deviceName: e.deviceName || "",
+          applicationName: e.applicationName || "",
+          fCnt: e.fCnt ?? null,
+          hasDecodedData: !!(e.decodedData && typeof e.decodedData === "object" && Object.keys(e.decodedData).length > 0),
+          decodedKeys: e.decodedData && typeof e.decodedData === "object" ? Object.keys(e.decodedData).slice(0, 12) : [],
+        }));
+      const milesightDevices = devices
+        .filter((d: any) => {
+          const text = `${d.name || ""} ${d.model || ""} ${d.manufacturer || ""} ${d.devEui || ""}`.toLowerCase();
+          return text.includes("milesight") || text.includes("am30") || text.includes("em300") || text.includes("24e124");
+        })
+        .map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          type: d.type,
+          model: d.model || "",
+          devEui: d.devEui || "",
+          status: d.status || "",
+          lastSeen: d.lastSeen || null,
+          ageSeconds: d.lastSeen ? Math.max(0, Math.round((now - new Date(d.lastSeen).getTime()) / 1000)) : null,
+          hasDecoded: !!(d.decoded && typeof d.decoded === "object" && Object.keys(d.decoded).length > 0),
+          decodedKeys: d.decoded && typeof d.decoded === "object" ? Object.keys(d.decoded).slice(0, 12) : [],
+        }));
+      return c.json({
+        status: "ok",
+        checkedAt: new Date(now).toISOString(),
+        recentWindowMinutes: 30,
+        recentUplinkCount: recent.length,
+        recentUplinks: recent,
+        milesightDevices,
+      });
+    } catch (e) {
+      console.log("Webhook status error:", errorMessage(e));
+      return c.json({ error: "Failed to read webhook status." }, 500);
+    }
+  });
+
   // ─── TELEMETRY WEBHOOK (PUBLIC) ────────────────────────
 
   app.post("/make-server-4916a0b9/telemetry-webhook", async (c: any) => {
