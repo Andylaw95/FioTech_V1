@@ -86,7 +86,7 @@ function getRealReading(decoded: Record<string, number>): { primary: { value: st
   if (decoded.water_leak !== undefined) all.push({ label: 'Leak', value: decoded.water_leak > 0 ? 'LEAK!' : 'Dry', unit: '' });
   // ── Vibration (BEWIS AS400 / NOVOX CSV) ───────────────
   const ppvMax = decoded.ppv_max_mm_s ?? decoded.ppv_resultant_mm_s;
-  if (ppvMax !== undefined) all.unshift({ label: 'PPV', value: Number(ppvMax).toFixed(3), unit: 'mm/s' });
+  if (ppvMax !== undefined) all.unshift({ label: 'PPV', value: (Number(ppvMax) * 1000).toFixed(1), unit: 'μm/s' });
   if (decoded.vibration_alarm_level !== undefined) {
     const lvl = Number(decoded.vibration_alarm_level);
     const txt = lvl >= 3 ? 'STOP WORK' : lvl === 2 ? 'Alarm' : lvl === 1 ? 'Alert' : 'Normal';

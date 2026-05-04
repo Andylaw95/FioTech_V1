@@ -6,7 +6,7 @@ const vibrationConfig: AlarmTypeConfig = {
   type: 'vibration',
   title: 'Vibration Alarms',
   subtitle:
-    'PPV / tilt / structural-movement compliance — Lai King Hospital AAA defaults (Alert 0.075 / Alarm 0.15 / Action 0.30 mm/s)',
+    'PPV / tilt / structural-movement compliance — Lai King Hospital AAA defaults (Alert 75 / Alarm 150 / Action 300 μm/s)',
   icon: <Activity className="h-7 w-7" />,
   filterFn: (alarm) => {
     const t = (alarm.type ?? '').toLowerCase();

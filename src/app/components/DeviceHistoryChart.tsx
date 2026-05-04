@@ -39,6 +39,11 @@ interface MetricDef {
   referenceLines?: { y: number; color: string; label: string }[];
   referenceAreas?: { y1: number; y2: number; color: string; opacity: number }[];
   chartType?: 'area' | 'line' | 'bar';
+  // Optional display scale factor: stored value × scale = displayed value.
+  // E.g. PPV is stored in mm/s but shown in μm/s (× 1000).
+  // referenceLines / referenceAreas / domain values are interpreted in the
+  // DISPLAYED unit (already scaled).
+  scale?: number;
 }
 
 const METRICS: MetricDef[] = [
@@ -113,36 +118,40 @@ const METRICS: MetricDef[] = [
     description: 'Minimum sound level',
   },
   // ── Vibration (BEWIS AS400 PPV) ───────────────────────
+  // Stored as mm/s; displayed as μm/s (× 1000) since hospital/sensitive-equipment
+  // thresholds (Lai King AAA = 75/150/300 μm/s) sit in VC-curve territory.
   {
-    key: 'ppv_max_mm_s', label: 'PPV Max', unit: 'mm/s', icon: Activity, color: '#a855f7',
-    description: 'Peak Particle Velocity (max axis) — AAA: Alert 0.075 / Alarm 0.15 / Action 0.30 mm/s',
+    key: 'ppv_max_mm_s', label: 'PPV Max', unit: 'μm/s', icon: Activity, color: '#a855f7',
+    description: 'Peak Particle Velocity (max axis) — AAA: Alert 75 / Alarm 150 / Action 300 μm/s',
+    scale: 1000,
     referenceLines: [
-      { y: 0.075, color: '#facc15', label: 'Alert 0.075' },
-      { y: 0.15, color: '#f97316', label: 'Alarm 0.15' },
-      { y: 0.30, color: '#ef4444', label: 'Action 0.30' },
+      { y: 75, color: '#facc15', label: 'Alert 75' },
+      { y: 150, color: '#f97316', label: 'Alarm 150' },
+      { y: 300, color: '#ef4444', label: 'Action 300' },
     ],
     referenceAreas: [
-      { y1: 0, y2: 0.075, color: '#dcfce7', opacity: 0.3 },
-      { y1: 0.075, y2: 0.15, color: '#fef9c3', opacity: 0.3 },
-      { y1: 0.15, y2: 0.30, color: '#ffedd5', opacity: 0.3 },
-      { y1: 0.30, y2: 5, color: '#fee2e2', opacity: 0.3 },
+      { y1: 0, y2: 75, color: '#dcfce7', opacity: 0.3 },
+      { y1: 75, y2: 150, color: '#fef9c3', opacity: 0.3 },
+      { y1: 150, y2: 300, color: '#ffedd5', opacity: 0.3 },
+      { y1: 300, y2: 5000, color: '#fee2e2', opacity: 0.3 },
     ],
   },
   {
-    key: 'ppv_resultant_mm_s', label: 'PPV Resultant', unit: 'mm/s', icon: Activity, color: '#ec4899',
+    key: 'ppv_resultant_mm_s', label: 'PPV Resultant', unit: 'μm/s', icon: Activity, color: '#ec4899',
     description: 'Resultant PPV — sqrt(x² + y² + z²)',
+    scale: 1000,
   },
   {
-    key: 'ppv_x_mm_s', label: 'PPV X', unit: 'mm/s', icon: Activity, color: '#a855f7',
-    description: 'PPV on X axis', chartType: 'line',
+    key: 'ppv_x_mm_s', label: 'PPV X', unit: 'μm/s', icon: Activity, color: '#a855f7',
+    description: 'PPV on X axis', chartType: 'line', scale: 1000,
   },
   {
-    key: 'ppv_y_mm_s', label: 'PPV Y', unit: 'mm/s', icon: Activity, color: '#06b6d4',
-    description: 'PPV on Y axis', chartType: 'line',
+    key: 'ppv_y_mm_s', label: 'PPV Y', unit: 'μm/s', icon: Activity, color: '#06b6d4',
+    description: 'PPV on Y axis', chartType: 'line', scale: 1000,
   },
   {
-    key: 'ppv_z_mm_s', label: 'PPV Z', unit: 'mm/s', icon: Activity, color: '#f43f5e',
-    description: 'PPV on Z axis', chartType: 'line',
+    key: 'ppv_z_mm_s', label: 'PPV Z', unit: 'μm/s', icon: Activity, color: '#f43f5e',
+    description: 'PPV on Z axis', chartType: 'line', scale: 1000,
   },
   {
     key: 'tilt_x_deg', label: 'Tilt X', unit: '°', icon: Activity, color: '#a855f7',
@@ -214,6 +223,10 @@ const tooltipStyle = {
   fontSize: 13,
 };
 
+function metricDisplayValue(metric: MetricDef, raw: unknown): number | null {
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw * (metric.scale ?? 1) : null;
+}
+
 // ── Custom tooltip that shows local date + time ──────────
 function ChartTooltip({ active, payload, metric }: any) {
   if (!active || !payload?.length) return null;
@@ -231,7 +244,9 @@ function ChartTooltip({ active, payload, metric }: any) {
 
 // ── Generic metric chart (uses local time formatting) ────
 function MetricChart({ data, metric, period = '24h' }: { data: DeviceHistoryPoint[]; metric: MetricDef; period?: string }) {
-  const values = data.map((d) => d[metric.key] as number).filter((v) => v != null);
+  const values = data
+    .map((d) => metricDisplayValue(metric, d[metric.key]))
+    .filter((v): v is number => v != null);
   if (values.length === 0) return null;
   const minV = Math.min(...values);
   const maxV = Math.max(...values);
@@ -242,12 +257,12 @@ function MetricChart({ data, metric, period = '24h' }: { data: DeviceHistoryPoin
 
   // Format time labels in the browser's LOCAL timezone
   const chartData = data
-    .filter((d) => d[metric.key] != null)
+    .filter((d) => metricDisplayValue(metric, d[metric.key]) != null)
     .map((d) => ({
       localTime: formatLocalTime(d.time),
       localDate: formatLocalDate(d.time),
       time: isLongPeriod ? `${formatLocalDate(d.time)} ${formatLocalTime(d.time)}` : formatLocalTime(d.time),
-      value: d[metric.key] as number,
+      value: metricDisplayValue(metric, d[metric.key]),
     }));
 
   const tooltipContent = <ChartTooltip metric={metric} />;
@@ -409,7 +424,8 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
     for (const m of METRICS) {
       for (let i = data.length - 1; i >= 0; i--) {
         const v = data[i][m.key];
-        if (v != null) { vals[m.key as string] = v as number; break; }
+        const displayValue = metricDisplayValue(m, v);
+        if (displayValue != null) { vals[m.key as string] = displayValue; break; }
       }
     }
     return vals;
@@ -580,7 +596,7 @@ export function MiniDeviceChart({ deviceId, deviceType, devEui }: MiniDeviceChar
   // Use local time formatting
   const chartData = data
     .filter((d) => d[metric.key] != null)
-    .map((d) => ({ time: formatLocalTime(d.time), value: d[metric.key] as number }));
+    .map((d) => ({ time: formatLocalTime(d.time), value: metricDisplayValue(metric, d[metric.key]) }));
 
   const gradientId = `mini-${metric.key}-${deviceId.slice(0, 6)}`;
 

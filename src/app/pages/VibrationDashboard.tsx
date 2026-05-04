@@ -15,15 +15,17 @@ function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
 }
 
-// ── AAA threshold defaults (Lai King Hospital reference, mm/s PPV) ──
-const AAA = { alert: 0.075, alarm: 0.15, action: 0.30 };
+// ── AAA threshold defaults (Lai King Hospital reference, displayed in μm/s PPV) ──
+// API/storage fields stay in mm/s; the dashboard converts PPV display values ×1000.
+const AAA = { alert: 75, alarm: 150, action: 300 };
+const PPV_DISPLAY_SCALE = 1000;
 
 // Adaptive gauge max — keeps small-amplitude readings legible
 function gaugeMaxFor(value: number): number {
-  if (value >= 0.30) return 0.5;   // beyond Action band
-  if (value >= 0.15) return 0.4;   // Alarm
-  if (value >= 0.05) return 0.2;   // Alert range
-  return 0.1;                      // Quiet — zoom in
+  if (value >= 300) return 500;  // beyond Action band
+  if (value >= 150) return 400;  // Alarm
+  if (value >= 50) return 200;   // Alert range
+  return 100;                    // Quiet — zoom in
 }
 
 // ── Vibration status classification ──
@@ -96,12 +98,12 @@ function VibrationGauge({ value, size = 220 }: { value: number; size?: number })
         return (
           <g key={t}>
             <line x1={inner.x} y1={inner.y} x2={cx + (r - 8) * Math.cos((angle * Math.PI) / 180)} y2={cy + (r - 8) * Math.sin((angle * Math.PI) / 180)} stroke={tickColor(t)} strokeWidth="2" />
-            <text x={outer.x} y={outer.y} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="#94a3b8" fontWeight="600">{t < 1 ? t.toFixed(t < 0.1 ? 3 : 2) : t.toFixed(1)}</text>
+            <text x={outer.x} y={outer.y} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="#94a3b8" fontWeight="600">{t.toFixed(0)}</text>
           </g>
         );
       })}
-      <text x={cx} y={cy - 12} textAnchor="middle" fontSize="36" fontWeight="700" fill={status.ring}>{value.toFixed(value < 0.1 ? 4 : 3)}</text>
-      <text x={cx} y={cy + 14} textAnchor="middle" fontSize="14" fontWeight="500" fill="#94a3b8">mm/s PPV</text>
+      <text x={cx} y={cy - 12} textAnchor="middle" fontSize="36" fontWeight="700" fill={status.ring}>{value < 100 ? value.toFixed(1) : value.toFixed(0)}</text>
+      <text x={cx} y={cy + 14} textAnchor="middle" fontSize="14" fontWeight="500" fill="#94a3b8">μm/s PPV</text>
       <text x={cx} y={cy + 34} textAnchor="middle" fontSize="14" fontWeight="600" fill={status.ring}>{status.label}</text>
     </svg>
   );
@@ -153,6 +155,8 @@ interface VibrationDevice {
 const OFFLINE_THRESHOLD_MS = 120 * 1000; // 120s
 
 const num = (v: any): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+const ppvUm = (v: any): number => num(v) * PPV_DISPLAY_SCALE;
+const ppvUmOrNull = (v: any): number | null => (typeof v === 'number' && Number.isFinite(v) ? v * PPV_DISPLAY_SCALE : null);
 
 export function VibrationDashboard() {
   const { isDark } = useTheme();
@@ -190,11 +194,11 @@ export function VibrationDashboard() {
               name: (reading as any).deviceName || devEUI,
               location: `${p.name}${p.location ? ' — ' + p.location : ''}`,
               status: recent ? 'online' : 'offline',
-              ppvMax: num(dec.ppv_max_mm_s),
-              ppvX: num(dec.ppv_x_mm_s),
-              ppvY: num(dec.ppv_y_mm_s),
-              ppvZ: num(dec.ppv_z_mm_s),
-              ppvResultant: num(dec.ppv_resultant_mm_s),
+              ppvMax: ppvUm(dec.ppv_max_mm_s),
+              ppvX: ppvUm(dec.ppv_x_mm_s),
+              ppvY: ppvUm(dec.ppv_y_mm_s),
+              ppvZ: ppvUm(dec.ppv_z_mm_s),
+              ppvResultant: ppvUm(dec.ppv_resultant_mm_s),
               accelX: num(dec.accel_x_g),
               accelY: num(dec.accel_y_g),
               accelZ: num(dec.accel_z_g),
@@ -240,10 +244,10 @@ export function VibrationDashboard() {
         if (cancelled) return;
         setChartData((res.points || []).map((p: any) => ({
           time: p.timeLabel || new Date(p.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
-          ppvMax: p.ppv_max_mm_s,
-          ppvX: p.ppv_x_mm_s,
-          ppvY: p.ppv_y_mm_s,
-          ppvZ: p.ppv_z_mm_s,
+          ppvMax: ppvUmOrNull(p.ppv_max_mm_s),
+          ppvX: ppvUmOrNull(p.ppv_x_mm_s),
+          ppvY: ppvUmOrNull(p.ppv_y_mm_s),
+          ppvZ: ppvUmOrNull(p.ppv_z_mm_s),
           accelX: p.accel_x_g,
           accelY: p.accel_y_g,
           accelZ: p.accel_z_g,
@@ -262,8 +266,8 @@ export function VibrationDashboard() {
     const values = chartData.map((d: any) => d.ppvMax).filter((v: any) => v != null && v > 0);
     if (values.length === 0) return { peak: '—', avg: '—', exceedances: 0 };
     return {
-      peak: Math.max(...values).toFixed(3),
-      avg: (values.reduce((a: number, b: number) => a + b, 0) / values.length).toFixed(3),
+      peak: Math.max(...values).toFixed(1),
+      avg: (values.reduce((a: number, b: number) => a + b, 0) / values.length).toFixed(1),
       exceedances: values.filter((v: number) => v >= AAA.alert).length,
     };
   }, [chartData]);
@@ -433,16 +437,16 @@ export function VibrationDashboard() {
 
         {/* Per-axis PPV + summary */}
         <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <MetricCard label="PPV-X" value={device.ppvX.toFixed(4)} unit="mm/s" accent="text-purple-500" />
-          <MetricCard label="PPV-Y" value={device.ppvY.toFixed(4)} unit="mm/s" accent="text-purple-500" />
-          <MetricCard label="PPV-Z" value={device.ppvZ.toFixed(4)} unit="mm/s" accent="text-purple-500" />
+          <MetricCard label="PPV-X" value={device.ppvX.toFixed(1)} unit="μm/s" accent="text-purple-500" />
+          <MetricCard label="PPV-Y" value={device.ppvY.toFixed(1)} unit="μm/s" accent="text-purple-500" />
+          <MetricCard label="PPV-Z" value={device.ppvZ.toFixed(1)} unit="μm/s" accent="text-purple-500" />
           <MetricCard label="Accel X" value={device.accelX.toFixed(4)} unit="g" />
           <MetricCard label="Accel Y" value={device.accelY.toFixed(4)} unit="g" />
           <MetricCard label="Accel Z" value={device.accelZ.toFixed(4)} unit="g" />
           <MetricCard label="Tilt X" value={device.tiltX.toFixed(2)} unit="°" />
           <MetricCard label="Tilt Y" value={device.tiltY.toFixed(2)} unit="°" />
           <MetricCard label="Tilt Z" value={device.tiltZ.toFixed(2)} unit="°" />
-          <MetricCard label="PPV resultant" value={device.ppvResultant.toFixed(4)} unit="mm/s" accent="text-fuchsia-500" />
+          <MetricCard label="PPV resultant" value={device.ppvResultant.toFixed(1)} unit="μm/s" accent="text-fuchsia-500" />
           <MetricCard label="Accel RMS" value={device.accelRms.toFixed(4)} unit="g" />
           <MetricCard label="Dom. Freq" value={device.dominantFreq > 0 ? device.dominantFreq.toFixed(1) : '—'} unit="Hz" />
         </div>
@@ -455,7 +459,7 @@ export function VibrationDashboard() {
           <div className="w-2 h-10 rounded-full bg-amber-500" />
           <div>
             <div className={cn("text-xs", isDark ? "text-slate-400" : "text-slate-500")}>Alert</div>
-            <div className={cn("text-base font-bold tabular-nums", isDark ? "text-white" : "text-slate-900")}>{AAA.alert} mm/s</div>
+            <div className={cn("text-base font-bold tabular-nums", isDark ? "text-white" : "text-slate-900")}>{AAA.alert} μm/s</div>
           </div>
         </div>
         <div className={cn("rounded-xl p-3 border flex items-center gap-3",
@@ -463,7 +467,7 @@ export function VibrationDashboard() {
           <div className="w-2 h-10 rounded-full bg-orange-500" />
           <div>
             <div className={cn("text-xs", isDark ? "text-slate-400" : "text-slate-500")}>Alarm</div>
-            <div className={cn("text-base font-bold tabular-nums", isDark ? "text-white" : "text-slate-900")}>{AAA.alarm} mm/s</div>
+            <div className={cn("text-base font-bold tabular-nums", isDark ? "text-white" : "text-slate-900")}>{AAA.alarm} μm/s</div>
           </div>
         </div>
         <div className={cn("rounded-xl p-3 border flex items-center gap-3",
@@ -471,7 +475,7 @@ export function VibrationDashboard() {
           <div className="w-2 h-10 rounded-full bg-red-500" />
           <div>
             <div className={cn("text-xs", isDark ? "text-slate-400" : "text-slate-500")}>Action</div>
-            <div className={cn("text-base font-bold tabular-nums", isDark ? "text-white" : "text-slate-900")}>{AAA.action} mm/s</div>
+            <div className={cn("text-base font-bold tabular-nums", isDark ? "text-white" : "text-slate-900")}>{AAA.action} μm/s</div>
           </div>
         </div>
         <div className={cn("rounded-xl p-3 border flex items-center gap-3",
@@ -495,7 +499,7 @@ export function VibrationDashboard() {
               {chartMode === 'accel' ? 'Acceleration Time Series' : chartMode === 'ppvAxes' ? 'Per-Axis PPV Time Series' : 'PPV Time Series'}
             </div>
             <div className={cn("text-xs", isDark ? "text-slate-400" : "text-slate-500")}>
-              Peak {stats.peak} · Avg {stats.avg} mm/s · {chartData.length} points · {timeRange}
+              Peak {stats.peak} · Avg {stats.avg} μm/s · {chartData.length} points · {timeRange}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -551,7 +555,7 @@ export function VibrationDashboard() {
                 <ReferenceLine y={AAA.alert} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Alert', fill: '#f59e0b', fontSize: 10, position: 'right' }} />
                 <ReferenceLine y={AAA.alarm} stroke="#f97316" strokeDasharray="3 3" label={{ value: 'Alarm', fill: '#f97316', fontSize: 10, position: 'right' }} />
                 <ReferenceLine y={AAA.action} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'Action', fill: '#ef4444', fontSize: 10, position: 'right' }} />
-                <Area type="monotone" dataKey="ppvMax" name="PPV max (mm/s)" stroke="#8b5cf6" strokeWidth={2} fill="url(#ppvFill)" connectNulls />
+                <Area type="monotone" dataKey="ppvMax" name="PPV max (μm/s)" stroke="#8b5cf6" strokeWidth={2} fill="url(#ppvFill)" connectNulls />
               </AreaChart>
             ) : chartMode === 'ppvAxes' ? (
               <LineChart data={chartData} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
@@ -588,7 +592,7 @@ export function VibrationDashboard() {
         isDark ? "bg-slate-800/30 border-slate-700 text-slate-400" : "bg-blue-50/50 border-blue-100 text-slate-600")}>
         <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
         <div>
-          AAA thresholds shown are the Lai King Hospital reference values (0.075 / 0.15 / 0.30 mm/s PPV).
+          AAA thresholds shown are the Lai King Hospital reference values (75 / 150 / 300 μm/s PPV).
           Per-property override, sensor grouping, alarm dedupe and notifications are coming in Phase 2.
           {onlineDevices < devices.length && (
             <> · <span className="text-amber-500 font-medium">{devices.length - onlineDevices} offline</span> (no data &gt; 120s)</>

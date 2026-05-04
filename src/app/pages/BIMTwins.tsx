@@ -90,7 +90,7 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
               isVibrationDevice(d)
               && (decoded.ppv_max_mm_s != null || decoded.ppv_resultant_mm_s != null)
             ) {
-              newTelemetry[d.id] = (decoded.ppv_max_mm_s ?? decoded.ppv_resultant_mm_s) as number;
+              newTelemetry[d.id] = ((decoded.ppv_max_mm_s ?? decoded.ppv_resultant_mm_s) as number) * 1000;
             } else {
               // Default: use temperature if available, otherwise first numeric value
               const val = decoded.temperature ?? decoded.co2 ?? decoded.humidity ??

@@ -3,10 +3,11 @@ import { Activity, AlertTriangle, ShieldCheck, BatteryLow, Compass, WifiOff } fr
 import { clsx } from 'clsx';
 import type { Device, PropertyTelemetry } from '@/app/utils/api';
 
-// Lai King Hospital AAA defaults (mm/s PPV)
-const PPV_ALERT  = 0.075;
-const PPV_ALARM  = 0.15;
-const PPV_ACTION = 0.30;
+// Lai King Hospital AAA defaults displayed in μm/s. API payloads remain mm/s.
+const PPV_ALERT  = 75;
+const PPV_ALARM  = 150;
+const PPV_ACTION = 300;
+const PPV_DISPLAY_SCALE = 1000;
 
 type ComplianceLevel = 'normal' | 'alert' | 'alarm' | 'action' | 'unknown';
 
@@ -81,9 +82,10 @@ function matchReading(device: Device, telemetry: PropertyTelemetry | null): Vibr
   if (!match?.decoded) return empty;
   const d = match.decoded as Record<string, number | string | null | undefined>;
   const numOrNull = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
+  const ppvMmS = numOrNull(d.ppv_max_mm_s) ?? numOrNull(d.ppv_resultant_mm_s);
   return {
     device,
-    ppv:    numOrNull(d.ppv_max_mm_s) ?? numOrNull(d.ppv_resultant_mm_s),
+    ppv:    ppvMmS === null ? null : ppvMmS * PPV_DISPLAY_SCALE,
     tiltX:  numOrNull(d.tilt_x_deg),
     tiltY:  numOrNull(d.tilt_y_deg),
     tiltZ:  numOrNull(d.tilt_z_deg),
@@ -176,7 +178,7 @@ export function VibrationStatusPanel({ devices, telemetry }: VibrationStatusPane
 
       {/* Threshold legend */}
       <div className="rounded-lg bg-slate-50 border border-slate-100 p-2">
-        <p className="text-[10px] uppercase font-semibold text-slate-500 mb-1.5">PPV Thresholds (mm/s)</p>
+        <p className="text-[10px] uppercase font-semibold text-slate-500 mb-1.5">PPV Thresholds (μm/s)</p>
         <div className="grid grid-cols-3 gap-1 text-[10px]">
           <div className="rounded bg-amber-100 text-amber-800 px-1.5 py-1 text-center font-mono">≥{PPV_ALERT} Alert</div>
           <div className="rounded bg-orange-100 text-orange-800 px-1.5 py-1 text-center font-mono">≥{PPV_ALARM} Alarm</div>
@@ -224,9 +226,9 @@ export function VibrationStatusPanel({ devices, telemetry }: VibrationStatusPane
                 </div>
                 <div>
                   <span className={clsx('text-lg font-bold font-mono', style.text)}>
-                    {typeof r.ppv === 'number' ? r.ppv.toFixed(3) : '—'}
+                    {typeof r.ppv === 'number' ? r.ppv.toFixed(1) : '—'}
                   </span>
-                  <span className="text-[10px] text-slate-400 ml-1">mm/s</span>
+                  <span className="text-[10px] text-slate-400 ml-1">μm/s</span>
                 </div>
               </div>
 
