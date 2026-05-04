@@ -220,7 +220,7 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
 function isDeviceRecent(lastSeen: string | undefined, type: DeviceType = 'leakage'): boolean {
   if (!lastSeen) return false;
   const diff = Date.now() - new Date(lastSeen).getTime();
-  const threshold = type === 'vibration' ? 5 * 60 * 1000 : 15 * 60 * 1000;
+  const threshold = type === 'vibration' ? 5 * 60 * 1000 : 40 * 60 * 1000;
   return diff < threshold;
 }
 

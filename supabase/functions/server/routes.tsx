@@ -389,8 +389,8 @@ async function updatePropertySensorCounts(userId: string, buildingName: string) 
 
 // ── GATEWAY STATUS ───────────────────────────────────────
 
-const GW_ONLINE_THRESHOLD_MS = 15 * 60 * 1000;   // 15 min — matches typical LoRaWAN uplink interval
-const GW_WARNING_THRESHOLD_MS = 45 * 60 * 1000;  // 45 min — generous buffer before offline
+const GW_ONLINE_THRESHOLD_MS = 40 * 60 * 1000;   // 40 min — generous for low-frequency LoRaWAN uplinks
+const GW_WARNING_THRESHOLD_MS = 60 * 60 * 1000;  // 60 min — buffer before gateway is treated as offline
 
 const GW_OPTIONAL_FIELDS: ReadonlyArray<readonly [string, number]> = [
   ["imei", 20], ["apn", 100], ["simIccid", 25], ["ssid", 100],
@@ -440,8 +440,8 @@ function friendlyAge(iso: string, now: number): string {
 
 function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, string>): any[] {
   const now = Date.now();
-  const STALE_OFFLINE = 15 * 60 * 1000; // 15 min without uplink → offline
-  const STALE_WARNING = 10 * 60 * 1000; // 10 min without uplink → warning
+  const STALE_OFFLINE = 40 * 60 * 1000; // 40 min without uplink → offline
+  const STALE_WARNING = 30 * 60 * 1000; // 30 min without uplink → warning
   // Vibration sensors monitor structural movement — much shorter offline window for compliance
   const VIB_STALE_OFFLINE = 5 * 60 * 1000;  // 5 min — generous for transient 4G dropouts
   const VIB_STALE_WARNING = 2 * 60 * 1000;  // 2 min (matches dashboard 120s threshold)

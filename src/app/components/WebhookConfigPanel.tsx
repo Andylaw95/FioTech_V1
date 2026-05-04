@@ -111,6 +111,20 @@ export function WebhookConfigPanel() {
     });
   };
 
+  const devEuiWebhookUrl = config?.webhookUrl
+    ? `${config.webhookUrl}&devEUI=\${devEUI}`
+    : null;
+
+  const devEuiBodyTemplate = `{
+  "devEUI": "\${devEUI}",
+  "deviceName": "\${deviceName}",
+  "applicationName": "\${applicationName}",
+  "fPort": \${fPort},
+  "fCnt": \${fCnt},
+  "data": "\${data}",
+  "time": "\${time}"
+}`;
+
   if (loading) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-6">
@@ -209,6 +223,37 @@ export function WebhookConfigPanel() {
                 </button>
               </div>
             </div>
+
+            {/* DevEUI-aware URL */}
+            {devEuiWebhookUrl && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3">
+                <label className="text-xs font-semibold text-blue-800 mb-1.5 block">
+                  Recommended URL with DevEUI
+                  <span className="ml-1.5 text-blue-600 font-normal">— prevents offline devices caused by missing identity</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-white/80 border border-blue-100 rounded-lg px-3 py-2 font-mono text-[11px] text-blue-900 break-all">
+                    {devEuiWebhookUrl}
+                  </div>
+                  <button
+                    onClick={() => copyToClipboard(devEuiWebhookUrl, 'DevEUI URL')}
+                    className={clsx(
+                      'p-2 rounded-lg border transition-all shrink-0',
+                      copiedField === 'DevEUI URL'
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                        : 'bg-white border-blue-200 text-blue-500 hover:text-blue-700 hover:border-blue-300'
+                    )}
+                    title="Copy DevEUI URL"
+                  >
+                    {copiedField === 'DevEUI URL' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-blue-700">
+                  Keep the gateway's current decoded body format if it is already sending temperature/humidity values.
+                  Add DevEUI in the URL so FioTec can update the correct device last-seen timestamp.
+                </p>
+              </div>
+            )}
 
             {/* Token */}
             <div>
@@ -418,6 +463,11 @@ export function WebhookConfigPanel() {
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-200 text-violet-800 text-[10px] font-bold shrink-0 mt-0.5">4</span>
                     <div className="text-xs text-violet-800 flex-1 space-y-2">
                       <p>In the <strong>URL</strong> section, paste the webhook URL into the following fields:</p>
+                      <p>
+                        Use the <strong>Recommended URL with DevEUI</strong> above for <strong>Uplink data</strong>.
+                        If your gateway does not support placeholders in URL query strings, keep the normal webhook URL
+                        and use the custom body template below instead.
+                      </p>
 
                       {/* URL fields table */}
                       <div className="bg-white rounded-md border border-violet-200 overflow-hidden">
@@ -437,10 +487,10 @@ export function WebhookConfigPanel() {
                               <td className="px-3 py-2">
                                 <div className="flex items-center gap-1.5">
                                   <code className="text-slate-600 bg-slate-50 px-1.5 py-0.5 rounded text-[10px] break-all flex-1">
-                                    {config.webhookUrl}
+                                    {devEuiWebhookUrl || config.webhookUrl}
                                   </code>
                                   <button
-                                    onClick={() => copyToClipboard(config.webhookUrl!, 'Uplink URL')}
+                                    onClick={() => copyToClipboard(devEuiWebhookUrl || config.webhookUrl!, 'Uplink URL')}
                                     className="p-1 rounded text-slate-400 hover:text-violet-600 shrink-0"
                                     title="Copy"
                                   >
@@ -482,18 +532,48 @@ export function WebhookConfigPanel() {
                     </div>
                   </div>
 
-                  {/* Step 5 */}
+                  {/* Step 5 — Optional body template */}
                   <div className="flex gap-2.5">
                     <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-200 text-violet-800 text-[10px] font-bold shrink-0 mt-0.5">5</span>
+                    <div className="text-xs text-violet-800 flex-1 space-y-2">
+                      <p>
+                        Optional fallback: if the gateway has a <strong>Custom Payload / Body Template</strong> field,
+                        include DevEUI in the body. Only use this if URL placeholders are not available.
+                      </p>
+                      <div className="bg-slate-950 rounded-md border border-violet-200 p-3">
+                        <div className="flex items-start gap-2">
+                          <pre className="flex-1 overflow-x-auto text-[10px] leading-relaxed text-violet-100">
+                            <code>{devEuiBodyTemplate}</code>
+                          </pre>
+                          <button
+                            onClick={() => copyToClipboard(devEuiBodyTemplate, 'Body template')}
+                            className="p-1 rounded text-violet-200 hover:text-white shrink-0"
+                            title="Copy body template"
+                          >
+                            {copiedField === 'Body template' ? <Check className="h-3 w-3 text-emerald-300" /> : <Copy className="h-3 w-3" />}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-violet-600">
+                        FioTec accepts <code className="bg-violet-100 px-1 py-0.5 rounded">devEUI</code>,
+                        <code className="bg-violet-100 px-1 py-0.5 rounded ml-1">devEui</code>, or
+                        <code className="bg-violet-100 px-1 py-0.5 rounded ml-1">deviceInfo.devEui</code>.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Step 6 */}
+                  <div className="flex gap-2.5">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-200 text-violet-800 text-[10px] font-bold shrink-0 mt-0.5">6</span>
                     <div className="text-xs text-violet-800">
                       Click <strong>Save &amp; Apply</strong> at the bottom of the page. The gateway will now
                       POST uplink data to FioTec whenever a registered device transmits.
                     </div>
                   </div>
 
-                  {/* Step 6 — Verification */}
+                  {/* Step 7 — Verification */}
                   <div className="flex gap-2.5">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-200 text-emerald-800 text-[10px] font-bold shrink-0 mt-0.5">6</span>
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-200 text-emerald-800 text-[10px] font-bold shrink-0 mt-0.5">7</span>
                     <div className="text-xs text-violet-800">
                       Return to this panel and click <strong>Test Connection</strong> to verify the webhook is
                       reachable. A successful test will create a test entry in your sensor data feed and update
