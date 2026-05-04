@@ -40,7 +40,7 @@ ACTION_MM_S = 0.300
 SAMPLE_RATE_HZ = 16.0
 CSV_SAMPLE_COUNT = 64
 CSV_UM_S_AUTODETECT_THRESHOLD = 10.0
-CSV_DECIMAL_VALUES_ARE_UM_S = True
+CSV_DECIMAL_VALUES_ARE_UM_S = False
 
 
 def _alarm_level(ppv):
@@ -79,9 +79,9 @@ def _parse_csv_line(line):
 def _normalise_ppv_values(vals):
     """Return (values_in_mm_s, raw_unit).
 
-    The current NOVOX demo unit emits decimal PPV values as μm/s, even when
-    formatted like `000.336`. Older notes assumed those decimals were mm/s,
-    which inflated the FioTec display by 1000× and created false Action alarms.
+    Current confirmed behavior: decimal values like `000.336` are treated as
+    mm/s by the gateway. Only large whole-number values like `098.000` are
+    treated as μm/s and divided by 1000.
 
     FioTec canonical fields remain `*_mm_s`; the frontend displays μm/s.
     """

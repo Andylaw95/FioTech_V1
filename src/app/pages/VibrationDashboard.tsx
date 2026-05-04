@@ -172,26 +172,6 @@ function isVibrationDeviceRecord(device: any, decoded: Record<string, any>): boo
     || decoded.tilt_x_deg !== undefined;
 }
 
-function normalizeNovoxAs400Decoded(device: any, decoded: Record<string, any>): Record<string, any> {
-  const text = `${device.id || ''} ${device.name || ''} ${device.type || ''} ${device.model || ''} ${device.manufacturer || ''}`.toUpperCase();
-  const rawPeak = decoded.ppv_raw_peak;
-  const ppvMax = decoded.ppv_max_mm_s;
-  const alreadyNormalized = decoded.ppv_raw_unit_um_s === 1 || decoded.ppv_unit_normalized_from === 'novox_decimal_um_s';
-  const isAs400 = /AS400|AS-400|BEWIS|BWS400|VIBRATION/.test(text);
-  if (!isAs400 || alreadyNormalized || typeof rawPeak !== 'number' || typeof ppvMax !== 'number') return decoded;
-  if (rawPeak <= 0 || rawPeak >= 10 || Math.abs(Math.abs(rawPeak) - Math.abs(ppvMax)) >= 0.0001) return decoded;
-
-  const fixed = { ...decoded };
-  for (const key of ['ppv_max_mm_s', 'ppv_resultant_mm_s', 'ppv_avg_mm_s', 'ppv_min_mm_s', 'ppv_rms_mm_s', 'ppv_x_mm_s', 'ppv_y_mm_s', 'ppv_z_mm_s']) {
-    if (typeof fixed[key] === 'number' && Number.isFinite(fixed[key])) fixed[key] = fixed[key] / 1000;
-  }
-  fixed.ppv_raw_unit_um_s = 1;
-  fixed.ppv_unit_normalized_from = 'novox_decimal_um_s_client';
-  const fixedPpv = fixed.ppv_max_mm_s ?? fixed.ppv_resultant_mm_s;
-  if (typeof fixedPpv === 'number') fixed.vibration_alarm_level = fixedPpv >= 0.30 ? 3 : fixedPpv >= 0.15 ? 2 : fixedPpv >= 0.075 ? 1 : 0;
-  return fixed;
-}
-
 export function VibrationDashboard() {
   const { isDark } = useTheme();
   const [devices, setDevices] = useState<VibrationDevice[]>([]);
@@ -211,7 +191,7 @@ export function VibrationDashboard() {
       setRefreshing(true);
       const deviceRows = await api.getDevices();
       const vd: VibrationDevice[] = deviceRows.flatMap((d: any) => {
-        const dec = normalizeNovoxAs400Decoded(d, d.decoded || {});
+        const dec = d.decoded || {};
         if (!isVibrationDeviceRecord(d, dec)) return [];
         const deviceKey = d.devEui || d.serialNumber || d.id;
         return [{
