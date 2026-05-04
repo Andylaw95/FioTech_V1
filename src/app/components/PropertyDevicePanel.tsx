@@ -4,7 +4,7 @@ import {
   Wifi, WifiOff, Battery, BatteryLow, BatteryMedium,
   AlertTriangle, CheckCircle2, Clock, Cpu, Unplug,
   Droplets, Wind, Thermometer, Flame, Volume2, Shield,
-  MapPin, Pencil, Check, X, Loader2,
+  MapPin, Pencil, Check, X, Loader2, Activity,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { type Device, api } from '@/app/utils/api';
@@ -44,6 +44,9 @@ const deviceMeta: Record<string, { icon: React.ElementType; bg: string; color: s
   Fire:        { icon: Flame,       bg: 'bg-red-50',      color: 'text-red-600',      label: 'Fire Alarm' },
   'Environment Sensor': { icon: Wind, bg: 'bg-emerald-50', color: 'text-emerald-600', label: 'Environment' },
   'Door/Window Sensor': { icon: Shield, bg: 'bg-slate-100', color: 'text-slate-600', label: 'Door/Window' },
+  Vibration:   { icon: Activity,    bg: 'bg-purple-50',   color: 'text-purple-600',   label: 'Vibration' },
+  'Vibration Sensor': { icon: Activity, bg: 'bg-purple-50', color: 'text-purple-600', label: 'Vibration' },
+  Accelerometer: { icon: Activity,  bg: 'bg-purple-50',   color: 'text-purple-600',   label: 'Vibration' },
 };
 
 // ── Simulated live readings (fallback for demo) ──────────
@@ -81,6 +84,18 @@ function getRealReading(decoded: Record<string, number>): { primary: { value: st
   if (decoded.sound_level_lmax !== undefined) all.push({ label: 'Lmax', value: decoded.sound_level_lmax.toFixed(1), unit: 'dB' });
   if (decoded.sound_level_lmin !== undefined) all.push({ label: 'Lmin', value: decoded.sound_level_lmin.toFixed(1), unit: 'dB' });
   if (decoded.water_leak !== undefined) all.push({ label: 'Leak', value: decoded.water_leak > 0 ? 'LEAK!' : 'Dry', unit: '' });
+  // ── Vibration (BEWIS AS400 / NOVOX CSV) ───────────────
+  const ppvMax = decoded.ppv_max_mm_s ?? decoded.ppv_resultant_mm_s;
+  if (ppvMax !== undefined) all.unshift({ label: 'PPV', value: Number(ppvMax).toFixed(3), unit: 'mm/s' });
+  if (decoded.vibration_alarm_level !== undefined) {
+    const lvl = Number(decoded.vibration_alarm_level);
+    const txt = lvl >= 3 ? 'STOP WORK' : lvl === 2 ? 'Alarm' : lvl === 1 ? 'Alert' : 'Normal';
+    all.push({ label: 'AAA', value: txt, unit: '' });
+  }
+  if (decoded.tilt_x_deg !== undefined) all.push({ label: 'Tilt X', value: Number(decoded.tilt_x_deg).toFixed(2), unit: '°' });
+  if (decoded.tilt_y_deg !== undefined) all.push({ label: 'Tilt Y', value: Number(decoded.tilt_y_deg).toFixed(2), unit: '°' });
+  if (decoded.tilt_z_deg !== undefined) all.push({ label: 'Tilt Z', value: Number(decoded.tilt_z_deg).toFixed(2), unit: '°' });
+  if (decoded.vibration_dominant_freq_hz !== undefined) all.push({ label: 'Freq', value: Number(decoded.vibration_dominant_freq_hz).toFixed(1), unit: 'Hz' });
   const primary = all[0] || { value: '--', unit: '', label: 'No Data' };
   return { primary, all };
 }

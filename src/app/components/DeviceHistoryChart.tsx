@@ -112,6 +112,50 @@ const METRICS: MetricDef[] = [
     key: 'sound_level_lmin', label: 'Sound Lmin', unit: 'dB', icon: Volume2, color: '#c084fc',
     description: 'Minimum sound level',
   },
+  // ── Vibration (BEWIS AS400 PPV) ───────────────────────
+  {
+    key: 'ppv_max_mm_s', label: 'PPV Max', unit: 'mm/s', icon: Activity, color: '#a855f7',
+    description: 'Peak Particle Velocity (max axis) — AAA: Alert 0.075 / Alarm 0.15 / Action 0.30 mm/s',
+    referenceLines: [
+      { y: 0.075, color: '#facc15', label: 'Alert 0.075' },
+      { y: 0.15, color: '#f97316', label: 'Alarm 0.15' },
+      { y: 0.30, color: '#ef4444', label: 'Action 0.30' },
+    ],
+    referenceAreas: [
+      { y1: 0, y2: 0.075, color: '#dcfce7', opacity: 0.3 },
+      { y1: 0.075, y2: 0.15, color: '#fef9c3', opacity: 0.3 },
+      { y1: 0.15, y2: 0.30, color: '#ffedd5', opacity: 0.3 },
+      { y1: 0.30, y2: 5, color: '#fee2e2', opacity: 0.3 },
+    ],
+  },
+  {
+    key: 'ppv_resultant_mm_s', label: 'PPV Resultant', unit: 'mm/s', icon: Activity, color: '#ec4899',
+    description: 'Resultant PPV — sqrt(x² + y² + z²)',
+  },
+  {
+    key: 'ppv_x_mm_s', label: 'PPV X', unit: 'mm/s', icon: Activity, color: '#a855f7',
+    description: 'PPV on X axis', chartType: 'line',
+  },
+  {
+    key: 'ppv_y_mm_s', label: 'PPV Y', unit: 'mm/s', icon: Activity, color: '#06b6d4',
+    description: 'PPV on Y axis', chartType: 'line',
+  },
+  {
+    key: 'ppv_z_mm_s', label: 'PPV Z', unit: 'mm/s', icon: Activity, color: '#f43f5e',
+    description: 'PPV on Z axis', chartType: 'line',
+  },
+  {
+    key: 'tilt_x_deg', label: 'Tilt X', unit: '°', icon: Activity, color: '#a855f7',
+    description: 'Tilt angle X', chartType: 'line',
+  },
+  {
+    key: 'tilt_y_deg', label: 'Tilt Y', unit: '°', icon: Activity, color: '#06b6d4',
+    description: 'Tilt angle Y', chartType: 'line',
+  },
+  {
+    key: 'tilt_z_deg', label: 'Tilt Z', unit: '°', icon: Activity, color: '#f43f5e',
+    description: 'Tilt angle Z', chartType: 'line',
+  },
 ];
 
 // ── Exported mapping: reading label → metric key ─────────
@@ -133,6 +177,15 @@ export const LABEL_TO_METRIC_KEY: Record<string, string> = {
   'Sound Lmin': 'sound_level_lmin',
   'Leq': 'sound_level_leq',
   'Noise': 'sound_level_leq',
+  'PPV': 'ppv_max_mm_s',
+  'PPV Max': 'ppv_max_mm_s',
+  'PPV Resultant': 'ppv_resultant_mm_s',
+  'PPV X': 'ppv_x_mm_s',
+  'PPV Y': 'ppv_y_mm_s',
+  'PPV Z': 'ppv_z_mm_s',
+  'Tilt X': 'tilt_x_deg',
+  'Tilt Y': 'tilt_y_deg',
+  'Tilt Z': 'tilt_z_deg',
   'Battery': 'battery',
 };
 
@@ -148,6 +201,9 @@ const TYPE_METRIC_PRIORITY: Record<string, string[]> = {
   Smoke:       ['pm2_5', 'pm10', 'co2', 'temperature', 'battery'],
   Fire:        ['temperature', 'humidity', 'co2', 'battery'],
   'Door/Window Sensor': ['battery'],
+  Vibration:            ['ppv_max_mm_s', 'ppv_resultant_mm_s', 'ppv_x_mm_s', 'ppv_y_mm_s', 'ppv_z_mm_s', 'tilt_x_deg', 'tilt_y_deg', 'tilt_z_deg', 'battery'],
+  'Vibration Sensor':   ['ppv_max_mm_s', 'ppv_resultant_mm_s', 'ppv_x_mm_s', 'ppv_y_mm_s', 'ppv_z_mm_s', 'tilt_x_deg', 'tilt_y_deg', 'tilt_z_deg', 'battery'],
+  Accelerometer:        ['ppv_max_mm_s', 'ppv_resultant_mm_s', 'ppv_x_mm_s', 'ppv_y_mm_s', 'ppv_z_mm_s', 'tilt_x_deg', 'tilt_y_deg', 'tilt_z_deg', 'battery'],
 };
 
 // ── Tooltip styles ───────────────────────────────────────
