@@ -2578,13 +2578,14 @@ export function registerRoutes(app: any) {
     let rawBody: any = null;
     try { rawBody = await c.req.json(); } catch { rawBody = "PARSE_ERROR"; }
     // Debug: redact sensitive fields, keep only structural info
+      const queryDevEUI = c.req.query("devEUI") || c.req.query("devEui") || c.req.query("dev_eui") || c.req.query("deveui") || "";
       const deviceInfo = rawBody?.deviceInfo && typeof rawBody.deviceInfo === "object" ? rawBody.deviceInfo : {};
       const debugEntry = {
       time: new Date().toISOString(),
       method: "POST",
       tokenVia: c.req.header("X-Webhook-Token") ? "header" : (c.req.query("token") ? "query" : "none"),
       bodyKeys: rawBody && typeof rawBody === "object" ? Object.keys(rawBody) : typeof rawBody,
-        devEUI: rawBody?.devEUI || rawBody?.devEui || rawBody?.dev_eui || deviceInfo.devEui || deviceInfo.devEUI || "N/A",
+        devEUI: rawBody?.devEUI || rawBody?.devEui || rawBody?.dev_eui || deviceInfo.devEui || deviceInfo.devEUI || queryDevEUI || "N/A",
       eventType: rawBody?.data ? "uplink" : (rawBody?.devAddr ? "join" : "other"),
     };
     WEBHOOK_DEBUG_LOG.unshift(debugEntry);
@@ -2642,13 +2643,32 @@ export function registerRoutes(app: any) {
       const eventType = isJoinEvent ? "join" : isErrorEvent ? "error" : isAckEvent ? "ack" : "uplink";
 
       const bodyDeviceInfo = body.deviceInfo && typeof body.deviceInfo === "object" ? body.deviceInfo : {};
-      const devEUI = sanitizeString(body.devEUI || body.devEui || body.dev_eui || bodyDeviceInfo.devEui || bodyDeviceInfo.devEUI || "", 24);
-      const deviceName = sanitizeString(body.deviceName || body.device_name || bodyDeviceInfo.deviceName || bodyDeviceInfo.device_name || "Unknown Device", 200);
-      const applicationName = sanitizeString(body.applicationName || body.application_name || bodyDeviceInfo.applicationName || bodyDeviceInfo.application_name || "", 200);
+      const devEUI = sanitizeString(body.devEUI || body.devEui || body.dev_eui || bodyDeviceInfo.devEui || bodyDeviceInfo.devEUI || c.req.query("devEUI") || c.req.query("devEui") || c.req.query("dev_eui") || c.req.query("deveui") || "", 24);
+      const deviceName = sanitizeString(body.deviceName || body.device_name || bodyDeviceInfo.deviceName || bodyDeviceInfo.device_name || c.req.query("deviceName") || c.req.query("device_name") || c.req.query("name") || "Unknown Device", 200);
+      const applicationName = sanitizeString(body.applicationName || body.application_name || bodyDeviceInfo.applicationName || bodyDeviceInfo.application_name || c.req.query("applicationName") || c.req.query("application_name") || c.req.query("application") || "", 200);
       const fPort = typeof body.fPort === "number" ? body.fPort : (typeof body.fport === "number" ? body.fport : 0);
       const fCnt = typeof body.fCnt === "number" ? body.fCnt : (typeof body.fcnt === "number" ? body.fcnt : 0);
       const rawData = sanitizeString(body.data || "", 2000);
+      const metadataKeys = new Set(["devEUI", "devEui", "dev_eui", "deviceName", "device_name", "applicationName", "application_name", "deviceInfo", "rxInfo", "txInfo", "time", "timestamp", "data", "fPort", "fport", "fCnt", "fcnt", "devAddr", "acknowledged", "type"]);
       let decodedData = (body.object && typeof body.object === "object" && !Array.isArray(body.object)) ? body.object : null;
+      if (!decodedData) {
+        const directDecoded: Record<string, any> = {};
+        for (const [k, v] of Object.entries(body)) {
+          if (metadataKeys.has(k)) continue;
+          if (v == null) continue;
+          let directValue: any = undefined;
+          if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") directValue = v;
+          else if (typeof v === "object" && !Array.isArray(v) && "value" in (v as any)) directValue = (v as any).value;
+          if (directValue === undefined) continue;
+          directDecoded[k] = directValue;
+          const normalizedKey = k.replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase();
+          if (!(normalizedKey in directDecoded)) directDecoded[normalizedKey] = directValue;
+          if (normalizedKey === "temperature_sensor" && !("temperature" in directDecoded)) directDecoded.temperature = directValue;
+          if (normalizedKey === "humidity_sensor" && !("humidity" in directDecoded)) directDecoded.humidity = directValue;
+          if (normalizedKey === "digital_input" && !("water_leak" in directDecoded)) directDecoded.water_leak = directValue;
+        }
+        if (Object.keys(directDecoded).length > 0) decodedData = directDecoded;
+      }
 
       // If no decoded data from gateway, try decoding the raw payload ourselves
       if (!decodedData && rawData) {
