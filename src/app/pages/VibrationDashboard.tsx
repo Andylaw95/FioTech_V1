@@ -132,7 +132,7 @@ interface VibrationDevice {
   id: string;
   name: string;
   location: string;
-  status: 'online' | 'offline';
+  status: string;
   ppvMax: number;
   ppvX: number | null;
   ppvY: number | null;
@@ -152,14 +152,45 @@ interface VibrationDevice {
   lastSeen: string;
 }
 
-// Vibration is more time-critical than noise/dust; use a tighter offline threshold.
-const OFFLINE_THRESHOLD_MS = 120 * 1000; // 120s
-
 const num = (v: any): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const numOrNull = (v: any): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const ppvUm = (v: any): number => num(v) * PPV_DISPLAY_SCALE;
 const ppvUmOrNull = (v: any): number | null => (typeof v === 'number' && Number.isFinite(v) ? v * PPV_DISPLAY_SCALE : null);
 const fmt = (v: number | null, digits: number) => (v == null ? 'N/A' : v.toFixed(digits));
+
+function isVibrationDeviceRecord(device: any, decoded: Record<string, any>): boolean {
+  const text = `${device.type || ''} ${device.name || ''} ${device.model || ''} ${device.manufacturer || ''}`.toLowerCase();
+  return text.includes('vibration')
+    || text.includes('accelerometer')
+    || text.includes('as400')
+    || text.includes('as-400')
+    || text.includes('bewis')
+    || decoded.ppv_max_mm_s !== undefined
+    || decoded.ppv_resultant_mm_s !== undefined
+    || decoded.ppv_x_mm_s !== undefined
+    || decoded.accel_x_g !== undefined
+    || decoded.tilt_x_deg !== undefined;
+}
+
+function normalizeNovoxAs400Decoded(device: any, decoded: Record<string, any>): Record<string, any> {
+  const text = `${device.id || ''} ${device.name || ''} ${device.type || ''} ${device.model || ''} ${device.manufacturer || ''}`.toUpperCase();
+  const rawPeak = decoded.ppv_raw_peak;
+  const ppvMax = decoded.ppv_max_mm_s;
+  const alreadyNormalized = decoded.ppv_raw_unit_um_s === 1 || decoded.ppv_unit_normalized_from === 'novox_decimal_um_s';
+  const isAs400 = /AS400|AS-400|BEWIS|BWS400|VIBRATION/.test(text);
+  if (!isAs400 || alreadyNormalized || typeof rawPeak !== 'number' || typeof ppvMax !== 'number') return decoded;
+  if (rawPeak <= 0 || rawPeak >= 10 || Math.abs(Math.abs(rawPeak) - Math.abs(ppvMax)) >= 0.0001) return decoded;
+
+  const fixed = { ...decoded };
+  for (const key of ['ppv_max_mm_s', 'ppv_resultant_mm_s', 'ppv_avg_mm_s', 'ppv_min_mm_s', 'ppv_rms_mm_s', 'ppv_x_mm_s', 'ppv_y_mm_s', 'ppv_z_mm_s']) {
+    if (typeof fixed[key] === 'number' && Number.isFinite(fixed[key])) fixed[key] = fixed[key] / 1000;
+  }
+  fixed.ppv_raw_unit_um_s = 1;
+  fixed.ppv_unit_normalized_from = 'novox_decimal_um_s_client';
+  const fixedPpv = fixed.ppv_max_mm_s ?? fixed.ppv_resultant_mm_s;
+  if (typeof fixedPpv === 'number') fixed.vibration_alarm_level = fixedPpv >= 0.30 ? 3 : fixedPpv >= 0.15 ? 2 : fixedPpv >= 0.075 ? 1 : 0;
+  return fixed;
+}
 
 export function VibrationDashboard() {
   const { isDark } = useTheme();
@@ -174,50 +205,39 @@ export function VibrationDashboard() {
   const [chartData, setChartData] = useState<any[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
 
-  // Discover vibration devices across all properties (re-runs every 30s)
+  // Use the same latest device records shown in Devices, so live data/status stay consistent.
   const refreshDevices = useCallback(async () => {
     try {
       setRefreshing(true);
-      const properties = await api.getProperties();
-      const vd: VibrationDevice[] = [];
-      for (const p of properties) {
-        try {
-          const tel = await api.getPropertyTelemetry(p.id);
-          for (const [devEUI, reading] of Object.entries((tel as any).deviceReadings || {})) {
-            const dec = (reading as any).decoded || {};
-            const isVibration = dec.ppv_max_mm_s !== undefined
-              || dec.ppv_x_mm_s !== undefined
-              || dec.accel_x_g !== undefined
-              || dec.tilt_x_deg !== undefined;
-            if (!isVibration) continue;
-            const recent = (reading as any).receivedAt
-              && (Date.now() - new Date((reading as any).receivedAt).getTime()) < OFFLINE_THRESHOLD_MS;
-            vd.push({
-              id: devEUI,
-              name: (reading as any).deviceName || devEUI,
-              location: `${p.name}${p.location ? ' — ' + p.location : ''}`,
-              status: recent ? 'online' : 'offline',
-              ppvMax: ppvUm(dec.ppv_max_mm_s),
-              ppvX: ppvUmOrNull(dec.ppv_x_mm_s),
-              ppvY: ppvUmOrNull(dec.ppv_y_mm_s),
-              ppvZ: ppvUmOrNull(dec.ppv_z_mm_s),
-              ppvResultant: ppvUm(dec.ppv_resultant_mm_s),
-              accelX: numOrNull(dec.accel_x_g),
-              accelY: numOrNull(dec.accel_y_g),
-              accelZ: numOrNull(dec.accel_z_g),
-              accelRms: numOrNull(dec.accel_rms_g),
-              tiltX: numOrNull(dec.tilt_x_deg),
-              tiltY: numOrNull(dec.tilt_y_deg),
-              tiltZ: numOrNull(dec.tilt_z_deg),
-              dominantFreq: num(dec.vibration_dominant_freq_hz),
-              alarmLevel: num(dec.vibration_alarm_level),
-              ppvSource: (dec.ppv_source as string) || 'unknown',
-              sampleCount: num(dec.sample_count),
-              lastSeen: (reading as any).receivedAt || '',
-            });
-          }
-        } catch { /* skip property */ }
-      }
+      const deviceRows = await api.getDevices();
+      const vd: VibrationDevice[] = deviceRows.flatMap((d: any) => {
+        const dec = normalizeNovoxAs400Decoded(d, d.decoded || {});
+        if (!isVibrationDeviceRecord(d, dec)) return [];
+        const deviceKey = d.devEui || d.serialNumber || d.id;
+        return [{
+          id: deviceKey,
+          name: d.name || deviceKey,
+          location: [d.building, d.location].filter(Boolean).join(' — ') || 'Unassigned',
+          status: d.status || 'offline',
+          ppvMax: ppvUm(dec.ppv_max_mm_s ?? dec.ppv_resultant_mm_s),
+          ppvX: ppvUmOrNull(dec.ppv_x_mm_s),
+          ppvY: ppvUmOrNull(dec.ppv_y_mm_s),
+          ppvZ: ppvUmOrNull(dec.ppv_z_mm_s),
+          ppvResultant: ppvUm(dec.ppv_resultant_mm_s ?? dec.ppv_max_mm_s),
+          accelX: numOrNull(dec.accel_x_g),
+          accelY: numOrNull(dec.accel_y_g),
+          accelZ: numOrNull(dec.accel_z_g),
+          accelRms: numOrNull(dec.accel_rms_g),
+          tiltX: numOrNull(dec.tilt_x_deg),
+          tiltY: numOrNull(dec.tilt_y_deg),
+          tiltZ: numOrNull(dec.tilt_z_deg),
+          dominantFreq: num(dec.vibration_dominant_freq_hz),
+          alarmLevel: num(dec.vibration_alarm_level),
+          ppvSource: (dec.ppv_source as string) || 'unknown',
+          sampleCount: num(dec.sample_count),
+          lastSeen: d.decodedAt || d.lastSeen || d.lastUpdate || '',
+        }];
+      });
       setDevices(vd);
       setLastRefresh(Date.now());
       // Keep current selection if still present, otherwise pick first

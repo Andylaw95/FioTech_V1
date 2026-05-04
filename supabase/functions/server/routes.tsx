@@ -3159,7 +3159,7 @@ export function registerRoutes(app: any) {
       }
 
       // ── Extract sensor data — support multiple payload shapes ──
-      const decodedData: Record<string, number> = {};
+      const decodedData: Record<string, any> = {};
 
       // Shape 1: flat keys (sound_level_leq, sound_level_lmax, sound_level_lmin, temperature, etc.)
       for (const [k, v] of Object.entries(body)) {
@@ -3246,6 +3246,27 @@ export function registerRoutes(app: any) {
           decodedData[mapped] = (body as any)[raw];
         }
       }
+      const as400Text = `${deviceId} ${deviceName} ${decodedData.manufacturer || ""} ${decodedData.model || ""}`.toUpperCase();
+      const isNovoxAs400Payload = /AS400|AS-400|BEWIS|BWS400|VIBRATION/.test(as400Text)
+        && (decodedData.sensor_serial || decodedData.device_serial || decodedData.ppv_raw_peak != null);
+      const rawPeak = decodedData.ppv_raw_peak;
+      const rawWasMarkedUm = decodedData.ppv_raw_unit_um_s === 1;
+      const ppvMaxBeforeUnitFix = decodedData.ppv_max_mm_s;
+      let normalizedNovoxDecimalPpv = false;
+      if (isNovoxAs400Payload && !rawWasMarkedUm && typeof rawPeak === "number" && typeof ppvMaxBeforeUnitFix === "number"
+        && rawPeak > 0 && rawPeak < 10 && Math.abs(Math.abs(rawPeak) - Math.abs(ppvMaxBeforeUnitFix)) < 0.0001) {
+        for (const key of ["ppv_max_mm_s", "ppv_resultant_mm_s", "ppv_avg_mm_s", "ppv_min_mm_s", "ppv_rms_mm_s", "ppv_x_mm_s", "ppv_y_mm_s", "ppv_z_mm_s"]) {
+          if (typeof decodedData[key] === "number") decodedData[key] = Math.round((decodedData[key] / 1000) * 1_000_000) / 1_000_000;
+        }
+        decodedData.ppv_raw_unit_um_s = 1;
+        decodedData.ppv_unit_normalized_from = "novox_decimal_um_s";
+        const fixedPpv = decodedData.ppv_max_mm_s ?? decodedData.ppv_resultant_mm_s;
+        if (typeof fixedPpv === "number") {
+          decodedData.vibration_alarm_level = fixedPpv >= 0.30 ? 3 : fixedPpv >= 0.15 ? 2 : fixedPpv >= 0.075 ? 1 : 0;
+        }
+        normalizedNovoxDecimalPpv = true;
+        console.log(`[AS400] Normalized NOVOX decimal PPV unit for ${deviceId}: raw=${rawPeak} um/s -> ${decodedData.ppv_max_mm_s} mm/s`);
+      }
       // Compute ppv_max / ppv_resultant if missing but per-axis present
       const ppvX = decodedData.ppv_x_mm_s, ppvY = decodedData.ppv_y_mm_s, ppvZ = decodedData.ppv_z_mm_s;
       if (typeof ppvX === "number" && typeof ppvY === "number" && typeof ppvZ === "number") {
@@ -3322,10 +3343,25 @@ export function registerRoutes(app: any) {
               desc: `Battery ${decodedData.battery}% — replace soon to avoid monitoring gap.` });
           }
 
+          const alarmKey = uk(userId, "alarms");
+          let alarms = await kvGetWithRetry(alarmKey);
+          if (!Array.isArray(alarms)) alarms = [];
+          if (normalizedNovoxDecimalPpv && typeof ppv === "number" && ppv < PPV_ALERT) {
+            let changed = false;
+            alarms = alarms.map((a: any) => {
+              if (a.status === "pending" && a.location === deviceName && /^Vibration (Action|Alarm|Alert)$/.test(a.type || "")) {
+                changed = true;
+                return { ...a, status: "resolved", resolvedAt: new Date().toISOString(), resolution: "Resolved after NOVOX AS400 PPV unit normalization." };
+              }
+              return a;
+            });
+            if (changed) {
+              await kvSetWithRetry(alarmKey, alarms);
+              invalidateKvCache(alarmKey);
+            }
+          }
+
           if (vibAlarms.length > 0) {
-            const alarmKey = uk(userId, "alarms");
-            let alarms = await kvGetWithRetry(alarmKey);
-            if (!Array.isArray(alarms)) alarms = [];
             for (const va of vibAlarms) {
               const recentDupe = alarms.find((a: any) => a.type === va.type
                 && a.location === deviceName
@@ -3639,6 +3675,19 @@ export function registerRoutes(app: any) {
       };
       const points = entries.map((e: any) => {
         const d = e.decodedData ? { ...e.decodedData } : {};
+        const rawPeak = d.ppv_raw_peak;
+        const ppvMax = d.ppv_max_mm_s;
+        if (isVibrationHistory && d.ppv_raw_unit_um_s !== 1 && d.ppv_unit_normalized_from !== "novox_decimal_um_s"
+          && typeof rawPeak === "number" && typeof ppvMax === "number"
+          && rawPeak > 0 && rawPeak < 10 && Math.abs(Math.abs(rawPeak) - Math.abs(ppvMax)) < 0.0001) {
+          for (const key of ["ppv_max_mm_s", "ppv_resultant_mm_s", "ppv_avg_mm_s", "ppv_min_mm_s", "ppv_rms_mm_s", "ppv_x_mm_s", "ppv_y_mm_s", "ppv_z_mm_s"]) {
+            if (typeof d[key] === "number") d[key] = Math.round((d[key] / 1000) * 1_000_000) / 1_000_000;
+          }
+          d.ppv_raw_unit_um_s = 1;
+          d.ppv_unit_normalized_from = "novox_decimal_um_s_history";
+          const fixedPpv = d.ppv_max_mm_s ?? d.ppv_resultant_mm_s;
+          if (typeof fixedPpv === "number") d.vibration_alarm_level = fixedPpv >= 0.30 ? 3 : fixedPpv >= 0.15 ? 2 : fixedPpv >= 0.075 ? 1 : 0;
+        }
         // Strip known broken sensor fields (e.g. AM308L#2 PM sensors)
         stripBrokenFields(devEui, d);
         return {

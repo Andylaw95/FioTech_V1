@@ -76,6 +76,7 @@ LINE_READ_TIMEOUT_S  = 2.0
 SAMPLE_RATE_HZ       = 16.0        # observed: 64 samples / ~4s
 CSV_SAMPLE_COUNT     = 64
 CSV_UM_S_AUTODETECT_THRESHOLD = 10.0
+CSV_DECIMAL_VALUES_ARE_UM_S = True
 
 # AAA thresholds (Lai King Hospital reference, mm/s)
 ALERT_MM_S           = 0.075
@@ -143,16 +144,16 @@ def normalise_ppv_values(values):
     """
     Returns (values_in_mm_s, raw_unit).
 
-    NOVOX CSV has appeared in two unit variants:
-    - 000.099 style values are already mm/s
-    - 098.000 style values are μm/s and must be divided by 1000 before upload
+    The current NOVOX demo unit emits decimal PPV values as μm/s, even when
+    formatted like 000.336. Older notes assumed those decimals were mm/s, which
+    inflated the FioTec display by 1000x and created false Action alarms.
 
     FioTec canonical payload fields stay in mm/s; UI displays μm/s.
     """
     if not values:
         return [], "unknown"
     raw_peak = max(abs(v) for v in values)
-    if raw_peak >= CSV_UM_S_AUTODETECT_THRESHOLD:
+    if CSV_DECIMAL_VALUES_ARE_UM_S or raw_peak >= CSV_UM_S_AUTODETECT_THRESHOLD:
         return [v / 1000.0 for v in values], "um/s"
     return values, "mm/s"
 
