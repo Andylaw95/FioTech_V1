@@ -584,9 +584,12 @@ async function loadIfc(url: string): Promise<THREE.Group> {
 
     // Fast path: try IndexedDB-cached Fragments binary first.
     // Wrapped in a 5s timeout so a corrupt cache can't hang the loader.
+    // Threshold raised to 100KB: a real building fragment is multi-MB, while
+    // truncated/aborted writes can leave a few-KB blob that hydrates "ok"
+    // but contains no geometry — only zone labels then show on the canvas.
     try {
       const cachedFrag = await getCachedFrag(cacheKey);
-      if (cachedFrag && cachedFrag.byteLength > 1024) {
+      if (cachedFrag && cachedFrag.byteLength > 100 * 1024) {
         const tHydrate = performance.now();
         const loadPromise = fragsManager.core.load(cachedFrag.buffer, { modelId: 'main' });
         const timeout = new Promise<never>((_, rej) =>
@@ -594,6 +597,9 @@ async function loadIfc(url: string): Promise<THREE.Group> {
         );
         fragModel = await Promise.race([loadPromise, timeout]);
         console.log(`[IfcModel] hydrated from IndexedDB cache (${(cachedFrag.byteLength / 1024 / 1024).toFixed(1)} MB) in ${Math.round(performance.now() - tHydrate)}ms`);
+      } else if (cachedFrag && cachedFrag.byteLength > 0) {
+        console.warn(`[IfcModel] dropping suspiciously small cached frag (${cachedFrag.byteLength} bytes) — refetching`);
+        try { await putCachedFrag(cacheKey, new Uint8Array(0)); } catch {}
       }
     } catch (e) {
       console.warn('[IfcModel] frag cache hydrate failed, falling back to IFC', e);
@@ -616,7 +622,7 @@ async function loadIfc(url: string): Promise<THREE.Group> {
             const fragCt = fragResp.headers.get('content-type') || '';
             if (!fragCt.includes('text/html')) {
               const fragBuf = new Uint8Array(await fragResp.arrayBuffer());
-              if (fragBuf.byteLength > 1024) {
+              if (fragBuf.byteLength > 100 * 1024) {
                 console.log(`[IfcModel] prebuilt fragments fetched ${(fragBuf.byteLength / 1024 / 1024).toFixed(1)} MB in ${Math.round(performance.now() - tFragFetch)}ms`);
                 const tHydrate = performance.now();
                 fragModel = await fragsManager.core.load(fragBuf.buffer, { modelId: 'main' });
