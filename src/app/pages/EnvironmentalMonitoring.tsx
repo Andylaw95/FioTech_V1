@@ -36,6 +36,59 @@ function safeNum(v: unknown, decimals = 1): string {
   return n.toFixed(decimals);
 }
 
+function fieldNum(decoded: Record<string, any>, patterns: string[]): number | null {
+  for (const key of Object.keys(decoded || {})) {
+    const kl = key.toLowerCase();
+    for (const pattern of patterns) {
+      const p = pattern.toLowerCase();
+      if (kl === p || kl.includes(p)) {
+        const raw = decoded[key];
+        const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
+        if (Number.isFinite(n)) return n;
+      }
+    }
+  }
+  return null;
+}
+
+function hasField(decoded: Record<string, any>, patterns: string[]): boolean {
+  return Object.keys(decoded || {}).some(key => {
+    const kl = key.toLowerCase();
+    return patterns.some(pattern => {
+      const p = pattern.toLowerCase();
+      return kl === p || kl.includes(p);
+    });
+  });
+}
+
+function classifyMapDevice(reading: any, decoded: Record<string, any>): DeviceType {
+  const metaText = [
+    reading.deviceName,
+    reading.deviceType,
+    reading.type,
+    reading.manufacturer,
+    reading.model,
+    ...(Array.isArray(reading.capabilities) ? reading.capabilities : []),
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  const isVibration = /as-?400|bewis|bws400|vibration|accelerometer|ppv/.test(metaText)
+    || hasField(decoded, ['ppv_', 'vibration_', 'accel_', 'tilt_']);
+  const isNoise = /sound|noise|ws302|hy108|laeq|laf|lcpeak/.test(metaText)
+    || hasField(decoded, ['sound_level', 'soundlevel', 'noise_', 'laeq', 'laf', 'lcpeak', 'leq']);
+  const isAirQuality = /am308|iaq|ambience|ambient|air quality|dust|pm2|pm10|co2|tvoc|hcho/.test(metaText)
+    || hasField(decoded, ['pm2_5', 'pm25', 'pm10', 'tsp', 'co2', 'tvoc', 'voc', 'hcho']);
+  const isLeak = /em300|sld|leak|water|flood/.test(metaText)
+    || hasField(decoded, ['leakage_status', 'water_leak', 'leak_status', 'flood', 'digital_input']);
+  const isEnvironmental = hasField(decoded, ['temperature', 'temp', 'humidity', 'humid', 'illuminance', 'light']);
+
+  if (isVibration) return 'vibration';
+  if (isNoise) return 'noise';
+  if (isAirQuality) return 'dust';
+  if (isLeak) return 'leakage';
+  if (isEnvironmental) return 'dust';
+  return 'dust';
+}
+
 // ══════════════════════════════════════════════════════════
 //  Classification helpers
 // ══════════════════════════════════════════════════════════
@@ -409,12 +462,8 @@ export function EnvironmentalMonitoring() {
 
             for (const [devEUI, reading] of Object.entries(readings)) {
               const dec = reading.decoded || {};
-              const hasNoise = dec.sound_level_leq !== undefined;
-              const hasDust = dec.pm2_5 !== undefined || dec.pm10 !== undefined || dec.tsp !== undefined;
-              const hasLeakage = dec.leakage_status !== undefined;
-              const hasVibration = dec.ppv_max_mm_s !== undefined || dec.ppv_resultant_mm_s !== undefined || dec.accel_x_g !== undefined || dec.tilt_x_deg !== undefined;
-              const hasEnv = dec.temperature !== undefined || dec.humidity !== undefined;
-              const deviceType: DeviceType = hasVibration ? 'vibration' : hasNoise ? 'noise' : hasDust ? 'dust' : (hasLeakage || hasEnv) ? 'leakage' : 'leakage';
+              const deviceType = classifyMapDevice(reading, dec);
+              const waterLeak = fieldNum(dec, ['water_leak', 'leak_status', 'leakage_status', 'digital_input', 'flood']);
 
               // Micro-offset so overlapping markers stay clickable (~2m apart)
               const microOffset = idx * 0.00002;
@@ -427,23 +476,23 @@ export function EnvironmentalMonitoring() {
                 lat: coords.lat + microOffset,
                 lng: coords.lng + microOffset * 0.7,
                 status: isDeviceRecent(reading.receivedAt, deviceType) ? 'online' : 'offline',
-                sound_level_leq: dec.sound_level_leq ?? null,
-                sound_level_lmax: dec.sound_level_lmax ?? null,
-                sound_level_lmin: dec.sound_level_lmin ?? null,
-                sound_level_inst: dec.sound_level_inst ?? null,
-                sound_level_lcpeak: dec.sound_level_lcpeak ?? null,
-                pm25: dec.pm2_5 ?? dec.pm25,
-                pm10: dec.pm10,
-                tsp: dec.tsp,
-                temp: dec.temperature,
-                humidity: dec.humidity,
-                windSpeed: dec.wind_speed,
+                sound_level_leq: fieldNum(dec, ['sound_level_leq', 'noise_leq', 'noise_lp', 'laeq', 'leq']),
+                sound_level_lmax: fieldNum(dec, ['sound_level_lmax', 'sound_level_max', 'noise_lafmax', 'noise_lmax', 'lafmax', 'lmax']),
+                sound_level_lmin: fieldNum(dec, ['sound_level_lmin', 'sound_level_min', 'noise_lafmin', 'noise_lmin', 'lafmin', 'lmin']),
+                sound_level_inst: fieldNum(dec, ['sound_level_inst', 'sound_level_fast', 'noise_inst', 'noise_laf_inst', 'laf_inst']),
+                sound_level_lcpeak: fieldNum(dec, ['sound_level_lcpeak', 'lcpeak', 'lc_peak', 'cpeak']),
+                pm25: fieldNum(dec, ['pm2_5', 'pm25']),
+                pm10: fieldNum(dec, ['pm10']),
+                tsp: fieldNum(dec, ['tsp', 'total_suspended']),
+                temp: fieldNum(dec, ['temperature', 'temperature_sensor', 'temp']),
+                humidity: fieldNum(dec, ['humidity', 'relative_humidity', 'humidity_sensor', 'humid']),
+                windSpeed: fieldNum(dec, ['wind_speed', 'windspeed']),
                 windDir: dec.wind_direction,
-                leakage_status: dec.leakage_status ?? null,
-                battery: dec.battery ?? null,
-                ppvMaxMmS: dec.ppv_max_mm_s ?? null,
-                ppvResultantMmS: dec.ppv_resultant_mm_s ?? null,
-                vibrationAlarmLevel: dec.vibration_alarm_level ?? null,
+                leakage_status: typeof dec.leakage_status === 'string' ? dec.leakage_status : waterLeak != null ? (waterLeak > 0 ? 'leak' : 'normal') : null,
+                battery: fieldNum(dec, ['battery', 'battery_pct', 'battery_percent', 'batt']),
+                ppvMaxMmS: fieldNum(dec, ['ppv_max_mm_s', 'ppv_max', 'ppv_peak']),
+                ppvResultantMmS: fieldNum(dec, ['ppv_resultant_mm_s', 'ppv_resultant']),
+                vibrationAlarmLevel: fieldNum(dec, ['vibration_alarm_level', 'alarm_level', 'aaa_level']),
                 ppvSource: dec.ppv_source ?? null,
               });
               idx++;
@@ -618,8 +667,12 @@ export function EnvironmentalMonitoring() {
 
   function getMarkerReading(d: SensorDevice): string {
     if (d.status === 'offline') return 'Offline';
-    if (d.type === 'noise') return `${d.sound_level_leq?.toFixed(1)} dB(A)`;
-    if (d.type === 'dust') return `PM2.5: ${d.pm25?.toFixed(1)} µg/m³`;
+    if (d.type === 'noise') return d.sound_level_leq == null ? 'LAeq: —' : `${d.sound_level_leq.toFixed(1)} dB(A)`;
+    if (d.type === 'dust') {
+      if (d.pm25 != null) return `PM2.5: ${d.pm25.toFixed(1)} µg/m³`;
+      if (d.temp != null || d.humidity != null) return [`Temp: ${safeNum(d.temp)}°C`, `RH: ${safeNum(d.humidity)}%`].join(' · ');
+      return 'Air: —';
+    }
     if (d.type === 'vibration') {
       const ppvMm = d.ppvMaxMmS ?? d.ppvResultantMmS;
       return ppvMm == null ? 'PPV: —' : `PPV: ${(ppvMm * 1000).toFixed(1)} μm/s`;

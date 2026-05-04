@@ -912,10 +912,21 @@ export function registerRoutes(app: any) {
       // Match sensor data to assigned devices by devEui or deviceName
       const deviceNames = new Set(assigned.map((d: any) => (d.name || "").toLowerCase()));
       const deviceEUIs = new Set<string>();
+      const assignedByEui = new Map<string, any>();
+      const assignedByName = new Map<string, any>();
       for (const d of assigned) {
+        if (d.name) assignedByName.set(d.name.toLowerCase(), d);
         // Use devEui (camelCase, as stored by auto-register / manual add)
-        if (d.devEui) deviceEUIs.add(d.devEui.toLowerCase());
-        if (d.serialNumber) deviceEUIs.add(d.serialNumber.toLowerCase());
+        if (d.devEui) {
+          const eui = d.devEui.toLowerCase();
+          deviceEUIs.add(eui);
+          assignedByEui.set(eui, d);
+        }
+        if (d.serialNumber) {
+          const serial = d.serialNumber.toLowerCase();
+          deviceEUIs.add(serial);
+          assignedByEui.set(serial, d);
+        }
       }
 
       // Determine if we should filter by device assignment or show all user data
@@ -1066,9 +1077,9 @@ export function registerRoutes(app: any) {
         const bp = fv(decoded, ["barometric_pressure", "pressure", "baro"]);
         const lux = fv(decoded, ["illuminance", "light", "lux"]);
         const motion = fv(decoded, ["pir", "occupancy", "motion"]);
-        const sleq = fv(decoded, ["sound_level_leq", "noise_leq", "noise_lp", "leq"]);
-        const slmin = fv(decoded, ["sound_level_lmin", "noise_lafmin", "noise_lmin", "lmin"]);
-        const slmax = fv(decoded, ["sound_level_lmax", "noise_lafmax", "noise_lmax", "lmax"]);
+        const sleq = fv(decoded, ["sound_level_leq", "noise_leq", "noise_lp", "laeq", "leq"]);
+        const slmin = fv(decoded, ["sound_level_lmin", "sound_level_min", "noise_lafmin", "noise_lmin", "lafmin", "lmin"]);
+        const slmax = fv(decoded, ["sound_level_lmax", "sound_level_max", "noise_lafmax", "noise_lmax", "lafmax", "lmax"]);
         const slinst = fv(decoded, ["sound_level_inst", "noise_laf", "noise_inst", "noise_laf_inst"]);
         const slpeak = fv(decoded, ["sound_level_lcpeak", "noise_lcpeak", "lcpeak"]);
         const wleak = fv(decoded, ["water_leak", "digital_input"]);
@@ -1117,9 +1128,14 @@ export function registerRoutes(app: any) {
         if (alvl !== null) vibration_alarm_level = alvl;
 
         // Build per-device reading
+        const metaDevice = assignedByEui.get(eui.toLowerCase()) || assignedByName.get((entry.deviceName || "").toLowerCase()) || null;
         deviceReadings[eui] = {
           devEUI: eui,
           deviceName: entry.deviceName,
+          deviceType: metaDevice?.type,
+          manufacturer: metaDevice?.manufacturer,
+          model: metaDevice?.model,
+          capabilities: Array.isArray(metaDevice?.capabilities) ? metaDevice.capabilities : undefined,
           receivedAt: entry.receivedAt,
           fCnt: entry.fCnt,
           rssi: entry.rssi,
