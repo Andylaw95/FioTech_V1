@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   X, Wifi, WifiOff, Battery, BatteryLow, BatteryMedium, BatteryFull, BatteryWarning,
-  Droplets, Wind, Thermometer, Flame, Volume2, Cpu, AlertTriangle, CheckCircle2, Clock, MapPin,
+  Droplets, Wind, Thermometer, Flame, Volume2, Activity, Cpu, AlertTriangle, CheckCircle2, Clock, MapPin,
   ArrowLeft, History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';

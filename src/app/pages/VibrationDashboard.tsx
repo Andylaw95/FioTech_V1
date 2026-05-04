@@ -246,7 +246,7 @@ export function VibrationDashboard() {
       .then((res: any) => {
         if (cancelled) return;
         setChartData((res.points || []).map((p: any) => ({
-          time: p.timeLabel || new Date(p.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
+          time: p.timeLabel || new Date(p.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }),
           ppvMax: ppvUmOrNull(p.ppv_max_mm_s) ?? ppvUmOrNull(p.ppv_resultant_mm_s),
           ppvX: ppvUmOrNull(p.ppv_x_mm_s),
           ppvY: ppvUmOrNull(p.ppv_y_mm_s),

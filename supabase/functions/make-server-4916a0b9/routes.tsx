@@ -3563,7 +3563,7 @@ export function registerRoutes(app: any) {
       // Format time for chart labels
       const formatted = sampled.map((p: any) => ({
         ...p,
-        timeLabel: new Date(p.time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Hong_Kong" }),
+        timeLabel: new Date(p.time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Hong_Kong" }),
         dateLabel: new Date(p.time).toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "Asia/Hong_Kong" }),
       }));
 

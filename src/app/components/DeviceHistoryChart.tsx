@@ -10,12 +10,12 @@ import { Loader2, Droplets, Wind, Thermometer, Shield, Activity, Zap, Volume2 } 
 import { api, type DeviceHistoryPoint, type DeviceHistoryResponse } from '@/app/utils/api';
 import { clsx } from 'clsx';
 
-// ── Format ISO time to local HH:mm ──────────────────────
+// ── Format ISO time to local HH:mm:ss ───────────────────
 function formatLocalTime(iso: string): string {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   } catch { return iso; }
 }
 
