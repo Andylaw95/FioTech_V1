@@ -13,6 +13,8 @@ function inferTypeFromDevice(d: Device): Sensor['type'] {
   if (hay.includes('cctv') || hay.includes('camera')) return 'CCTV';
   if (hay.includes('lift') || hay.includes('elevator')) return 'Lift';
   if (hay.includes('hy108') || hay.includes('ws302') || hay.includes('noise') || hay.includes('sound') || hay.includes('decibel')) return 'HY108-1';
+  if (hay.includes('as400') || hay.includes('as-400') || hay.includes('bewis') || hay.includes('vibration') || hay.includes('accelerometer')) return 'AS400';
+  if (caps.some((c) => c === 'vibration' || c === 'ppv' || c === 'acceleration')) return 'AS400';
   if (hay.includes('ld-5r') || hay.includes('ld5r') || hay.includes('dust') || hay.includes('particulate')) return 'LD-5R';
   if (caps.some((c) => c === 'pm2_5' || c === 'pm10' || c === 'tsp')) return 'LD-5R';
   if (hay.includes('am308') || hay.includes('ambience') || hay.includes('ambient') || hay.includes('environment') || hay.includes('iaq') || hay.includes('co2') || hay.includes('air quality')) return 'IAQ';
@@ -52,6 +54,7 @@ const THRESHOLDS: Record<Sensor['type'], { field: string; warn: number; crit: nu
   'Temp':    { field: 'temperature',     warn: 26, crit: 28, unit: '°C', label: 'Temp' },
   'CCTV':    { field: 'pir',             warn: 0.5, crit: 1, unit: '', label: 'Motion' },
   'Lift':    { field: 'pir',             warn: 0.5, crit: 1, unit: '', label: 'Status' },
+  'AS400':   { field: 'ppv_max_mm_s',    warn: 75, crit: 300, unit: 'μm/s', label: 'PPV Max' },
 };
 
 function severityFromValue(type: Sensor['type'], value: number): Severity {
@@ -100,7 +103,18 @@ const METRIC_ALIASES: Record<string, string> = {
   lafmin: 'sound_level_lmin',
   laf: 'sound_level_inst',
   lcpeak: 'sound_level_lcpeak',
+  ppv_max: 'ppv_max_mm_s',
+  ppv_peak: 'ppv_max_mm_s',
+  ppv_resultant: 'ppv_resultant_mm_s',
+  dominant_freq: 'vibration_dominant_freq_hz',
+  dominant_freq_hz: 'vibration_dominant_freq_hz',
 };
+
+const SUPPRESSED_METRICS = new Set([
+  'timestamp', 'fport', 'fcnt', 'sample_count', 'sample_rate_hz',
+  'lines_in_window', 'window_lines', 'vibration_alarm_level',
+  'ppv_raw_peak', 'ppv_raw_unit_um_s',
+]);
 
 function normalizeMetrics(raw: Record<string, unknown>): Record<string, number> {
   const out: Record<string, number> = {};
@@ -109,7 +123,9 @@ function normalizeMetrics(raw: Record<string, unknown>): Record<string, number> 
     if (!Number.isFinite(v)) continue;
     const stripped = rawKey.replace(/_\d+$/, '').toLowerCase();
     const key = METRIC_ALIASES[stripped] ?? stripped;
-    if (out[key] === undefined) out[key] = v;
+    if (SUPPRESSED_METRICS.has(key)) continue;
+    const displayValue = key.startsWith('ppv_') && key.endsWith('_mm_s') ? v * 1000 : v;
+    if (out[key] === undefined) out[key] = displayValue;
   }
   return out;
 }
@@ -131,6 +147,7 @@ function readingFromDevice(sensor: Sensor, device: Device | null, now: number): 
     // Priority order tries to pick the "headline" reading per device class.
     const FALLBACK_ORDER = [
       'sound_level_leq', 'sound_level_inst', 'laeq', 'leq',
+      'ppv_max_mm_s', 'ppv_resultant_mm_s',
       'co2', 'pm2_5', 'pm10', 'tsp', 'tvoc',
       'temperature', 'temp', 'humidity',
     ];
@@ -139,6 +156,8 @@ function readingFromDevice(sensor: Sensor, device: Device | null, now: number): 
       sound_level_inst: { unit: 'dB', label: 'LAF' },
       laeq: { unit: 'dB', label: 'LAeq' },
       leq: { unit: 'dB', label: 'LAeq' },
+      ppv_max_mm_s: { unit: 'μm/s', label: 'PPV Max' },
+      ppv_resultant_mm_s: { unit: 'μm/s', label: 'PPV' },
       co2: { unit: 'ppm', label: 'CO₂' },
       pm2_5: { unit: 'µg/m³', label: 'PM2.5' },
       pm10: { unit: 'µg/m³', label: 'PM10' },
@@ -254,6 +273,7 @@ const MOCK_BASELINES: Record<Sensor['type'], { base: number; jitter: number }> =
   'Temp':    { base: 23, jitter: 4 },    // °C
   'CCTV':    { base: 0, jitter: 1 },
   'Lift':    { base: 0, jitter: 1 },
+  'AS400':   { base: 60, jitter: 30 },
 };
 
 function genMockReadings(now: number): Map<string, LiveReading> {

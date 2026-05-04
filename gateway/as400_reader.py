@@ -16,11 +16,13 @@ Public entry point:
     start_as400_thread(upload_fn, port="/dev/tty485_1", baud=9600,
                        device_id="AS400-001",
                        device_name="AS400-001 Vibration",
-                       upload_window_s=30)
+                       upload_window_s=10)
 
 `upload_fn(payload_dict)` is the host gateway's existing FioTec upload
 function (e.g. main.upload_to_fiotech). The thread peak-holds within
 upload_window_s and posts a flat dict mirroring HY108's payload shape.
+Default 10s upload is the Free-plan demo idle mode: realtime-ish latest values
+without exceeding Supabase Free too quickly.
 """
 
 import time
@@ -205,7 +207,7 @@ def start_as400_thread(upload_fn,
                        baud=9600,
                        device_id="AS400-001",
                        device_name="AS400-001 Vibration",
-                       upload_window_s=30,
+                       upload_window_s=10,
                        log=None):
     if log is None:
         log = print

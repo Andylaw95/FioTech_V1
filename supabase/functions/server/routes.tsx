@@ -3042,7 +3042,7 @@ export function registerRoutes(app: any) {
 
       // Shape 1: flat keys (sound_level_leq, sound_level_lmax, sound_level_lmin, temperature, etc.)
       for (const [k, v] of Object.entries(body)) {
-        if (typeof v === "number" && !["fPort", "fCnt"].includes(k)) {
+          if (typeof v === "number" && !["fPort", "fCnt", "timestamp"].includes(k)) {
           // Accept known sensor fields directly
           const sanitizedKey = k.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 50);
           if (sanitizedKey) decodedData[sanitizedKey] = v;
@@ -3252,10 +3252,12 @@ export function registerRoutes(app: any) {
         source: "4g", // Distinguish from LoRaWAN uplinks
       };
 
-      // ── 15-minute storage throttle ──
-      // The firmware sends data every few seconds, but we only store to sensor_data
-      // every 15 minutes to reduce DB I/O. Device lastSeen is always updated.
-      const STORE_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+      // ── Storage throttle ──
+      // Device lastSeen/latest decoded is updated every call. For the current
+      // AS400 demo we keep a 30s history sample for 3-day review while staying
+      // within Supabase Free; non-vibration 4G devices keep the 15-minute throttle.
+      const isVibrationPayload = hasVibrationData || /AS400|AS-400|BEWIS|BWS400|VIBRATION|ACCELEROMETER/i.test(`${deviceId} ${deviceName}`);
+      const STORE_INTERVAL_MS = isVibrationPayload ? 30 * 1000 : 15 * 60 * 1000;
       const storeTimestampKey = `last_4g_store_${userId}_${deviceId.toLowerCase()}`;
       let lastStoreTime = 0;
       try { const ts = await kvGetWithRetry(storeTimestampKey); if (typeof ts === "number") lastStoreTime = ts; } catch {}
@@ -3270,7 +3272,8 @@ export function registerRoutes(app: any) {
         const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
         const pruneCutoff = Date.now() - THREE_DAYS;
         sensorData = sensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneCutoff);
-        if (sensorData.length > 1000) sensorData = sensorData.slice(0, 1000);
+        const maxSensorDataRows = isVibrationPayload ? 10000 : 1000;
+        if (sensorData.length > maxSensorDataRows) sensorData = sensorData.slice(0, maxSensorDataRows);
         await kvSetWithRetry(sdKey, sensorData);
         await kvSetWithRetry(storeTimestampKey, Date.now());
       }
@@ -3403,7 +3406,8 @@ export function registerRoutes(app: any) {
                 const THREE_DAYS_FAN = 3 * 24 * 60 * 60 * 1000;
                 const pruneFan = Date.now() - THREE_DAYS_FAN;
                 subSensorData = subSensorData.filter((e: any) => new Date(e.receivedAt).getTime() > pruneFan);
-                if (subSensorData.length > 1000) subSensorData = subSensorData.slice(0, 1000);
+                const maxSubSensorDataRows = isVibrationPayload ? 10000 : 1000;
+                if (subSensorData.length > maxSubSensorDataRows) subSensorData = subSensorData.slice(0, maxSubSensorDataRows);
                 await cachedKvSet(subSdKey, subSensorData);
               }
             } catch (fanErr) {
@@ -3468,14 +3472,19 @@ export function registerRoutes(app: any) {
 
       // Verify the device belongs to this user before returning history
       const userDevices = await getUserCollection(userId, "devices");
-      const deviceExists = userDevices.some((d: any) => (d.devEUI || d.devEui || "").toLowerCase() === devEui);
-      if (!deviceExists) return c.json({ error: "Device not found." }, 404);
+      const historyDevice = userDevices.find((d: any) => (d.devEUI || d.devEui || "").toLowerCase() === devEui);
+      if (!historyDevice) return c.json({ error: "Device not found." }, 404);
+      const historyDeviceText = `${historyDevice.type || ""} ${historyDevice.name || ""} ${historyDevice.model || ""} ${historyDevice.manufacturer || ""}`.toLowerCase();
+      const isVibrationHistory = historyDeviceText.includes("vibration") || historyDeviceText.includes("accelerometer")
+        || historyDeviceText.includes("as400") || historyDeviceText.includes("as-400") || historyDeviceText.includes("bewis");
 
       // Support period query param: 24h (default) or 3d (max stored)
       const periodParam = (c.req.query("period") || "24h").toLowerCase();
       const periodHours: Record<string, number> = { "12h": 12, "24h": 24, "48h": 48, "3d": 72 };
       const hours = periodHours[periodParam] || 24;
-      const maxPoints: Record<string, number> = { "12h": 48, "24h": 96, "48h": 96, "3d": 144 };
+      const maxPoints: Record<string, number> = isVibrationHistory
+        ? { "12h": 720, "24h": 720, "48h": 720, "3d": 720 }
+        : { "12h": 48, "24h": 96, "48h": 96, "3d": 144 };
       const maxPts = maxPoints[periodParam] || 96;
 
       const sdKey = `sensor_data_${userId}`;

@@ -213,6 +213,7 @@ const TYPE_METRIC_PRIORITY: Record<string, string[]> = {
   Vibration:            ['ppv_max_mm_s', 'ppv_resultant_mm_s', 'ppv_x_mm_s', 'ppv_y_mm_s', 'ppv_z_mm_s', 'tilt_x_deg', 'tilt_y_deg', 'tilt_z_deg', 'battery'],
   'Vibration Sensor':   ['ppv_max_mm_s', 'ppv_resultant_mm_s', 'ppv_x_mm_s', 'ppv_y_mm_s', 'ppv_z_mm_s', 'tilt_x_deg', 'tilt_y_deg', 'tilt_z_deg', 'battery'],
   Accelerometer:        ['ppv_max_mm_s', 'ppv_resultant_mm_s', 'ppv_x_mm_s', 'ppv_y_mm_s', 'ppv_z_mm_s', 'tilt_x_deg', 'tilt_y_deg', 'tilt_z_deg', 'battery'],
+  AS400:                ['ppv_max_mm_s', 'ppv_resultant_mm_s', 'ppv_x_mm_s', 'ppv_y_mm_s', 'ppv_z_mm_s', 'tilt_x_deg', 'tilt_y_deg', 'tilt_z_deg', 'battery'],
 };
 
 // ── Tooltip styles ───────────────────────────────────────
@@ -457,7 +458,11 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
           {error || 'No sensor data available yet'}
         </p>
         <p className="text-xs text-slate-400 mt-1">
-          {!devEui ? 'This device has no devEui configured.' : 'History will appear once sensor uplinks are received.'}
+          {!devEui
+            ? 'This device has no devEui configured.'
+            : deviceType.toLowerCase().includes('vibration') || deviceType.toLowerCase().includes('as400')
+              ? 'Demo history stores one vibration point every ~30s and keeps the last 3 days.'
+              : 'History will appear once sensor uplinks are received.'}
         </p>
       </div>
     );
@@ -526,7 +531,9 @@ export function DeviceHistoryChart({ deviceId, deviceType, devEui, focusMetric, 
             {!compact && <span className="ml-auto text-xs text-slate-400 shrink-0">{data.length} pts · {timeRange}</span>}
           </div>
           {compact ? (
-            <p className="text-[10px] text-slate-400 mb-2 truncate">{data.length} data points · 3-day history</p>
+            <p className="text-[10px] text-slate-400 mb-2 truncate">
+              {data.length} data points · {deviceType.toLowerCase().includes('vibration') || deviceType.toLowerCase().includes('as400') ? '30s sampled · 3-day demo history' : '3-day history'}
+            </p>
           ) : (
             <p className="text-xs text-slate-400 mb-3">{selectedMetric.description}</p>
           )}
@@ -557,11 +564,12 @@ export function MiniDeviceChart({ deviceId, deviceType, devEui }: MiniDeviceChar
 
   useEffect(() => {
     if (!devEui) { setLoading(false); return; }
-    api.getDeviceHistory(devEui)
+    const period = deviceType.toLowerCase().includes('vibration') || deviceType.toLowerCase().includes('as400') ? '3d' : '24h';
+    api.getDeviceHistory(devEui, period)
       .then((res) => setData(res.points || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [devEui]);
+  }, [devEui, deviceType]);
 
   // Pick the primary metric for this device type
   const primaryKey = useMemo(() => {

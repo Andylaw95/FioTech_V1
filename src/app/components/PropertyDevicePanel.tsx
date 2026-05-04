@@ -61,6 +61,9 @@ function getSimulatedReading(device: Device) {
     case 'Leakage':     return { value: h % 5 === 0 ? 'LEAK' : 'DRY', unit: '', label: 'Status' };
     case 'Noise':
     case 'Sound Level Sensor': return { value: (30 + (h % 45)).toString(), unit: 'dB', label: 'Leq' };
+    case 'Vibration':
+    case 'Vibration Sensor':
+    case 'Accelerometer': return { value: (40 + (h % 70)).toString(), unit: 'μm/s', label: 'PPV' };
     case 'Water Leakage Sensor': return { value: h % 5 === 0 ? 'LEAK' : 'DRY', unit: '', label: 'Status' };
     case 'Smoke':       return { value: (0.05 + (h % 30) / 100).toFixed(2), unit: 'μg/m³', label: 'Particles' };
     case 'Fire':        return { value: (20 + (h % 40) / 10).toFixed(1), unit: '°C', label: 'Heat' };

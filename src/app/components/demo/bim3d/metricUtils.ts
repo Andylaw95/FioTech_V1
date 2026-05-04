@@ -17,6 +17,11 @@ const ALIASES: Record<string, string> = {
   lafmin: 'sound_level_lmin',
   laf: 'sound_level_inst',
   lcpeak: 'sound_level_lcpeak',
+  ppv_max: 'ppv_max_mm_s',
+  ppv_peak: 'ppv_max_mm_s',
+  ppv_resultant: 'ppv_resultant_mm_s',
+  dominant_freq: 'vibration_dominant_freq_hz',
+  dominant_freq_hz: 'vibration_dominant_freq_hz',
 };
 
 export const METRIC_LABEL: Record<string, { label: string; unit: string }> = {
@@ -35,9 +40,27 @@ export const METRIC_LABEL: Record<string, { label: string; unit: string }> = {
   hcho:               { label: 'HCHO',     unit: 'mg/m³' },
   pressure:           { label: 'Pressure', unit: 'hPa' },
   illuminance:        { label: 'Lux',      unit: 'lx' },
+  ppv_max_mm_s:       { label: 'PPV Max',  unit: 'μm/s' },
+  ppv_resultant_mm_s: { label: 'PPV',      unit: 'μm/s' },
+  ppv_x_mm_s:         { label: 'PPV X',    unit: 'μm/s' },
+  ppv_y_mm_s:         { label: 'PPV Y',    unit: 'μm/s' },
+  ppv_z_mm_s:         { label: 'PPV Z',    unit: 'μm/s' },
+  tilt_x_deg:         { label: 'Tilt X',   unit: '°' },
+  tilt_y_deg:         { label: 'Tilt Y',   unit: '°' },
+  tilt_z_deg:         { label: 'Tilt Z',   unit: '°' },
+  vibration_dominant_freq_hz: { label: 'Freq', unit: 'Hz' },
 };
 
-const SUPPRESSED_KEYS = new Set(['battery', 'pir', 'digital_input', 'water_leak']);
+const SUPPRESSED_KEYS = new Set([
+  'battery', 'pir', 'digital_input', 'water_leak',
+  'timestamp', 'fport', 'fcnt', 'sample_count', 'sample_rate_hz',
+  'lines_in_window', 'window_lines', 'vibration_alarm_level',
+  'ppv_raw_peak', 'ppv_raw_unit_um_s',
+]);
+
+const ppvDisplayValue = (key: string, value: number) => (
+  key.endsWith('_mm_s') && key.startsWith('ppv_') ? value * 1000 : value
+);
 
 export function normalizeMetrics(raw: Record<string, unknown> | null | undefined): Record<string, number> {
   const out: Record<string, number> = {};
@@ -46,7 +69,8 @@ export function normalizeMetrics(raw: Record<string, unknown> | null | undefined
     if (!Number.isFinite(v)) continue;
     const stripped = rawKey.replace(/_\d+$/, '').toLowerCase();
     const key = ALIASES[stripped] ?? stripped;
-    if (out[key] === undefined) out[key] = v;
+    if (SUPPRESSED_KEYS.has(key)) continue;
+    if (out[key] === undefined) out[key] = ppvDisplayValue(key, v);
   }
   return out;
 }

@@ -13,7 +13,7 @@ export interface Room {
 export interface Sensor {
   id: string;
   name: string;
-  type: 'HY108-1' | 'LD-5R' | 'Temp' | 'IAQ' | 'CCTV' | 'Lift';
+  type: 'HY108-1' | 'LD-5R' | 'Temp' | 'IAQ' | 'CCTV' | 'Lift' | 'AS400';
   subsystem: Subsystem;
   // World-space position relative to building origin
   x: number; y: number; z: number;

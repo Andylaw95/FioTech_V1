@@ -26,6 +26,8 @@ const TYPE_ICON: Record<string, string> = {
   Power: '⚡',
   Water: '💧',
   Smoke: '🔥',
+  AS400: '📳',
+  Vibration: '📳',
 };
 
 function iconFor(sensor: Sensor): string {

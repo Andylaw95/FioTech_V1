@@ -153,7 +153,7 @@ export function VibrationStatusPanel({ devices, telemetry }: VibrationStatusPane
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Vibration Compliance</p>
-              <p className="text-xs text-slate-500">Lai King Hospital AAA · {vibDevices.length} sensor{vibDevices.length === 1 ? '' : 's'}</p>
+              <p className="text-xs text-slate-500">Demo idle · 10s latest · 30s history · {vibDevices.length} sensor{vibDevices.length === 1 ? '' : 's'}</p>
             </div>
           </div>
           <div className={clsx('px-2.5 py-1 rounded-full text-xs font-bold', worstStyle.bg, worstStyle.text, 'ring-1', worstStyle.ring)}>

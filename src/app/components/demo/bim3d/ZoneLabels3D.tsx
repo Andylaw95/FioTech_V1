@@ -16,6 +16,7 @@ const ZONE_BG: Record<NonNullable<ZoneLabel['zoneType']>, string> = {
 const TYPE_ICON: Record<string, string> = {
   HY108: '🔊', 'LD-5R': '💨', IAQ: '🌡️', CCTV: '📷',
   PIR: '👁️', Door: '🚪', Power: '⚡', Water: '💧', Smoke: '🔥',
+  AS400: '📳', Vibration: '📳',
 };
 function iconFor(sensor: Sensor): string {
   const t = sensor.type ?? '';

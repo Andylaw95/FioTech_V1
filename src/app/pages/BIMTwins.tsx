@@ -121,6 +121,38 @@ function useTelemetryStream(connected: boolean, devices: Device[], propertyId: s
   return { telemetry, propertyTelemetry };
 }
 
+type DeviceTelemetryReading = PropertyTelemetry['deviceReadings'][string];
+
+function findDeviceTelemetryReading(device: Device, telemetry: PropertyTelemetry | null): DeviceTelemetryReading | null {
+  const readings = Object.values(telemetry?.deviceReadings ?? {});
+  if (readings.length === 0) return null;
+
+  const deviceId = (device.id ?? '').trim().toLowerCase();
+  const devEui = (device.devEui ?? '').trim().toLowerCase();
+  const serial = (device.serialNumber ?? '').trim().toLowerCase();
+  const name = (device.name ?? '').trim().toLowerCase();
+  const ids = [deviceId, devEui, serial].filter(Boolean);
+
+  const idMatch = readings.find(r => {
+    const readingEui = (r.devEUI ?? '').trim().toLowerCase();
+    return ids.some(id => id === readingEui);
+  });
+  if (idMatch) return idMatch;
+
+  if (name) {
+    const exactName = readings.find(r => (r.deviceName ?? '').trim().toLowerCase() === name);
+    if (exactName) return exactName;
+
+    const fuzzy = readings.filter(r => {
+      const readingName = (r.deviceName ?? '').trim().toLowerCase();
+      return readingName && (readingName.includes(name) || name.includes(readingName));
+    });
+    if (fuzzy.length === 1) return fuzzy[0];
+  }
+
+  return null;
+}
+
 // --- Isometric Projection ---
 const ISO_ANGLE = 30 * (Math.PI / 180);
 const COS = Math.cos(ISO_ANGLE);
@@ -1173,21 +1205,12 @@ export function BIMTwins() {
                     onClose={() => { setSelectedDevice(null); setInspectorMode(selectedTable !== null ? 'floor' : 'overview'); }}
                     liveSensorData={(() => {
                       if (!propertyTelemetry?.deviceReadings) return null;
-                      const readings = Object.values(propertyTelemetry.deviceReadings);
-                      // Try to find a reading matching this device
-                      const match = readings.find(r =>
-                        r.deviceName?.toLowerCase().includes(selectedDevice.name?.toLowerCase()) ||
-                        selectedDevice.name?.toLowerCase().includes(r.deviceName?.toLowerCase())
-                      ) || readings[0];
+                      const match = findDeviceTelemetryReading(selectedDevice, propertyTelemetry);
                       return match?.decoded || null;
                     })()}
                     liveDataTime={(() => {
                       if (!propertyTelemetry?.deviceReadings) return null;
-                      const readings = Object.values(propertyTelemetry.deviceReadings);
-                      const match = readings.find(r =>
-                        r.deviceName?.toLowerCase().includes(selectedDevice.name?.toLowerCase()) ||
-                        selectedDevice.name?.toLowerCase().includes(r.deviceName?.toLowerCase())
-                      ) || readings[0];
+                      const match = findDeviceTelemetryReading(selectedDevice, propertyTelemetry);
                       return match?.receivedAt || null;
                     })()}
                   />
@@ -1282,20 +1305,12 @@ export function BIMTwins() {
                     onClose={() => { setSelectedDevice(null); setInspectorMode('overview'); }}
                     liveSensorData={(() => {
                       if (!propertyTelemetry?.deviceReadings) return null;
-                      const readings = Object.values(propertyTelemetry.deviceReadings);
-                      const match = readings.find(r =>
-                        r.deviceName?.toLowerCase().includes(selectedDevice.name?.toLowerCase()) ||
-                        selectedDevice.name?.toLowerCase().includes(r.deviceName?.toLowerCase())
-                      ) || readings[0];
+                      const match = findDeviceTelemetryReading(selectedDevice, propertyTelemetry);
                       return match?.decoded || null;
                     })()}
                     liveDataTime={(() => {
                       if (!propertyTelemetry?.deviceReadings) return null;
-                      const readings = Object.values(propertyTelemetry.deviceReadings);
-                      const match = readings.find(r =>
-                        r.deviceName?.toLowerCase().includes(selectedDevice.name?.toLowerCase()) ||
-                        selectedDevice.name?.toLowerCase().includes(r.deviceName?.toLowerCase())
-                      ) || readings[0];
+                      const match = findDeviceTelemetryReading(selectedDevice, propertyTelemetry);
                       return match?.receivedAt || null;
                     })()}
                   />

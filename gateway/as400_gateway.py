@@ -71,7 +71,7 @@ BAUD_RATE            = 9600
 DEVICE_ID            = "AS400-001"
 DEVICE_NAME          = "AS400-001 Vibration"
 
-UPLOAD_INTERVAL_S    = 30          # how often to POST to FioTec
+UPLOAD_INTERVAL_S    = 10          # Free-plan demo idle mode latest update interval
 LINE_READ_TIMEOUT_S  = 2.0
 SAMPLE_RATE_HZ       = 16.0        # observed: 64 samples / ~4s
 CSV_SAMPLE_COUNT     = 64

@@ -19,6 +19,7 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 // API/storage fields stay in mm/s; the dashboard converts PPV display values ×1000.
 const AAA = { alert: 75, alarm: 150, action: 300 };
 const PPV_DISPLAY_SCALE = 1000;
+const LIVE_REFRESH_MS = 10_000;
 
 // Adaptive gauge max — keeps small-amplitude readings legible
 function gaugeMaxFor(value: number): number {
@@ -133,17 +134,17 @@ interface VibrationDevice {
   location: string;
   status: 'online' | 'offline';
   ppvMax: number;
-  ppvX: number;
-  ppvY: number;
-  ppvZ: number;
+  ppvX: number | null;
+  ppvY: number | null;
+  ppvZ: number | null;
   ppvResultant: number;
-  accelX: number;
-  accelY: number;
-  accelZ: number;
-  accelRms: number;
-  tiltX: number;
-  tiltY: number;
-  tiltZ: number;
+  accelX: number | null;
+  accelY: number | null;
+  accelZ: number | null;
+  accelRms: number | null;
+  tiltX: number | null;
+  tiltY: number | null;
+  tiltZ: number | null;
   dominantFreq: number;
   alarmLevel: number;
   ppvSource: string;
@@ -155,14 +156,16 @@ interface VibrationDevice {
 const OFFLINE_THRESHOLD_MS = 120 * 1000; // 120s
 
 const num = (v: any): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+const numOrNull = (v: any): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const ppvUm = (v: any): number => num(v) * PPV_DISPLAY_SCALE;
 const ppvUmOrNull = (v: any): number | null => (typeof v === 'number' && Number.isFinite(v) ? v * PPV_DISPLAY_SCALE : null);
+const fmt = (v: number | null, digits: number) => (v == null ? 'N/A' : v.toFixed(digits));
 
 export function VibrationDashboard() {
   const { isDark } = useTheme();
   const [devices, setDevices] = useState<VibrationDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState('');
-  const [timeRange, setTimeRange] = useState<'12h' | '24h' | '48h' | '3d'>('24h');
+  const [timeRange, setTimeRange] = useState<'12h' | '24h' | '48h' | '3d'>('3d');
   const [chartMode, setChartMode] = useState<'ppvMax' | 'ppvAxes' | 'accel'>('ppvMax');
   const [showDeviceDropdown, setShowDeviceDropdown] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -195,17 +198,17 @@ export function VibrationDashboard() {
               location: `${p.name}${p.location ? ' — ' + p.location : ''}`,
               status: recent ? 'online' : 'offline',
               ppvMax: ppvUm(dec.ppv_max_mm_s),
-              ppvX: ppvUm(dec.ppv_x_mm_s),
-              ppvY: ppvUm(dec.ppv_y_mm_s),
-              ppvZ: ppvUm(dec.ppv_z_mm_s),
+              ppvX: ppvUmOrNull(dec.ppv_x_mm_s),
+              ppvY: ppvUmOrNull(dec.ppv_y_mm_s),
+              ppvZ: ppvUmOrNull(dec.ppv_z_mm_s),
               ppvResultant: ppvUm(dec.ppv_resultant_mm_s),
-              accelX: num(dec.accel_x_g),
-              accelY: num(dec.accel_y_g),
-              accelZ: num(dec.accel_z_g),
-              accelRms: num(dec.accel_rms_g),
-              tiltX: num(dec.tilt_x_deg),
-              tiltY: num(dec.tilt_y_deg),
-              tiltZ: num(dec.tilt_z_deg),
+              accelX: numOrNull(dec.accel_x_g),
+              accelY: numOrNull(dec.accel_y_g),
+              accelZ: numOrNull(dec.accel_z_g),
+              accelRms: numOrNull(dec.accel_rms_g),
+              tiltX: numOrNull(dec.tilt_x_deg),
+              tiltY: numOrNull(dec.tilt_y_deg),
+              tiltZ: numOrNull(dec.tilt_z_deg),
               dominantFreq: num(dec.vibration_dominant_freq_hz),
               alarmLevel: num(dec.vibration_alarm_level),
               ppvSource: (dec.ppv_source as string) || 'unknown',
@@ -230,7 +233,7 @@ export function VibrationDashboard() {
   useEffect(() => {
     let cancelled = false;
     void refreshDevices();
-    const id = window.setInterval(() => { if (!cancelled) void refreshDevices(); }, 30_000);
+    const id = window.setInterval(() => { if (!cancelled) void refreshDevices(); }, LIVE_REFRESH_MS);
     return () => { cancelled = true; window.clearInterval(id); };
   }, [refreshDevices]);
 
@@ -244,7 +247,7 @@ export function VibrationDashboard() {
         if (cancelled) return;
         setChartData((res.points || []).map((p: any) => ({
           time: p.timeLabel || new Date(p.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }),
-          ppvMax: ppvUmOrNull(p.ppv_max_mm_s),
+          ppvMax: ppvUmOrNull(p.ppv_max_mm_s) ?? ppvUmOrNull(p.ppv_resultant_mm_s),
           ppvX: ppvUmOrNull(p.ppv_x_mm_s),
           ppvY: ppvUmOrNull(p.ppv_y_mm_s),
           ppvZ: ppvUmOrNull(p.ppv_z_mm_s),
@@ -259,6 +262,7 @@ export function VibrationDashboard() {
   }, [selectedDevice, timeRange, lastRefresh]);
 
   const device = devices.find(d => d.id === selectedDevice) ?? devices[0];
+  const isSingleChannel = !!device && device.ppvMax > 0 && device.ppvX == null && device.ppvY == null && device.ppvZ == null;
   const status = device ? getVibrationStatus(device.ppvMax || device.ppvResultant) : getVibrationStatus(0);
   const onlineDevices = devices.filter(d => d.status === 'online').length;
 
@@ -302,7 +306,7 @@ export function VibrationDashboard() {
             Vibration Monitoring
           </h2>
           <p className={cn("text-sm mt-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
-            Real-time PPV monitoring · BEWIS AS400 / 3-axis MEMS · AAA thresholds
+            Demo idle mode · 10s latest refresh · 30s history sample · 3-day retention
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -310,7 +314,7 @@ export function VibrationDashboard() {
           <button
             onClick={() => void refreshDevices()}
             disabled={refreshing}
-            title={`Last refresh ${relativeTime(new Date(lastRefresh).toISOString())} · auto every 30s`}
+             title={`Last refresh ${relativeTime(new Date(lastRefresh).toISOString())} · auto every 10s`}
             className={cn(
               "inline-flex items-center gap-1.5 px-2.5 py-2 rounded-lg border text-xs font-medium",
               isDark ? "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50",
@@ -437,20 +441,28 @@ export function VibrationDashboard() {
 
         {/* Per-axis PPV + summary */}
         <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <MetricCard label="PPV-X" value={device.ppvX.toFixed(1)} unit="μm/s" accent="text-purple-500" />
-          <MetricCard label="PPV-Y" value={device.ppvY.toFixed(1)} unit="μm/s" accent="text-purple-500" />
-          <MetricCard label="PPV-Z" value={device.ppvZ.toFixed(1)} unit="μm/s" accent="text-purple-500" />
-          <MetricCard label="Accel X" value={device.accelX.toFixed(4)} unit="g" />
-          <MetricCard label="Accel Y" value={device.accelY.toFixed(4)} unit="g" />
-          <MetricCard label="Accel Z" value={device.accelZ.toFixed(4)} unit="g" />
-          <MetricCard label="Tilt X" value={device.tiltX.toFixed(2)} unit="°" />
-          <MetricCard label="Tilt Y" value={device.tiltY.toFixed(2)} unit="°" />
-          <MetricCard label="Tilt Z" value={device.tiltZ.toFixed(2)} unit="°" />
+          <MetricCard label="PPV-X" value={fmt(device.ppvX, 1)} unit={device.ppvX == null ? '' : 'μm/s'} accent="text-purple-500" />
+          <MetricCard label="PPV-Y" value={fmt(device.ppvY, 1)} unit={device.ppvY == null ? '' : 'μm/s'} accent="text-purple-500" />
+          <MetricCard label="PPV-Z" value={fmt(device.ppvZ, 1)} unit={device.ppvZ == null ? '' : 'μm/s'} accent="text-purple-500" />
+          <MetricCard label="Accel X" value={fmt(device.accelX, 4)} unit={device.accelX == null ? '' : 'g'} />
+          <MetricCard label="Accel Y" value={fmt(device.accelY, 4)} unit={device.accelY == null ? '' : 'g'} />
+          <MetricCard label="Accel Z" value={fmt(device.accelZ, 4)} unit={device.accelZ == null ? '' : 'g'} />
+          <MetricCard label="Tilt X" value={fmt(device.tiltX, 2)} unit={device.tiltX == null ? '' : '°'} />
+          <MetricCard label="Tilt Y" value={fmt(device.tiltY, 2)} unit={device.tiltY == null ? '' : '°'} />
+          <MetricCard label="Tilt Z" value={fmt(device.tiltZ, 2)} unit={device.tiltZ == null ? '' : '°'} />
           <MetricCard label="PPV resultant" value={device.ppvResultant.toFixed(1)} unit="μm/s" accent="text-fuchsia-500" />
-          <MetricCard label="Accel RMS" value={device.accelRms.toFixed(4)} unit="g" />
+          <MetricCard label="Accel RMS" value={fmt(device.accelRms, 4)} unit={device.accelRms == null ? '' : 'g'} />
           <MetricCard label="Dom. Freq" value={device.dominantFreq > 0 ? device.dominantFreq.toFixed(1) : '—'} unit="Hz" />
         </div>
       </div>
+      {isSingleChannel && (
+        <div className={cn(
+          "rounded-xl border px-4 py-3 text-sm",
+          isDark ? "bg-purple-950/20 border-purple-900/40 text-purple-200" : "bg-purple-50 border-purple-100 text-purple-700"
+        )}>
+          This NOVOX AS400 demo unit streams single-channel resultant PPV only; per-axis PPV, acceleration and tilt are unavailable for this firmware.
+        </div>
+      )}
 
       {/* AAA threshold reference + period stats */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
@@ -533,12 +545,23 @@ export function VibrationDashboard() {
             <Activity className="h-10 w-10 opacity-30 mb-2" />
             <div className="text-sm font-medium">No history yet</div>
             <div className="text-xs mt-1 max-w-md">
-              The sensor stores one data point every ~15&nbsp;min on the server. Time-series will populate
-              after the device has been online for &gt; 15&nbsp;min. Live values above update every 30&nbsp;s.
+              Demo mode stores one history point every ~30&nbsp;s for 3 days. Time-series will populate after
+              the next stored sample. Live values above refresh every 10&nbsp;s.
+            </div>
+          </div>
+        ) : chartMode === 'ppvAxes' && isSingleChannel ? (
+          <div className={cn(
+            "h-[300px] rounded-lg border border-dashed flex flex-col items-center justify-center text-center px-6",
+            isDark ? "border-slate-700 bg-slate-900/30 text-slate-400" : "border-slate-200 bg-slate-50/50 text-slate-500"
+          )}>
+            <Activity className="h-10 w-10 opacity-30 mb-2" />
+            <div className="text-sm font-medium">Per-axis data unavailable</div>
+            <div className="text-xs mt-1 max-w-md">
+              This AS400 CSV firmware reports a single resultant PPV channel. Use PPV-Max for the live compliance trend.
             </div>
           </div>
         ) : (
-          <SafeChartContainer height={300}>
+          <SafeChartContainer className="h-[300px]">
             {chartMode === 'ppvMax' ? (
               <AreaChart data={chartData} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
                 <defs>
@@ -593,7 +616,7 @@ export function VibrationDashboard() {
         <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
         <div>
           AAA thresholds shown are the Lai King Hospital reference values (75 / 150 / 300 μm/s PPV).
-          Per-property override, sensor grouping, alarm dedupe and notifications are coming in Phase 2.
+          Current demo profile keeps 10s latest values and 30s sampled history for 3 days on the Free-plan preview.
           {onlineDevices < devices.length && (
             <> · <span className="text-amber-500 font-medium">{devices.length - onlineDevices} offline</span> (no data &gt; 120s)</>
           )}

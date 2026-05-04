@@ -24,6 +24,8 @@ function inferType(d: Device): Sensor['type'] {
   if (hay.includes('lift') || hay.includes('elevator')) return 'Lift';
   // Noise meters
   if (hay.includes('hy108') || hay.includes('ws302') || hay.includes('noise') || hay.includes('sound') || hay.includes('decibel')) return 'HY108-1';
+  if (hay.includes('as400') || hay.includes('as-400') || hay.includes('bewis') || hay.includes('vibration') || hay.includes('accelerometer')) return 'AS400';
+  if (caps.some((c: string) => c === 'vibration' || c === 'ppv' || c === 'acceleration')) return 'AS400';
   // Dust / particulate
   if (hay.includes('ld-5r') || hay.includes('ld5r') || hay.includes('dust') || hay.includes('particulate')) return 'LD-5R';
   if (caps.some((c: string) => c === 'pm2_5' || c === 'pm10' || c === 'tsp')) return 'LD-5R';
@@ -42,6 +44,7 @@ function inferSubsystem(t: Sensor['type']): Subsystem {
     case 'LD-5R':
     case 'IAQ':
     case 'Temp':
+    case 'AS400':
       return 'Environment';
     case 'CCTV':
       return 'CCTV';

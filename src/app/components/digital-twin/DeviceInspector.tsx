@@ -20,6 +20,10 @@ const DEVICE_META: Record<string, { icon: React.ElementType; color: string; bg: 
   Fire: { icon: Flame, color: 'text-red-600', bg: 'bg-red-50', label: 'Fire Alarm' },
   Noise: { icon: Volume2, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Noise Monitor' },
   'Sound Level Sensor': { icon: Volume2, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Sound Level Sensor' },
+  AS400: { icon: Activity, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Vibration Sensor' },
+  Vibration: { icon: Activity, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Vibration Sensor' },
+  'Vibration Sensor': { icon: Activity, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Vibration Sensor' },
+  Accelerometer: { icon: Activity, color: 'text-purple-600', bg: 'bg-purple-50', label: 'Vibration Sensor' },
   'Environment Sensor': { icon: Wind, color: 'text-teal-600', bg: 'bg-teal-50', label: 'Environment Sensor' },
   'Door/Window Sensor': { icon: Cpu, color: 'text-slate-600', bg: 'bg-slate-50', label: 'Door/Window Sensor' },
 };
@@ -46,6 +50,10 @@ function generateDeviceTelemetry(deviceId: string, type: string) {
     Leakage: { base: 55, variance: 8, unit: 'PSI', label: 'Water Pressure' },
     Noise: { base: 45, variance: 15, unit: 'dB(A)', label: 'LAF' },
     'Sound Level Sensor': { base: 45, variance: 15, unit: 'dB(A)', label: 'LAF' },
+    AS400: { base: 65, variance: 35, unit: 'μm/s', label: 'PPV Max' },
+    Vibration: { base: 65, variance: 35, unit: 'μm/s', label: 'PPV Max' },
+    'Vibration Sensor': { base: 65, variance: 35, unit: 'μm/s', label: 'PPV Max' },
+    Accelerometer: { base: 65, variance: 35, unit: 'μm/s', label: 'PPV Max' },
     Smoke: { base: 0.3, variance: 0.2, unit: 'μg/m³', label: 'Particle Density' },
     Fire: { base: 24, variance: 2, unit: '°C', label: 'Ambient Temp' },
   };
@@ -103,6 +111,10 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
       Leakage: ['humidity'],
       Noise: ['sound_level_leq', 'sound_level_inst'],
       'Sound Level Sensor': ['sound_level_leq', 'sound_level_inst'],
+      AS400: ['ppv_max_mm_s', 'ppv_resultant_mm_s'],
+      Vibration: ['ppv_max_mm_s', 'ppv_resultant_mm_s'],
+      'Vibration Sensor': ['ppv_max_mm_s', 'ppv_resultant_mm_s'],
+      Accelerometer: ['ppv_max_mm_s', 'ppv_resultant_mm_s'],
       Smoke: ['pm2_5', 'pm10'],
       Fire: ['temperature'],
     };
@@ -366,7 +378,11 @@ export function DeviceInspector({ device, onClose, liveSensorData, liveDataTime 
 
       {/* Telemetry Chart */}
       <div>
-        <p className="text-[10px] font-medium text-slate-500 uppercase mb-1.5">24h Telemetry — {currentReading.label}</p>
+        <p className="text-[10px] font-medium text-slate-500 uppercase mb-1.5">
+          {device.type.toLowerCase().includes('vibration') || device.type.toLowerCase().includes('as400')
+            ? '3-Day Demo History'
+            : '24h Telemetry'} — {currentReading.label}
+        </p>
         <div className="h-24 w-full rounded-lg bg-slate-50 border border-slate-100 p-1.5">
           <MiniDeviceChart deviceId={device.id} deviceType={device.type} devEui={device.devEui} />
         </div>
