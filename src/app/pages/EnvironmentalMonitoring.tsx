@@ -148,7 +148,7 @@ function DustGauge({ value, max, unit, label, statusColor }: { value: number; ma
 //  Demo data
 // ══════════════════════════════════════════════════════════
 
-type DeviceType = 'noise' | 'dust' | 'leakage';
+type DeviceType = 'noise' | 'dust' | 'leakage' | 'vibration';
 
 interface SensorDevice {
   id: string;
@@ -175,6 +175,11 @@ interface SensorDevice {
   // Leakage fields (EM300-SLD)
   leakage_status?: string | null;  // "normal" or "leak"
   battery?: number | null;
+  // Vibration fields (AS400)
+  ppvMaxMmS?: number | null;
+  ppvResultantMmS?: number | null;
+  vibrationAlarmLevel?: number | null;
+  ppvSource?: string | null;
 }
 
 // Downsample data arrays for chart rendering performance
@@ -212,10 +217,11 @@ async function geocodeAddress(address: string): Promise<{ lat: number; lng: numb
   return null;
 }
 
-function isDeviceRecent(lastSeen: string | undefined): boolean {
+function isDeviceRecent(lastSeen: string | undefined, type: DeviceType = 'leakage'): boolean {
   if (!lastSeen) return false;
   const diff = Date.now() - new Date(lastSeen).getTime();
-  return diff < 10 * 60 * 1000; // 10 minutes
+  const threshold = type === 'vibration' ? 5 * 60 * 1000 : 15 * 60 * 1000;
+  return diff < threshold;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -250,7 +256,7 @@ export function EnvironmentalMonitoring() {
   const { isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<ViewTab>('map');
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
-  const [mapFilter, setMapFilter] = useState<'all' | 'noise' | 'dust' | 'leakage'>('all');
+  const [mapFilter, setMapFilter] = useState<'all' | 'noise' | 'dust' | 'vibration' | 'leakage'>('all');
   const [noiseTimeRange, setNoiseTimeRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [dustTimeRange, setDustTimeRange] = useState<'1h' | '24h' | '7d'>('24h');
   const [dustMetric, setDustMetric] = useState<'pm25' | 'pm10' | 'tsp'>('pm25');
@@ -284,9 +290,9 @@ export function EnvironmentalMonitoring() {
 
   // ── Build info window HTML for a device (all API data HTML-escaped) ──
   const buildInfoContent = useCallback((d: SensorDevice) => {
-    const typeColor = d.type === 'noise' ? '#3b82f6' : d.type === 'dust' ? '#f59e0b' : '#06b6d4';
-    const typeIcon = d.type === 'noise' ? '🔊' : d.type === 'dust' ? '💨' : '💧';
-    const typeLabel = d.type === 'noise' ? 'Noise Sensor' : d.type === 'dust' ? 'Dust Sensor' : 'EM300-SLD Leak Sensor';
+    const typeColor = d.type === 'noise' ? '#3b82f6' : d.type === 'dust' ? '#f59e0b' : d.type === 'vibration' ? '#8b5cf6' : '#06b6d4';
+    const typeIcon = d.type === 'noise' ? '🔊' : d.type === 'dust' ? '💨' : d.type === 'vibration' ? '📳' : '💧';
+    const typeLabel = d.type === 'noise' ? 'Noise Sensor' : d.type === 'dust' ? 'Dust Sensor' : d.type === 'vibration' ? 'AS400 Vibration Sensor' : 'EM300-SLD Leak Sensor';
     const lines: string[] = [
       `<div style="padding:12px 14px;min-width:220px;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif;font-size:13px;line-height:1.4;">`,
       // Header
@@ -340,6 +346,22 @@ export function EnvironmentalMonitoring() {
         if (d.battery != null) lines.push(`<p style="margin:0;font-size:11px;color:#636366;">Bat <b style="color:#1d1d1f;">${safeNum(d.battery, 0)}%</b></p>`);
         lines.push(`</div>`);
       }
+      if (d.type === 'vibration') {
+        const ppvMm = d.ppvMaxMmS ?? d.ppvResultantMmS ?? null;
+        const ppvUm = ppvMm == null ? null : ppvMm * 1000;
+        const level = d.vibrationAlarmLevel ?? (ppvMm == null ? 0 : ppvMm >= 0.3 ? 3 : ppvMm >= 0.15 ? 2 : ppvMm >= 0.075 ? 1 : 0);
+        const vibColor = level >= 3 ? '#ef4444' : level >= 2 ? '#f97316' : level >= 1 ? '#f59e0b' : '#34c759';
+        const vibLabel = level >= 3 ? 'Action' : level >= 2 ? 'Alarm' : level >= 1 ? 'Alert' : 'Normal';
+        lines.push(`<div style="display:flex;align-items:end;justify-content:space-between;margin-bottom:8px;">`);
+        lines.push(`<div><p style="font-size:10px;color:#8e8e93;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;margin:0;">PPV Max</p>`);
+        lines.push(`<p style="font-size:22px;font-weight:700;color:${vibColor};margin:2px 0 0;letter-spacing:-0.02em;">${ppvUm == null ? '—' : safeNum(ppvUm)} <span style="font-size:11px;font-weight:500;color:#8e8e93;">μm/s</span></p></div>`);
+        lines.push(`<span style="font-size:11px;font-weight:600;color:${vibColor};background:${vibColor}18;padding:3px 8px;border-radius:20px;">${vibLabel}</span></div>`);
+        lines.push(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:6px;">`);
+        if (ppvMm != null) lines.push(`<p style="margin:0;font-size:11px;color:#636366;">PPV <b style="color:#1d1d1f;">${safeNum(ppvMm, 3)} mm/s</b></p>`);
+        if (d.ppvSource) lines.push(`<p style="margin:0;font-size:11px;color:#636366;">Source <b style="color:#1d1d1f;">${esc(d.ppvSource)}</b></p>`);
+        if (d.battery != null) lines.push(`<p style="margin:0;font-size:11px;color:#636366;">Bat <b style="color:#1d1d1f;">${safeNum(d.battery, 0)}%</b></p>`);
+        lines.push(`</div>`);
+      }
       lines.push(`</div>`);
     }
     lines.push(`</div>`);
@@ -390,8 +412,9 @@ export function EnvironmentalMonitoring() {
               const hasNoise = dec.sound_level_leq !== undefined;
               const hasDust = dec.pm2_5 !== undefined || dec.pm10 !== undefined || dec.tsp !== undefined;
               const hasLeakage = dec.leakage_status !== undefined;
+              const hasVibration = dec.ppv_max_mm_s !== undefined || dec.ppv_resultant_mm_s !== undefined || dec.accel_x_g !== undefined || dec.tilt_x_deg !== undefined;
               const hasEnv = dec.temperature !== undefined || dec.humidity !== undefined;
-              const deviceType: DeviceType = hasNoise ? 'noise' : hasDust ? 'dust' : (hasLeakage || hasEnv) ? 'leakage' : 'leakage';
+              const deviceType: DeviceType = hasVibration ? 'vibration' : hasNoise ? 'noise' : hasDust ? 'dust' : (hasLeakage || hasEnv) ? 'leakage' : 'leakage';
 
               // Micro-offset so overlapping markers stay clickable (~2m apart)
               const microOffset = idx * 0.00002;
@@ -403,7 +426,7 @@ export function EnvironmentalMonitoring() {
                 location: `${prop.name} — ${reading.deviceName || devEUI}`,
                 lat: coords.lat + microOffset,
                 lng: coords.lng + microOffset * 0.7,
-                status: isDeviceRecent(reading.receivedAt) ? 'online' : 'offline',
+                status: isDeviceRecent(reading.receivedAt, deviceType) ? 'online' : 'offline',
                 sound_level_leq: dec.sound_level_leq ?? null,
                 sound_level_lmax: dec.sound_level_lmax ?? null,
                 sound_level_lmin: dec.sound_level_lmin ?? null,
@@ -418,6 +441,10 @@ export function EnvironmentalMonitoring() {
                 windDir: dec.wind_direction,
                 leakage_status: dec.leakage_status ?? null,
                 battery: dec.battery ?? null,
+                ppvMaxMmS: dec.ppv_max_mm_s ?? null,
+                ppvResultantMmS: dec.ppv_resultant_mm_s ?? null,
+                vibrationAlarmLevel: dec.vibration_alarm_level ?? null,
+                ppvSource: dec.ppv_source ?? null,
               });
               idx++;
             }
@@ -593,6 +620,10 @@ export function EnvironmentalMonitoring() {
     if (d.status === 'offline') return 'Offline';
     if (d.type === 'noise') return `${d.sound_level_leq?.toFixed(1)} dB(A)`;
     if (d.type === 'dust') return `PM2.5: ${d.pm25?.toFixed(1)} µg/m³`;
+    if (d.type === 'vibration') {
+      const ppvMm = d.ppvMaxMmS ?? d.ppvResultantMmS;
+      return ppvMm == null ? 'PPV: —' : `PPV: ${(ppvMm * 1000).toFixed(1)} μm/s`;
+    }
     // Leakage sensor
     const status = d.leakage_status === 'leak' ? '⚠️ LEAK' : '✅ Normal';
     const parts = [status];
@@ -870,7 +901,7 @@ export function EnvironmentalMonitoring() {
                 <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
                   {/* Sensor type filter */}
                   <div className={cn("flex rounded-md border p-0.5 flex-shrink-0", isDark ? "border-slate-700" : "border-slate-200")}>
-                    {(['all', 'noise', 'dust', 'leakage'] as const).map(f => (
+                    {(['all', 'noise', 'dust', 'vibration', 'leakage'] as const).map(f => (
                       <button
                         key={f}
                         onClick={() => setMapFilter(f)}
@@ -881,8 +912,8 @@ export function EnvironmentalMonitoring() {
                             : isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-700"
                         )}
                       >
-                        {f === 'all' ? 'All' : f === 'noise' ? '🔊' : f === 'dust' ? '💨' : '💧'}
-                        <span className="hidden sm:inline"> {f === 'noise' ? 'Noise' : f === 'dust' ? 'Dust' : f === 'leakage' ? 'Leak' : ''}</span>
+                        {f === 'all' ? 'All' : f === 'noise' ? '🔊' : f === 'dust' ? '💨' : f === 'vibration' ? '📳' : '💧'}
+                        <span className="hidden sm:inline"> {f === 'noise' ? 'Noise' : f === 'dust' ? 'Dust' : f === 'vibration' ? 'Vibration' : f === 'leakage' ? 'Leak' : ''}</span>
                       </button>
                     ))}
                   </div>
@@ -934,6 +965,13 @@ export function EnvironmentalMonitoring() {
                 {filteredDevices.map(d => {
                   const statusInfo = d.type === 'noise' ? getNoiseStatus(d.sound_level_leq ?? 0)
                     : d.type === 'dust' ? getPM25Status(d.pm25 ?? 0)
+                    : d.type === 'vibration' ? (() => {
+                      const ppv = d.ppvMaxMmS ?? d.ppvResultantMmS ?? 0;
+                      if (ppv >= 0.3) return { label: 'Action', color: 'red', hex: '#ef4444' };
+                      if (ppv >= 0.15) return { label: 'Alarm', color: 'red', hex: '#f97316' };
+                      if (ppv >= 0.075) return { label: 'Alert', color: 'amber', hex: '#f59e0b' };
+                      return { label: 'Normal', color: 'emerald', hex: '#10b981' };
+                    })()
                     : { label: d.leakage_status === 'leak' ? 'Leak' : 'Normal', color: d.leakage_status === 'leak' ? 'red' : 'emerald', hex: d.leakage_status === 'leak' ? '#ef4444' : '#10b981' };
                   return (
                     <button
@@ -950,7 +988,7 @@ export function EnvironmentalMonitoring() {
                         <div className="mt-0.5 h-3 w-3 rounded-full flex-shrink-0" style={{ backgroundColor: d.status === 'online' ? getSensorColor(d.id) : '#94a3b8' }} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
-                            {d.type === 'noise' ? <Volume2 className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" /> : d.type === 'dust' ? <CloudFog className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" /> : <Droplets className="h-3.5 w-3.5 text-cyan-400 flex-shrink-0" />}
+                            {d.type === 'noise' ? <Volume2 className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" /> : d.type === 'dust' ? <CloudFog className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" /> : d.type === 'vibration' ? <Activity className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" /> : <Droplets className="h-3.5 w-3.5 text-cyan-400 flex-shrink-0" />}
                             <p className={cn("text-sm font-semibold truncate", isDark ? "text-white" : "text-slate-900")}>{d.name}</p>
                           </div>
                           <p className={cn("text-[11px] truncate mb-1.5", isDark ? "text-slate-500" : "text-slate-400")}>{d.location}</p>

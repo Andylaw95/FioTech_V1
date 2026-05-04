@@ -440,8 +440,8 @@ function friendlyAge(iso: string, now: number): string {
 
 function deriveDeviceStatuses(devices: any[], gatewayStatuses: Map<string, string>): any[] {
   const now = Date.now();
-  const STALE_OFFLINE = 60 * 60 * 1000; // 1 hour without uplink → offline
-  const STALE_WARNING = 30 * 60 * 1000; // 30 min without uplink → warning
+  const STALE_OFFLINE = 15 * 60 * 1000; // 15 min without uplink → offline
+  const STALE_WARNING = 10 * 60 * 1000; // 10 min without uplink → warning
   // Vibration sensors monitor structural movement — much shorter offline window for compliance
   const VIB_STALE_OFFLINE = 5 * 60 * 1000;  // 5 min — generous for transient 4G dropouts
   const VIB_STALE_WARNING = 2 * 60 * 1000;  // 2 min (matches dashboard 120s threshold)
@@ -2516,12 +2516,13 @@ export function registerRoutes(app: any) {
     let rawBody: any = null;
     try { rawBody = await c.req.json(); } catch { rawBody = "PARSE_ERROR"; }
     // Debug: redact sensitive fields, keep only structural info
-    const debugEntry = {
+      const deviceInfo = rawBody?.deviceInfo && typeof rawBody.deviceInfo === "object" ? rawBody.deviceInfo : {};
+      const debugEntry = {
       time: new Date().toISOString(),
       method: "POST",
       tokenVia: c.req.header("X-Webhook-Token") ? "header" : (c.req.query("token") ? "query" : "none"),
       bodyKeys: rawBody && typeof rawBody === "object" ? Object.keys(rawBody) : typeof rawBody,
-      devEUI: rawBody?.devEUI || rawBody?.devEui || rawBody?.dev_eui || "N/A",
+        devEUI: rawBody?.devEUI || rawBody?.devEui || rawBody?.dev_eui || deviceInfo.devEui || deviceInfo.devEUI || "N/A",
       eventType: rawBody?.data ? "uplink" : (rawBody?.devAddr ? "join" : "other"),
     };
     WEBHOOK_DEBUG_LOG.unshift(debugEntry);
@@ -2578,9 +2579,10 @@ export function registerRoutes(app: any) {
       const isAckEvent = !!(body.acknowledged !== undefined || body.type === "ack");
       const eventType = isJoinEvent ? "join" : isErrorEvent ? "error" : isAckEvent ? "ack" : "uplink";
 
-      const devEUI = sanitizeString(body.devEUI || body.devEui || body.dev_eui || "", 24);
-      const deviceName = sanitizeString(body.deviceName || body.device_name || "Unknown Device", 200);
-      const applicationName = sanitizeString(body.applicationName || body.application_name || "", 200);
+      const bodyDeviceInfo = body.deviceInfo && typeof body.deviceInfo === "object" ? body.deviceInfo : {};
+      const devEUI = sanitizeString(body.devEUI || body.devEui || body.dev_eui || bodyDeviceInfo.devEui || bodyDeviceInfo.devEUI || "", 24);
+      const deviceName = sanitizeString(body.deviceName || body.device_name || bodyDeviceInfo.deviceName || bodyDeviceInfo.device_name || "Unknown Device", 200);
+      const applicationName = sanitizeString(body.applicationName || body.application_name || bodyDeviceInfo.applicationName || bodyDeviceInfo.application_name || "", 200);
       const fPort = typeof body.fPort === "number" ? body.fPort : (typeof body.fport === "number" ? body.fport : 0);
       const fCnt = typeof body.fCnt === "number" ? body.fCnt : (typeof body.fcnt === "number" ? body.fcnt : 0);
       const rawData = sanitizeString(body.data || "", 2000);
@@ -2855,6 +2857,10 @@ export function registerRoutes(app: any) {
                   if (rssi > -999) subDevices[i].signal = Math.max(0, Math.min(100, 2 * (rssi + 100)));
                   if (decodedData && typeof decodedData.battery === "number") {
                     subDevices[i].battery = decodedData.battery;
+                  }
+                  if (decodedData && typeof decodedData === "object") {
+                    subDevices[i].decoded = decodedData;
+                    subDevices[i].decodedAt = nowIso;
                   }
                   devChanged = true;
                 }
